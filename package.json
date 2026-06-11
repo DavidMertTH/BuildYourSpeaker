@@ -1,0 +1,11 @@
+{
+  "name": "audiosim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "description": "Browser-based loudspeaker enclosure simulator inspired by WINISD."
+}

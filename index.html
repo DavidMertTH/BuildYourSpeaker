@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AudioSim</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">AS</span>
+          <div>
+            <h1>AudioSim</h1>
+            <p>Enclosure simulator</p>
+          </div>
+        </div>
+
+        <section class="panel">
+          <div class="panel-title">
+            <div class="title-cluster"><h2>Driver</h2></div>
+            <button id="loadSampleButton" type="button">Sample</button>
+          </div>
+          <label class="driver-select-row">
+            <span>Known driver</span>
+            <select id="driverSelect"></select>
+          </label>
+          <div class="driver-search">
+            <input id="driverSearchInput" type="search" placeholder="Search driver specs, e.g. Dayton RSS315HF-4" />
+            <button id="driverSearchButton" type="button">Search</button>
+          </div>
+          <div id="driverSearchStatus" class="search-status"></div>
+          <div id="driverSearchResults" class="search-results"></div>
+          <div class="field-grid">
+            <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
+            <label class="field-card"><span class="field-top"><span>Le</span></span><input data-field="driver.leMh" data-unit-type="inductance" type="number" step="0.01" /></label>
+            <label class="field-card"><span class="field-top"><span>Fs</span></span><input data-field="driver.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Qms</span></span><input data-field="driver.qms" type="number" step="0.01" /></label>
+            <label class="field-card"><span class="field-top"><span>Qes</span></span><input data-field="driver.qes" type="number" step="0.01" /></label>
+            <label class="field-card"><span class="field-top"><span>Vas</span></span><input data-field="driver.vasL" data-unit-type="volume" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Sd</span></span><input data-field="driver.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Xmax</span></span><input data-field="driver.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Mms</span></span><input data-field="driver.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Bl Tm</span></span><input data-field="driver.bl" type="number" step="0.01" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <div class="title-cluster"><h2>Box</h2></div>
+            <div class="segmented">
+              <button class="mode-button active" data-mode="sealed" type="button">Sealed</button>
+              <button class="mode-button" data-mode="vented" type="button">Vented</button>
+              <button class="mode-button" data-mode="passive" type="button">Passive</button>
+            </div>
+          </div>
+          <label class="driver-select-row">
+            <span>Active design</span>
+            <select id="designSelect"></select>
+          </label>
+          <div class="design-controls">
+            <input id="designNameInput" type="text" aria-label="Design name" />
+            <button id="duplicateDesignButton" type="button">Duplicate</button>
+            <button id="deleteDesignButton" type="button">Delete</button>
+            <label class="compare-toggle"><input id="designVisibleInput" type="checkbox" /> Compare</label>
+          </div>
+          <label class="passive-only driver-select-row">
+            <span>Passive radiator</span>
+            <select id="passiveRadiatorSelect"></select>
+          </label>
+          <div class="field-grid">
+            <label class="field-card"><span class="field-top"><span>Volume</span></span><input data-field="box.volumeL" data-unit-type="volume" type="number" step="0.1" /></label>
+            <label class="field-card"><span class="field-top"><span>Power</span></span><input data-field="box.powerW" data-unit-type="power" type="number" step="1" /></label>
+            <label class="field-card"><span class="field-top"><span>Rs</span></span><input data-field="box.seriesResistanceOhm" data-unit-type="resistance" type="number" step="0.01" /></label>
+            <label class="field-card"><span class="field-top"><span>Fill</span></span><input data-field="box.fillPercent" data-unit-type="percent" type="number" step="1" /></label>
+            <label class="field-card"><span class="field-top"><span>Qa</span></span><input data-field="box.qa" type="number" step="1" /></label>
+            <label class="field-card"><span class="field-top"><span>QL</span></span><input data-field="box.ql" type="number" step="0.1" /></label>
+            <label class="field-card vented-only"><span class="field-top"><span>Fb</span></span><input data-field="box.fb" data-unit-type="frequency" type="number" step="0.1" /></label>
+            <label class="field-card vented-only"><span class="field-top"><span>Port dia.</span></span><input data-field="box.portDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+            <label class="field-card vented-only"><span class="field-top"><span>End corr.</span></span><input data-field="box.portEndCorrection" type="number" step="0.01" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR count</span></span><input data-field="box.passiveRadiator.count" type="number" step="1" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Fs</span></span><input data-field="box.passiveRadiator.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Qms</span></span><input data-field="box.passiveRadiator.qms" type="number" step="0.01" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Mms</span></span><input data-field="box.passiveRadiator.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Cms</span></span><input data-field="box.passiveRadiator.cmsMmN" data-unit-type="compliance" type="number" step="0.001" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Sd</span></span><input data-field="box.passiveRadiator.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
+            <label class="field-card passive-only"><span class="field-top"><span>PR Xmax</span></span><input data-field="box.passiveRadiator.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <div class="title-cluster"><h2>Project</h2></div>
+          </div>
+          <div class="button-row">
+            <button id="exportButton" type="button">Export</button>
+            <label class="file-button">
+              Import
+              <input id="importInput" type="file" accept="application/json" />
+            </label>
+          </div>
+          <textarea id="projectJson" spellcheck="false" aria-label="Project JSON"></textarea>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="app-toolbar">
+          <div class="toolbar-group">
+            <span class="toolbar-label">View</span>
+            <button class="preset-button active" data-layout-preset="overview" type="button">Overview</button>
+            <button class="preset-button" data-layout-preset="tuning" type="button">Tuning</button>
+            <button class="preset-button" data-layout-preset="limits" type="button">Limits</button>
+            <button class="preset-button" data-layout-preset="model" type="button">Model</button>
+          </div>
+          <div class="toolbar-group panel-tabs" aria-label="Panel visibility">
+            <span class="toolbar-label">Panels</span>
+            <button class="panel-toggle active" data-panel-toggle="splPlot" type="button">SPL</button>
+            <button class="panel-toggle active" data-panel-toggle="impedancePlot" type="button">Z</button>
+            <button class="panel-toggle active" data-panel-toggle="excursionPlot" type="button">X</button>
+            <button class="panel-toggle active" data-panel-toggle="portPlot" type="button">Port</button>
+            <button class="panel-toggle active" data-panel-toggle="phasePlot" type="button">Phase</button>
+            <button class="panel-toggle active" data-panel-toggle="boxPreview" type="button">Box</button>
+          </div>
+        </header>
+
+        <section class="summary-strip">
+          <div>
+            <span class="metric-label">Qts</span>
+            <strong id="qtsMetric">-</strong>
+          </div>
+          <div>
+            <span class="metric-label">Fc / Qtc</span>
+            <strong id="sealedMetric">-</strong>
+          </div>
+          <div>
+            <span class="metric-label">Port length</span>
+            <strong id="portMetric">-</strong>
+          </div>
+          <div>
+            <span class="metric-label">Warnings</span>
+            <strong id="warningMetric">-</strong>
+          </div>
+        </section>
+
+        <section class="plot-grid" data-reorder-group="plots">
+          <div class="plot-panel" draggable="true" data-reorder-id="spl-plot" data-panel="splPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>SPL</span></div><canvas id="splPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="impedance-plot" data-panel="impedancePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Impedance</span></div><canvas id="impedancePlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="excursion-plot" data-panel="excursionPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Excursion</span></div><canvas id="excursionPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="port-plot" data-panel="portPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Port</span></div><canvas id="portPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="phase-plot" data-panel="phasePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Phase</span></div><canvas id="phasePlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="box-preview" data-panel="boxPreview"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Box</span></div><canvas id="boxPreview"></canvas></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
