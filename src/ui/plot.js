@@ -96,7 +96,7 @@ function renderPlot(canvas, state) {
   ctx.strokeStyle = theme.line;
   ctx.strokeRect(margin.left, margin.top, width, height);
 
-  drawAnnotationBands(ctx, config, theme, { margin, width, height, xScale });
+  drawAnnotationBands(ctx, config, theme, { margin, width, height, xScale, yScale });
 
   for (const series of config.series) {
     if (!series.values || series.values.length === 0) continue;
@@ -114,7 +114,7 @@ function renderPlot(canvas, state) {
   }
   ctx.globalAlpha = 1;
 
-  drawAnnotationLines(ctx, config, theme, { margin, width, height, rect, xScale });
+  drawAnnotationLines(ctx, config, theme, { margin, width, height, rect, xScale, yScale });
 
   ctx.fillStyle = theme.muted;
   ctx.font = "10px system-ui";
@@ -155,16 +155,104 @@ function getPlotState(canvas) {
 }
 
 function bindHover(canvas, state) {
-  canvas.addEventListener("mousemove", (event) => {
+  canvas.addEventListener("pointerdown", (event) => {
+    const drag = draggableAnnotationAtEvent(canvas, state, event);
+    if (!drag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.drag = drag;
+    canvas.setPointerCapture?.(event.pointerId);
+    canvas.classList.add("is-dragging-annotation");
+    updateAnnotationDrag(canvas, state, event, false);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
     const bounds = canvas.getBoundingClientRect();
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
+    if (state.drag) {
+      event.preventDefault();
+      event.stopPropagation();
+      updateAnnotationDrag(canvas, state, event, false);
+      return;
+    }
     state.hover = { x, y };
+    updateAnnotationCursor(canvas, state, event);
     if (state.displayConfig || state.config) renderPlot(canvas, state);
   });
-  canvas.addEventListener("mouseleave", () => {
+
+  canvas.addEventListener("pointerup", (event) => {
+    if (!state.drag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateAnnotationDrag(canvas, state, event, true);
+    state.drag = null;
+    canvas.releasePointerCapture?.(event.pointerId);
+    canvas.classList.remove("is-dragging-annotation");
+    updateAnnotationCursor(canvas, state, event);
+  });
+
+  canvas.addEventListener("pointercancel", (event) => {
+    if (!state.drag) return;
+    state.drag = null;
+    canvas.releasePointerCapture?.(event.pointerId);
+    canvas.classList.remove("is-dragging-annotation");
+    updateAnnotationCursor(canvas, state, event);
+  });
+
+  canvas.addEventListener("mouseleave", (event) => {
+    if (state.drag) return;
     state.hover = null;
+    updateAnnotationCursor(canvas, state, event);
     if (state.displayConfig || state.config) renderPlot(canvas, state);
+  });
+}
+
+function draggableAnnotationAtEvent(canvas, state, event) {
+  const metrics = state.metrics;
+  const config = state.displayConfig || state.config;
+  if (!metrics || !config?.onAnnotationDrag) return null;
+
+  const bounds = canvas.getBoundingClientRect();
+  const pointer = {
+    x: event.clientX - bounds.left,
+    y: event.clientY - bounds.top,
+  };
+  const { margin, width, height, xScale } = metrics;
+  if (pointer.y < margin.top || pointer.y > margin.top + height) return null;
+
+  let best = null;
+  (config.annotations || []).forEach((annotation) => {
+    if (!annotation.draggable) return;
+    const frequency = Number(annotation.frequencyHz);
+    if (!Number.isFinite(frequency) || frequency < config.xMin || frequency > config.xMax) return;
+    const distance = Math.abs(pointer.x - xScale(frequency));
+    if (distance > 10) return;
+    if (!best || distance < best.distance) best = { annotation, distance, width, margin };
+  });
+  return best ? { annotation: best.annotation } : null;
+}
+
+function updateAnnotationCursor(canvas, state, event) {
+  if (state.drag) {
+    canvas.style.cursor = "ew-resize";
+    return;
+  }
+  canvas.style.cursor = draggableAnnotationAtEvent(canvas, state, event) ? "ew-resize" : "";
+}
+
+function updateAnnotationDrag(canvas, state, event, final) {
+  const metrics = state.metrics;
+  const config = state.displayConfig || state.config;
+  if (!metrics || !config?.onAnnotationDrag || !state.drag?.annotation) return;
+  const bounds = canvas.getBoundingClientRect();
+  const x = clamp(event.clientX - bounds.left, metrics.margin.left, metrics.margin.left + metrics.width);
+  const ratio = metrics.width > 0 ? (x - metrics.margin.left) / metrics.width : 0;
+  const frequencyHz = 10 ** (metrics.xMin + ratio * (metrics.xMax - metrics.xMin));
+  config.onAnnotationDrag({
+    annotation: state.drag.annotation,
+    frequencyHz: clamp(frequencyHz, config.xMin, config.xMax),
+    final,
   });
 }
 
@@ -360,9 +448,26 @@ function now() {
 }
 
 function drawAnnotationBands(ctx, config, theme, metrics) {
-  const { margin, width, height, xScale } = metrics;
+  const { margin, width, height, xScale, yScale } = metrics;
   const annotations = config.annotations || [];
   annotations.forEach((annotation) => {
+    const limitValue = Number(annotation.limitValue);
+    if (Number.isFinite(limitValue)) {
+      const limitY = yScale(limitValue);
+      if (limitY < margin.top || limitY > margin.top + height) return;
+      const direction = annotation.limitDirection === "below" ? "below" : "above";
+      ctx.save();
+      ctx.globalAlpha = annotation.limitFillAlpha ?? 0.08;
+      ctx.fillStyle = annotation.color || theme.hoverLine;
+      if (direction === "below") {
+        ctx.fillRect(margin.left, limitY, width, Math.max(1, margin.top + height - limitY));
+      } else {
+        ctx.fillRect(margin.left, margin.top, width, Math.max(1, limitY - margin.top));
+      }
+      ctx.restore();
+      return;
+    }
+
     const bandMin = Math.max(Number(annotation.bandMinHz) || 0, config.xMin);
     const bandMax = Math.min(Number(annotation.bandMaxHz) || 0, config.xMax);
     if (!(bandMax > bandMin)) return;
@@ -377,9 +482,59 @@ function drawAnnotationBands(ctx, config, theme, metrics) {
 }
 
 function drawAnnotationLines(ctx, config, theme, metrics) {
-  const { margin, height, rect, xScale } = metrics;
+  const { margin, width, height, rect, xScale, yScale } = metrics;
   const annotations = config.annotations || [];
   annotations.forEach((annotation, index) => {
+    const limitValue = Number(annotation.limitValue);
+    if (Number.isFinite(limitValue)) {
+      const y = yScale(limitValue);
+      if (y < margin.top || y > margin.top + height) return;
+      const color = annotation.color || theme.hoverLine;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.86;
+      ctx.lineWidth = annotation.width ?? 1.6;
+      ctx.setLineDash(annotation.dash || [6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, y);
+      ctx.lineTo(margin.left + width, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      const label = annotation.label || formatValue(limitValue);
+      const detail = annotation.detail || "";
+      ctx.font = "10px system-ui";
+      const labelWidth = ctx.measureText(label).width;
+      const detailWidth = detail ? ctx.measureText(detail).width : 0;
+      const boxWidth = Math.min(Math.max(labelWidth, detailWidth) + 12, rect.width - 12);
+      const boxHeight = detail ? 30 : 17;
+      const boxX = clamp(margin.left + width - boxWidth - 6, 6, rect.width - boxWidth - 6);
+      let boxY = y - boxHeight - 6;
+      if (boxY < margin.top + 6) boxY = y + 6;
+      boxY = clamp(boxY, margin.top + 6, margin.top + height - boxHeight - 6);
+
+      ctx.fillStyle = theme.tooltip;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.92;
+      roundRect(ctx, boxX, boxY, boxWidth, boxHeight, 4);
+      ctx.fill();
+      ctx.globalAlpha = 0.75;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.text;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(label, boxX + 6, boxY + 4);
+      if (detail) {
+        ctx.fillStyle = theme.muted;
+        ctx.fillText(detail, boxX + 6, boxY + 17);
+      }
+      ctx.restore();
+      return;
+    }
+
     const frequency = Number(annotation.frequencyHz);
     if (!Number.isFinite(frequency) || frequency < config.xMin || frequency > config.xMax) return;
     const x = xScale(frequency);

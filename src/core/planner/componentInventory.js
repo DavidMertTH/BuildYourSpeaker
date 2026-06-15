@@ -9,7 +9,7 @@ export const DEFAULT_INVENTORY = {
     maxHeightCm: 60,
     maxDepthCm: 40,
     materialThicknessMm: 18,
-    maxPortVelocityMs: 17,
+    maxPortVelocityMs: 20,
     maxPortLengthCm: 60,
   },
   portFabrication: {

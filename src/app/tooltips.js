@@ -82,12 +82,12 @@ export const CONTROL_TOOLTIPS = {
   projectDialogStatus: "Shows import or export status messages.",
   newConfigButton: "Create a new config from the current settings.",
   newConfigGroupButton: "Create a group for related configs that should be viewed together.",
-  crossoverGroupSelect: "Choose the config group whose crossover you want to edit.",
+  crossoverGroupSelect: "Choose the config group whose filters you want to edit.",
 };
 export const SIDEBAR_TOOLTIPS = {
   driver: "Enter or search the driver parameters.",
   planning: "Edit the active config, choose the enclosure type, and run Auto plan.",
-  crossover: "Plan filters between configs in a group.",
+  crossover: "Edit filters between configs in a group.",
 };
 export const MODE_TOOLTIPS = {
   sealed: "Use a closed box without a port.",

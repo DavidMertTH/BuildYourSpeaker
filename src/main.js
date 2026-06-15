@@ -365,6 +365,7 @@ function initializeGoldenLayout() {
   goldenLayout.registerComponentFactoryFunction(GOLDEN_COMPONENT_TYPE, bindGoldenPlotPanel);
   goldenLayout.on("stateChanged", handleGoldenLayoutStateChanged);
   layoutHost.addEventListener("dblclick", handleGoldenLayoutTabDoubleClick);
+  layoutHost.addEventListener("mousedown", handleGoldenLayoutTabMiddleClick);
   window.setTimeout(() => {
     goldenLayout?.updateSizeFromContainer();
     render();
@@ -423,6 +424,17 @@ function handleGoldenLayoutTabDoubleClick(event) {
   }, 80);
 }
 
+function handleGoldenLayoutTabMiddleClick(event) {
+  if (event.button !== 1 || isMobileLayout()) return;
+  const tab = event.target.closest(".lm_tab");
+  if (!tab || !event.currentTarget.contains(tab)) return;
+  const closeButton = tab.querySelector(".lm_close_tab");
+  if (!closeButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeButton.click();
+}
+
 function handleGoldenLayoutStateChanged() {
   if (loadingGoldenLayout) return;
   if (isGoldenLayoutMaximized()) {
@@ -448,6 +460,7 @@ function deactivateGoldenLayoutForMobile() {
   loadingGoldenLayout = true;
   try {
     host?.removeEventListener("dblclick", handleGoldenLayoutTabDoubleClick);
+    host?.removeEventListener("mousedown", handleGoldenLayoutTabMiddleClick);
     plotPanels.forEach((panel) => {
       panel.setAttribute("draggable", "true");
       panel.style.width = "";
@@ -4759,6 +4772,7 @@ function zoomPlot(plotId, factor, event = null, axis = "both") {
 
 function startPlotPan(plotId, event) {
   if (isMobileLayout() || event.button !== 0) return;
+  if (event.currentTarget?.classList?.contains("is-dragging-annotation")) return;
   const current = currentPlotRange(plotId);
   if (!validPlotRange(current, plotId)) return;
   const canvas = document.querySelector(`#${plotId}`);
@@ -4957,6 +4971,12 @@ function visiblePlotYRange(config, xMin, xMax) {
       const value = yValues[index];
       if (Number.isFinite(value)) values.push(value);
     });
+  });
+
+  (config.annotations || []).forEach((annotation) => {
+    if (annotation.exceeded === false) return;
+    const limitValue = Number(annotation.limitValue);
+    if (Number.isFinite(limitValue)) values.push(limitValue);
   });
 
   if (config.yScale === "log") {
@@ -5303,7 +5323,7 @@ function designWarnings(mode, box, active, driver) {
   }
   if (mode === "vented") {
     const maxPort = Math.max(...active.portVelocity);
-    const maxPortVelocity = state.inventory?.constraints?.maxPortVelocityMs || 17;
+    const maxPortVelocity = state.inventory?.constraints?.maxPortVelocityMs || 20;
     if (maxPort > maxPortVelocity) warnings.push(`High port velocity: ${maxPort.toFixed(1)} m/s`);
     if (active.port.physicalLength <= 0) warnings.push("Port diameter too large for selected port tuning");
   }
@@ -5311,7 +5331,7 @@ function designWarnings(mode, box, active, driver) {
     const maxFrontPort = Math.max(...active.portVelocity);
     const maxRearPort = Math.max(...(active.rearPortVelocity || [0]));
     const maxPort = Math.max(maxFrontPort, maxRearPort);
-    const maxPortVelocity = state.inventory?.constraints?.maxPortVelocityMs || 17;
+    const maxPortVelocity = state.inventory?.constraints?.maxPortVelocityMs || 20;
     if (maxPort > maxPortVelocity) warnings.push(`High bandpass port velocity: ${maxPort.toFixed(1)} m/s`);
     if (active.bandpass.frontPort.physicalLength <= 0) warnings.push("Front port diameter too large for selected bandpass tuning");
     if (box.bandpass.order === 6 && active.bandpass.rearPort.physicalLength <= 0) warnings.push("Rear port diameter too large for selected bandpass tuning");
@@ -5357,6 +5377,8 @@ function renderPlots(simulations, activeSimulation, options = {}) {
   const xMin = frequencies[0];
   const xMax = frequencies[frequencies.length - 1];
   const xmaxMm = activeSimulation.driver.xmax * 1000;
+  const portVelocityLimit = positiveOrNull(state.inventory?.constraints?.maxPortVelocityMs) ?? 20;
+  const passiveRadiatorLimit = positiveOrNull(activeSimulation.box.passiveRadiator?.xmaxMm);
   const physicalSimulations = simulations.filter((simulation) => !simulation.groupCombined);
   const splSeries = simulations.map((simulation) => designSeries(simulation, splValuesForSimulation(simulation), colors));
   const impedanceSeries = physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.impedance, colors));
@@ -5380,6 +5402,24 @@ function renderPlots(simulations, activeSimulation, options = {}) {
   const groupDelaySeries = simulations.map((simulation) => designSeries(simulation, simulation.active.groupDelayMs, colors));
   const portValues = portSeries.flatMap((series) => series.values);
   const prExcursionValues = prExcursionSeries.flatMap((series) => series.values);
+  const excursionLimitAnnotations = limitAnnotationsForValues(excursionSeries.flatMap((series) => series.name === "Xmax" ? [] : series.values), xmaxMm, {
+    color: colors.danger,
+    label: `Xmax ${formatLimitValue(xmaxMm)} mm`,
+    detail: "Cone excursion limit",
+    unit: "mm",
+  });
+  const portLimitAnnotations = limitAnnotationsForValues(portValues, portVelocityLimit, {
+    color: colors.danger,
+    label: `${formatLimitValue(portVelocityLimit)} m/s`,
+    detail: "Port velocity limit",
+    unit: "m/s",
+  });
+  const passiveRadiatorLimitAnnotations = limitAnnotationsForValues(prExcursionValues, passiveRadiatorLimit, {
+    color: colors.danger,
+    label: `PR Xmax ${formatLimitValue(passiveRadiatorLimit)} mm`,
+    detail: "Passive radiator limit",
+    unit: "mm",
+  });
   const splRange = autoRange(splSeries.flatMap((series) => series.values));
   const impedanceRange = positiveMagnitudeRange(impedanceSeries.flatMap((series) => series.values), { fallbackMax: 16, minFloor: 0.1 });
   const excursionRange = positiveMagnitudeRange(excursionSeries.flatMap((series) => series.values), {
@@ -5404,6 +5444,7 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     yMax: Math.max(splRange[1], 1),
     forceYMinZero: true,
     annotations: splCrossoverAnnotations,
+    onAnnotationDrag: handleFilterAnnotationDrag,
     series: splSeries,
   }), plotOptions);
 
@@ -5426,6 +5467,7 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     yMin: excursionRange.yMin,
     yMax: excursionRange.yMax,
     yScale: excursionRange.yScale,
+    annotations: excursionLimitAnnotations,
     series: excursionSeries,
   }), plotOptions);
 
@@ -5437,6 +5479,7 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     yMin: portRange.yMin,
     yMax: portRange.yMax,
     yScale: portRange.yScale,
+    annotations: portLimitAnnotations,
     series: portSeries.length ? portSeries : [{ name: activeSimulation.design.name, x: frequencies, values: frequencies.map(() => 0), color: colors.dim, width: 1 }],
   }), plotOptions);
 
@@ -5448,6 +5491,7 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     yMin: prExcursionRange.yMin,
     yMax: prExcursionRange.yMax,
     yScale: prExcursionRange.yScale,
+    annotations: passiveRadiatorLimitAnnotations,
     series: prExcursionSeries.length ? prExcursionSeries : [{ name: activeSimulation.design.name, x: frequencies, values: frequencies.map(() => 0), color: colors.dim, width: 1 }],
   }), plotOptions);
 
@@ -5459,6 +5503,7 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     yMin: phaseRange[0],
     yMax: phaseRange[1],
     annotations: phaseCrossoverAnnotations,
+    onAnnotationDrag: handleFilterAnnotationDrag,
     series: phaseSeries,
   }), plotOptions);
 
@@ -5488,6 +5533,68 @@ function designSeries(simulation, values, colors) {
   };
 }
 
+function handleFilterAnnotationDrag({ annotation, frequencyHz, final }) {
+  const drag = annotation?.drag;
+  if (!drag || !Number.isFinite(frequencyHz)) return;
+  updateDraggedFilterFrequency(drag, clampCrossoverFrequency(frequencyHz), {
+    live: !final,
+    renderControls: final,
+  });
+}
+
+function updateDraggedFilterFrequency(drag, frequencyHz, options = {}) {
+  const nextState = cloneProject(state);
+  const group = nextState.configGroups.find((item) => item.id === drag.groupId);
+  if (!group) return;
+  group.crossover = normalizeGroupCrossover(group.crossover);
+
+  if (drag.type === "transition") {
+    const transition = group.crossover.transitions.find((item) => item.id === drag.id);
+    if (!transition) return;
+    transition.frequencyHz = frequencyHz;
+    transition.family = CROSSOVER_FAMILIES.includes(transition.family) ? transition.family : "linkwitz-riley";
+    transition.order = CROSSOVER_ORDERS.includes(Number(transition.order)) ? Number(transition.order) : 4;
+  } else if (drag.type === "signalFilter") {
+    const filter = group.crossover.signalFilters.find((item) => item.id === drag.id);
+    if (!filter) return;
+    filter[drag.field || "frequencyHz"] = frequencyHz;
+    if (filter.type === "subsonic") filter.preset = "custom";
+    Object.assign(filter, normalizeSignalFilter(filter));
+  } else {
+    return;
+  }
+
+  commitCrossoverState(nextState, options.live ? { renderControls: false, replaceHistory: true } : options);
+}
+
+function limitAnnotationsForValues(values, limit, options = {}) {
+  if (!Number.isFinite(limit) || limit <= 0) return [];
+  const maxValue = Math.max(...values.filter(Number.isFinite));
+  if (!Number.isFinite(maxValue) || maxValue <= limit) return [];
+  return [{
+    limitValue: limit,
+    limitDirection: "above",
+    exceeded: true,
+    color: options.color,
+    label: options.label,
+    detail: options.detail
+      ? `${options.detail} / peak ${formatLimitValue(maxValue)}${options.unit ? ` ${options.unit}` : ""}`
+      : `Peak ${formatLimitValue(maxValue)}${options.unit ? ` ${options.unit}` : ""}`,
+  }];
+}
+
+function positiveOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function formatLimitValue(value) {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value) >= 100) return value.toFixed(0);
+  if (Math.abs(value) >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
 function crossoverAnnotationsForPlot(simulations, plotKind) {
   const simulationsByDesignId = new Map(simulations.map((simulation) => [simulation.design.id, simulation]));
   const annotations = [];
@@ -5507,6 +5614,13 @@ function crossoverAnnotationsForPlot(simulations, plotKind) {
         bandMaxHz: frequencyHz * Math.SQRT2,
         color: groupColor,
         label: `${crossoverFamilyLabel(transition.family)}${transition.order} ${formatCrossoverFrequency(frequencyHz)}`,
+        draggable: true,
+        drag: {
+          type: "transition",
+          groupId: group.id,
+          id: transition.id,
+          field: "frequencyHz",
+        },
       };
 
       if (plotKind === "phase") {
@@ -5547,6 +5661,13 @@ function signalFilterAnnotation(filter, simulations, fallbackColor) {
     color,
     label: signalFilterAnnotationLabel(filter),
     detail: signalFilterAnnotationDetail(filter, target, simulations),
+    draggable: true,
+    drag: {
+      type: "signalFilter",
+      groupId: simulations[0]?.design?.groupId || "",
+      id: filter.id,
+      field: filter.type === "linkwitz-transform" ? "targetFrequencyHz" : "frequencyHz",
+    },
   };
 }
 
