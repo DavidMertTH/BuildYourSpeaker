@@ -1,6 +1,7 @@
 import { AIR_DENSITY, DEFAULT_DISTANCE, SPEED_OF_SOUND, SPL_REFERENCE, db, litersToCubicMeters } from "./constants.js";
 import { C, jOmega, unwrapPhase } from "./complex.js";
 import { acousticResistanceFromQ, conductanceFromResistance, normalizeEnclosureOptions } from "./enclosure.js";
+import { enclosureHighPassResponse } from "./filters.js";
 
 export function closedAlignment(driver, volumeLiters, fillPercent = 0) {
   const effectiveVolumeLiters = normalizeEnclosureOptions({ volumeL: volumeLiters, fillPercent }).effectiveVolumeL;
@@ -47,13 +48,16 @@ export function simulateSealed(driver, options, frequencies) {
     const displacement = velocity.div(s);
     const volumeVelocity = velocity.mul(driver.sd);
     const pressure = s.mul(volumeVelocity).mul(pressureGain);
+    const filter = enclosureHighPassResponse(frequency, options);
+    const filteredPressure = pressure.mul(filter);
+    const filterMagnitude = filter.abs();
     const zin = ze.add(C(driver.bl ** 2).div(zm));
 
-    spl.push(db(pressure.abs()));
+    spl.push(db(filteredPressure.abs()));
     impedance.push(zin.abs());
-    excursionMm.push(displacement.abs() * 1000);
-    phase.push(pressure.phase());
-    transfer.push(pressure);
+    excursionMm.push(displacement.abs() * 1000 * filterMagnitude);
+    phase.push(filteredPressure.phase());
+    transfer.push(filteredPressure);
   }
 
   const unwrapped = unwrapPhase(phase);

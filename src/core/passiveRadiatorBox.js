@@ -1,6 +1,7 @@
 import { AIR_DENSITY, DEFAULT_DISTANCE, SPEED_OF_SOUND, SPL_REFERENCE, cm2ToSquareMeters, db, gramsToKg, litersToCubicMeters, mmToMeters } from "./constants.js";
 import { C, jOmega, solveLinearSystem, unwrapPhase } from "./complex.js";
 import { acousticResistanceFromQ, conductanceFromResistance, normalizeEnclosureOptions } from "./enclosure.js";
+import { enclosureHighPassResponse } from "./filters.js";
 
 export function normalizePassiveRadiator(input) {
   const fs = Number(input.fs);
@@ -58,16 +59,19 @@ export function simulatePassiveRadiator(driver, options, frequencies) {
     const coneDisplacement = coneVelocity.div(s);
     const passiveDisplacement = passiveVelocity.div(s);
     const frontVolumeVelocity = coneVelocity.mul(driver.sd);
-    const passiveVolumeVelocity = passiveVelocity.mul(passive.count * passive.sd);
+    const passiveVolumeVelocity = passiveVelocity.mul(-passive.count * passive.sd);
     const totalVolumeVelocity = frontVolumeVelocity.add(passiveVolumeVelocity);
     const totalPressure = s.mul(totalVolumeVelocity).mul(pressureGain);
+    const filter = enclosureHighPassResponse(frequency, options);
+    const filteredTotalPressure = totalPressure.mul(filter);
+    const filterMagnitude = filter.abs();
 
-    spl.push(db(totalPressure.abs()));
+    spl.push(db(filteredTotalPressure.abs()));
     impedance.push(C(voltage).div(current).abs());
-    excursionMm.push(coneDisplacement.abs() * 1000);
-    passiveRadiatorExcursionMm.push(passiveDisplacement.abs() * 1000);
-    passiveRadiatorVelocity.push(passiveVelocity.abs());
-    phase.push(totalPressure.phase());
+    excursionMm.push(coneDisplacement.abs() * 1000 * filterMagnitude);
+    passiveRadiatorExcursionMm.push(passiveDisplacement.abs() * 1000 * filterMagnitude);
+    passiveRadiatorVelocity.push(passiveVelocity.abs() * filterMagnitude);
+    phase.push(filteredTotalPressure.phase());
   }
 
   const unwrapped = unwrapPhase(phase);

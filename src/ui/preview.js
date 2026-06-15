@@ -1,4 +1,5 @@
 export function drawBoxPreview(canvas, state) {
+  if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   const pixelRatio = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.floor(rect.width * pixelRatio));

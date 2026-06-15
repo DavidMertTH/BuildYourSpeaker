@@ -1,46 +1,119 @@
-# AudioSim
+# Build Your Speaker
 
-AudioSim is an early browser-based loudspeaker enclosure simulator. The first milestone is a clean WINISD-style core for closed and vented boxes, with plots for SPL, impedance, cone excursion, phase/group delay, and port velocity.
+Build Your Speaker is a browser-based loudspeaker enclosure simulator inspired by WINISD. It models sealed, vented, and passive radiator enclosures and provides interactive graphs for SPL, impedance, cone excursion, port velocity, passive radiator excursion, phase, and a simple box preview.
 
-## Run
+## Requirements
 
-```powershell
+- Node.js 20 or newer is recommended.
+- A modern browser such as Chrome, Edge, Firefox, or Safari.
+- No npm package installation is currently required. The app uses browser ES modules and a small local Node.js static server.
+
+## Installation
+
+Clone the repository and enter the project folder:
+
+```bash
+git clone <repository-url>
+cd BuildYourSpeaker
+```
+
+If you downloaded the project as a ZIP file, extract it and open a terminal in the extracted folder instead.
+
+## Run Locally
+
+Start the local server:
+
+```bash
+npm start
+```
+
+Then open:
+
+```text
+http://localhost:4173
+```
+
+You can also start the server directly:
+
+```bash
 node server.mjs
 ```
 
-Then open `http://localhost:4173`.
+To use a different port:
+
+```bash
+PORT=3000 npm start
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:PORT=3000
+npm start
+```
+
+## Open From Another Device
+
+If your phone or tablet is on the same Wi-Fi network as the computer running the server, open the app with the computer's local IP address:
+
+```text
+http://<your-computer-ip>:4173
+```
+
+Example:
+
+```text
+http://192.168.178.42:4173
+```
+
+Your operating system firewall may ask for permission to allow Node.js network access.
 
 ## Test
 
-```powershell
+Run the test suite:
+
+```bash
+npm test
+```
+
+Or directly:
+
+```bash
 node --test
 ```
 
-The app has no npm dependencies yet. It uses browser ES modules and a small local Node static server.
+## Features
 
-## Interaction
+- Sealed, vented, and passive radiator enclosure simulation.
+- Multiple identical active drivers per enclosure.
+- Parallel and series wiring for driver arrays.
+- Config comparison with multiple saved enclosure variants.
+- Mobile layout with fixed graphs/configs and scrollable settings.
+- Selectable graph views, with separate graphs for port velocity and passive radiator excursion.
+- Built-in driver and passive radiator data.
+- Driver search that can scrape candidate T/S parameters from public web pages.
+- Auto planning tools for buildable sealed, vented, and passive radiator candidates.
 
-- Use the browser Back button to step back through parameter changes.
-- Use `Ctrl+Z` / `Cmd+Z` to undo the last app-level parameter change, even while an input field is focused.
-- Drag plot panels by their handle to reorder the graph area. Plot panes can also be resized from their lower-right corner.
-- Use the `View` presets to switch between predefined graph arrangements, and the `Panels` tabs to show or hide individual graph panes. The layout is saved in local browser storage.
-- The UI follows the system light/dark color scheme.
-- Use the driver search in the Driver panel to scrape candidate T/S parameters from public web pages. Always verify scraped values against the linked source before committing to a build.
-- Use the `Known driver` select to load built-in and previously applied scraped drivers.
-- The generated Parts Express import currently scans 1,718 sitemap candidates and adds 210 drivers with usable T/S data to `Known driver`.
-- Box modes currently include sealed, vented, and passive radiator.
-- The passive radiator list includes a built-in reference PR plus scraped Parts Express passive radiators.
+## Usage Notes
 
-## Parts Express Import
+- Use the `Driver` tab to enter or load driver parameters.
+- Use the `Planning` tab to change enclosure type, volume, tuning, passive radiator settings, and auto plan constraints.
+- Use config pills to compare variants and switch the active design.
+- On mobile, use the graph dropdown to choose the single visible graph.
+- Always verify scraped driver parameters against the original source before building a real enclosure.
 
-```powershell
+## Data Import Scripts
+
+Import Parts Express driver data:
+
+```bash
 node scripts/import-parts-express.mjs
 ```
 
-The importer reads the public Parts Express sitemap, filters likely raw driver product pages, scrapes T/S parameters, and writes `src/data/partsExpressDrivers.js`.
+Import Parts Express passive radiator data:
 
-```powershell
+```bash
 node scripts/import-passive-radiators.mjs
 ```
 
-The passive radiator importer writes `src/data/passiveRadiators.js`.
+These scripts read public Parts Express pages and write generated data files into `src/data/`.

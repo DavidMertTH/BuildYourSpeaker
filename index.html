@@ -3,157 +3,331 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AudioSim</title>
+    <title>Cabio</title>
+    <link rel="stylesheet" href="/src/vendor/golden-layout/goldenlayout-base.css" />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-mark">AS</span>
-          <div>
-            <h1>AudioSim</h1>
-            <p>Enclosure simulator</p>
-          </div>
-        </div>
+        <header class="app-brand" aria-label="Cabio">
+          <h1>Cabio</h1>
+        </header>
+        <nav class="sidebar-tabs" aria-label="Sidebar sections">
+          <button class="sidebar-tab active" data-sidebar-tab="driver" type="button">Driver</button>
+          <button class="sidebar-tab" data-sidebar-tab="planning" type="button">Box</button>
+          <button class="sidebar-tab" data-sidebar-tab="crossover" type="button">Crossover</button>
+        </nav>
 
-        <section class="panel">
-          <div class="panel-title">
-            <div class="title-cluster"><h2>Driver</h2></div>
-            <button id="loadSampleButton" type="button">Sample</button>
-          </div>
+        <section class="panel sidebar-panel active" data-sidebar-panel="driver">
           <label class="driver-select-row">
             <span>Known driver</span>
+            <div class="library-controls">
+              <details class="library-filter-menu">
+                <summary><span>Filters</span><button id="driverLibraryFilterEnabled" class="library-filter-toggle" type="button" role="switch" aria-checked="false" aria-label="Enable driver preset filters"></button></summary>
+                <div class="library-filter-menu-body">
+                  <select id="driverLibraryBrand" aria-label="Filter driver presets by brand"></select>
+                  <select id="driverLibraryDiameter" aria-label="Filter driver presets by diameter">
+                    <option value="">Any diameter</option>
+                    <option value="lte-3">&lt;= 3 in</option>
+                    <option value="3.5">3.5 in</option>
+                    <option value="4">4 in</option>
+                    <option value="5.25">5.25 in</option>
+                    <option value="6.5">6.5 in</option>
+                    <option value="8">8 in</option>
+                    <option value="10">10 in</option>
+                    <option value="12">12 in</option>
+                    <option value="15">15 in</option>
+                    <option value="gte-18">&gt;= 18 in</option>
+                  </select>
+                </div>
+              </details>
+            </div>
             <select id="driverSelect"></select>
           </label>
           <div class="driver-search">
-            <input id="driverSearchInput" type="search" placeholder="Search driver specs, e.g. Dayton RSS315HF-4" />
+            <input id="driverSearchInput" type="search" placeholder="Search model or paste datasheet URL" />
             <button id="driverSearchButton" type="button">Search</button>
           </div>
           <div id="driverSearchStatus" class="search-status"></div>
           <div id="driverSearchResults" class="search-results"></div>
-          <div class="field-grid">
-            <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
-            <label class="field-card"><span class="field-top"><span>Le</span></span><input data-field="driver.leMh" data-unit-type="inductance" type="number" step="0.01" /></label>
-            <label class="field-card"><span class="field-top"><span>Fs</span></span><input data-field="driver.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Qms</span></span><input data-field="driver.qms" type="number" step="0.01" /></label>
-            <label class="field-card"><span class="field-top"><span>Qes</span></span><input data-field="driver.qes" type="number" step="0.01" /></label>
-            <label class="field-card"><span class="field-top"><span>Vas</span></span><input data-field="driver.vasL" data-unit-type="volume" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Sd</span></span><input data-field="driver.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Xmax</span></span><input data-field="driver.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Mms</span></span><input data-field="driver.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Bl Tm</span></span><input data-field="driver.bl" type="number" step="0.01" /></label>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-title">
-            <div class="title-cluster"><h2>Box</h2></div>
-            <div class="segmented">
-              <button class="mode-button active" data-mode="sealed" type="button">Sealed</button>
-              <button class="mode-button" data-mode="vented" type="button">Vented</button>
-              <button class="mode-button" data-mode="passive" type="button">Passive</button>
-            </div>
-          </div>
-          <label class="driver-select-row">
-            <span>Active design</span>
-            <select id="designSelect"></select>
-          </label>
-          <div class="design-controls">
-            <input id="designNameInput" type="text" aria-label="Design name" />
-            <button id="duplicateDesignButton" type="button">Duplicate</button>
-            <button id="deleteDesignButton" type="button">Delete</button>
-            <label class="compare-toggle"><input id="designVisibleInput" type="checkbox" /> Compare</label>
-          </div>
-          <label class="passive-only driver-select-row">
-            <span>Passive radiator</span>
-            <select id="passiveRadiatorSelect"></select>
-          </label>
-          <div class="field-grid">
-            <label class="field-card"><span class="field-top"><span>Volume</span></span><input data-field="box.volumeL" data-unit-type="volume" type="number" step="0.1" /></label>
-            <label class="field-card"><span class="field-top"><span>Power</span></span><input data-field="box.powerW" data-unit-type="power" type="number" step="1" /></label>
-            <label class="field-card"><span class="field-top"><span>Rs</span></span><input data-field="box.seriesResistanceOhm" data-unit-type="resistance" type="number" step="0.01" /></label>
-            <label class="field-card"><span class="field-top"><span>Fill</span></span><input data-field="box.fillPercent" data-unit-type="percent" type="number" step="1" /></label>
-            <label class="field-card"><span class="field-top"><span>Qa</span></span><input data-field="box.qa" type="number" step="1" /></label>
-            <label class="field-card"><span class="field-top"><span>QL</span></span><input data-field="box.ql" type="number" step="0.1" /></label>
-            <label class="field-card vented-only"><span class="field-top"><span>Fb</span></span><input data-field="box.fb" data-unit-type="frequency" type="number" step="0.1" /></label>
-            <label class="field-card vented-only"><span class="field-top"><span>Port dia.</span></span><input data-field="box.portDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-            <label class="field-card vented-only"><span class="field-top"><span>End corr.</span></span><input data-field="box.portEndCorrection" type="number" step="0.01" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR count</span></span><input data-field="box.passiveRadiator.count" type="number" step="1" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Fs</span></span><input data-field="box.passiveRadiator.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Qms</span></span><input data-field="box.passiveRadiator.qms" type="number" step="0.01" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Mms</span></span><input data-field="box.passiveRadiator.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Cms</span></span><input data-field="box.passiveRadiator.cmsMmN" data-unit-type="compliance" type="number" step="0.001" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Sd</span></span><input data-field="box.passiveRadiator.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
-            <label class="field-card passive-only"><span class="field-top"><span>PR Xmax</span></span><input data-field="box.passiveRadiator.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-title">
-            <div class="title-cluster"><h2>Project</h2></div>
-          </div>
-          <div class="button-row">
-            <button id="exportButton" type="button">Export</button>
-            <label class="file-button">
-              Import
-              <input id="importInput" type="file" accept="application/json" />
+          <div class="driver-setup-panel">
+            <label class="driver-setup-field">
+              <span>Count</span>
+              <input data-field="box.driverCount" type="number" min="1" max="16" step="1" />
+            </label>
+            <label class="driver-setup-field">
+              <span>Wiring</span>
+              <select data-field="box.driverWiring">
+                <option value="parallel">Parallel</option>
+                <option value="series">Series</option>
+              </select>
             </label>
           </div>
-          <textarea id="projectJson" spellcheck="false" aria-label="Project JSON"></textarea>
+          <section id="driverHealthPanel" class="driver-health-panel" aria-live="polite"></section>
+          <details class="collapsible-fields">
+            <summary>Driver parameters</summary>
+            <div class="field-grid">
+              <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
+              <label class="field-card"><span class="field-top"><span>Le</span></span><input data-field="driver.leMh" data-unit-type="inductance" type="number" step="0.01" /></label>
+              <label class="field-card"><span class="field-top"><span>Fs</span></span><input data-field="driver.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
+              <label class="field-card"><span class="field-top"><span>Usable from</span></span><input data-field="driver.minFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Usable to</span></span><input data-field="driver.maxFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Qms</span></span><input data-field="driver.qms" type="number" step="0.01" /></label>
+              <label class="field-card"><span class="field-top"><span>Qes</span></span><input data-field="driver.qes" type="number" step="0.01" /></label>
+              <label class="field-card"><span class="field-top"><span>Vas</span></span><input data-field="driver.vasL" data-unit-type="volume" type="number" step="0.1" /></label>
+              <label class="field-card"><span class="field-top"><span>Sd</span></span><input data-field="driver.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
+              <label class="field-card"><span class="field-top"><span>Xmax</span></span><input data-field="driver.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
+              <label class="field-card"><span class="field-top"><span>Mms</span></span><input data-field="driver.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
+              <label class="field-card"><span class="field-top"><span>Bl Tm</span></span><input data-field="driver.bl" type="number" step="0.01" /></label>
+            </div>
+          </details>
         </section>
+
+        <section class="panel sidebar-panel" data-sidebar-panel="planning">
+          <div class="segmented mode-segmented">
+            <button class="mode-button active" data-mode="sealed" type="button">Sealed</button>
+            <button class="mode-button" data-mode="vented" type="button">Vented</button>
+            <button class="mode-button" data-mode="passive" type="button">P-Radiator</button>
+            <button class="mode-button" data-mode="bandpass" type="button">Bandpass</button>
+          </div>
+          <label class="passive-only driver-select-row">
+            <span>P-Radiator</span>
+            <div class="library-controls">
+              <details class="library-filter-menu">
+                <summary><span>Filters</span><button id="passiveRadiatorLibraryFilterEnabled" class="library-filter-toggle" type="button" role="switch" aria-checked="false" aria-label="Enable P-Radiator preset filters"></button></summary>
+                <div class="library-filter-menu-body">
+                  <select id="passiveRadiatorLibraryBrand" aria-label="Filter P-Radiator presets by brand"></select>
+                  <select id="passiveRadiatorLibraryDiameter" aria-label="Filter P-Radiator presets by diameter">
+                    <option value="">Any diameter</option>
+                    <option value="lte-3">&lt;= 3 in</option>
+                    <option value="3.5">3.5 in</option>
+                    <option value="4">4 in</option>
+                    <option value="5.25">5.25 in</option>
+                    <option value="6.5">6.5 in</option>
+                    <option value="8">8 in</option>
+                    <option value="10">10 in</option>
+                    <option value="12">12 in</option>
+                    <option value="15">15 in</option>
+                    <option value="gte-18">&gt;= 18 in</option>
+                  </select>
+                </div>
+              </details>
+            </div>
+            <select id="passiveRadiatorSelect"></select>
+          </label>
+          <div class="passive-only driver-search">
+            <input id="passiveRadiatorSearchInput" type="search" placeholder="Search P-Radiator or paste datasheet URL" />
+            <button id="passiveRadiatorSearchButton" type="button">Search</button>
+          </div>
+          <div id="passiveRadiatorSearchStatus" class="passive-only search-status"></div>
+          <div id="passiveRadiatorSearchResults" class="passive-only search-results"></div>
+          <div class="planner-settings">
+            <div class="field-grid">
+              <label class="field-card standard-box-only"><span class="field-top"><span>Volume</span></span><input data-field="box.volumeL" data-unit-type="volume" type="number" step="0.1" /></label>
+              <input class="planner-range standard-box-only" data-range-field="box.volumeL" type="range" min="4" max="180" step="0.1" aria-label="Volume slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Bandpass type</span></span><select data-field="box.bandpass.order"><option value="4">4th order</option><option value="6">6th order</option></select></label>
+              <label class="field-card bandpass-only"><span class="field-top"><span>Rear chamber</span></span><input data-field="box.bandpass.rearVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.rearVolumeL" type="range" min="2" max="180" step="0.1" aria-label="Bandpass rear chamber volume slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front chamber</span></span><input data-field="box.bandpass.frontVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontVolumeL" type="range" min="2" max="180" step="0.1" aria-label="Bandpass front chamber volume slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front Fb</span></span><input data-field="box.bandpass.frontFb" data-unit-type="frequency" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontFb" type="range" min="18" max="160" step="0.1" aria-label="Bandpass front tuning slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front port count</span></span><input data-field="box.bandpass.frontPortCount" type="number" min="1" max="12" step="1" /></label>
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front port dia.</span></span><input data-field="box.bandpass.frontPortDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontPortDiameterCm" type="range" min="2" max="18" step="0.1" aria-label="Bandpass front port diameter slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front port length</span></span><input data-derived-field="box.bandpass.frontPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" readonly /></label>
+              <label class="field-card bandpass-only sixth-order-only"><span class="field-top"><span>Rear Fb</span></span><input data-field="box.bandpass.rearFb" data-unit-type="frequency" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only sixth-order-only" data-range-field="box.bandpass.rearFb" type="range" min="14" max="120" step="0.1" aria-label="Bandpass rear tuning slider" />
+              <label class="field-card bandpass-only sixth-order-only"><span class="field-top"><span>Rear port count</span></span><input data-field="box.bandpass.rearPortCount" type="number" min="1" max="12" step="1" /></label>
+              <label class="field-card bandpass-only sixth-order-only"><span class="field-top"><span>Rear port dia.</span></span><input data-field="box.bandpass.rearPortDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only sixth-order-only" data-range-field="box.bandpass.rearPortDiameterCm" type="range" min="2" max="18" step="0.1" aria-label="Bandpass rear port diameter slider" />
+              <label class="field-card bandpass-only sixth-order-only"><span class="field-top"><span>Rear port length</span></span><input data-derived-field="box.bandpass.rearPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" readonly /></label>
+              <label class="field-card vented-only"><span class="field-top"><span>Target Fb</span></span><input data-field="box.fb" data-unit-type="frequency" type="number" step="0.1" /></label>
+              <input class="planner-range vented-only" data-range-field="box.fb" type="range" min="14" max="90" step="0.1" aria-label="Target tuning slider" />
+              <label class="field-card vented-only"><span class="field-top"><span>Port shape</span></span><select data-field="box.portShape"><option value="round">Round</option><option value="rectangular">Rectangular</option></select></label>
+              <label class="field-card vented-only"><span class="field-top"><span>Port count</span></span><input data-field="box.portCount" type="number" min="1" max="12" step="1" /></label>
+              <label class="field-card vented-only round-port-only"><span class="field-top"><span>Port dia.</span></span><input data-field="box.portDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range vented-only round-port-only" data-range-field="box.portDiameterCm" type="range" min="2" max="18" step="0.1" aria-label="Port diameter slider" />
+              <label class="field-card vented-only rectangular-port-only"><span class="field-top"><span>Port width</span></span><input data-field="box.portWidthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range vented-only rectangular-port-only" data-range-field="box.portWidthCm" type="range" min="1" max="60" step="0.1" aria-label="Port width slider" />
+              <label class="field-card vented-only rectangular-port-only"><span class="field-top"><span>Port height</span></span><input data-field="box.portHeightCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range vented-only rectangular-port-only" data-range-field="box.portHeightCm" type="range" min="0.5" max="20" step="0.1" aria-label="Port height slider" />
+              <label class="field-card vented-only"><span class="field-top"><span>Calc. port length</span></span><input data-derived-field="box.portLengthCm" data-unit-type="smallLength" type="number" step="0.1" readonly /></label>
+              <label class="field-card passive-only"><span class="field-top"><span>PR count</span></span><input data-field="box.passiveRadiator.count" type="number" step="1" /></label>
+              <label class="field-card passive-only"><span class="field-top"><span>PR dia.</span></span><input data-derived-field="box.passiveRadiator.diameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range passive-only" data-derived-range-field="box.passiveRadiator.diameterCm" type="range" min="5" max="46" step="0.1" aria-label="Passive radiator diameter slider" />
+              <label class="field-card passive-only"><span class="field-top"><span>PR Sd</span></span><input data-field="box.passiveRadiator.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
+              <label class="field-card passive-only"><span class="field-top"><span>PR Mms</span></span><input data-field="box.passiveRadiator.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
+              <input class="planner-range passive-only" data-range-field="box.passiveRadiator.mmsG" type="range" min="10" max="500" step="0.1" aria-label="Passive radiator moving mass slider" />
+              <label class="field-card passive-only"><span class="field-top"><span>PR Fs</span></span><input data-field="box.passiveRadiator.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
+              <input class="planner-range passive-only" data-range-field="box.passiveRadiator.fs" type="range" min="10" max="80" step="0.1" aria-label="Passive radiator Fs slider" />
+              <label class="field-card passive-only"><span class="field-top"><span>PR Xmax</span></span><input data-field="box.passiveRadiator.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
+            </div>
+          </div>
+          <details class="collapsible-fields">
+            <summary>Advanced box options</summary>
+            <div class="field-grid">
+              <label class="field-card"><span class="field-top"><span>Power</span></span><input data-field="box.powerW" data-unit-type="power" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>HP freq</span></span><input data-field="box.highPassHz" data-unit-type="frequency" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>HP order</span></span><select data-field="box.highPassOrder"><option value="0">Off</option><option value="1">1st</option><option value="2">2nd</option><option value="4">4th</option></select></label>
+              <label class="field-card"><span class="field-top"><span>Rs</span></span><input data-field="box.seriesResistanceOhm" data-unit-type="resistance" type="number" step="0.01" /></label>
+              <label class="field-card"><span class="field-top"><span>Fill</span></span><input data-field="box.fillPercent" data-unit-type="percent" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Qa</span></span><input data-field="box.qa" type="number" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>QL</span></span><input data-field="box.ql" type="number" step="0.1" /></label>
+              <label class="field-card vented-only"><span class="field-top"><span>Port length</span></span><input data-field="box.portLengthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range vented-only" data-range-field="box.portLengthCm" type="range" min="2" max="160" step="0.1" aria-label="Port length slider" />
+              <label class="field-card vented-only"><span class="field-top"><span>End corr.</span></span><input data-field="box.portEndCorrection" type="number" step="0.01" /></label>
+              <input class="planner-range vented-only" data-range-field="box.portEndCorrection" type="range" min="0.6" max="2.2" step="0.01" aria-label="End correction slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>Front port length</span></span><input data-field="box.bandpass.frontPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontPortLengthCm" type="range" min="2" max="180" step="0.1" aria-label="Bandpass front port length slider" />
+              <label class="field-card bandpass-only sixth-order-only"><span class="field-top"><span>Rear port length</span></span><input data-field="box.bandpass.rearPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              <input class="planner-range bandpass-only sixth-order-only" data-range-field="box.bandpass.rearPortLengthCm" type="range" min="2" max="180" step="0.1" aria-label="Bandpass rear port length slider" />
+              <label class="field-card bandpass-only"><span class="field-top"><span>End corr.</span></span><input data-field="box.portEndCorrection" type="number" step="0.01" /></label>
+              <input class="planner-range bandpass-only" data-range-field="box.portEndCorrection" type="range" min="0.6" max="2.2" step="0.01" aria-label="Bandpass end correction slider" />
+              <label class="field-card passive-only"><span class="field-top"><span>PR Qms</span></span><input data-field="box.passiveRadiator.qms" type="number" step="0.01" /></label>
+              <label class="field-card passive-only"><span class="field-top"><span>PR Cms</span></span><input data-field="box.passiveRadiator.cmsMmN" data-unit-type="compliance" type="number" step="0.001" /></label>
+            </div>
+          </details>
+          <div class="autoplan-section">
+            <div class="autoplan-title">
+              <button id="planDesignsButton" type="button">Run</button>
+            </div>
+            <label class="driver-select-row">
+              <span>Goal</span>
+              <select data-field="inventory.preference">
+                <option value="balanced">Balanced</option>
+                <option value="compact">Compact</option>
+                <option value="deep">Deep bass</option>
+                <option value="loud">High output</option>
+              </select>
+            </label>
+            <label class="planner-check"><input data-field="inventory.constraints.hasMaxVolume" type="checkbox" /> Limit volume</label>
+            <details class="collapsible-fields">
+              <summary>Build limits</summary>
+              <div class="field-grid">
+                <label class="field-card"><span class="field-top"><span>Max volume</span></span><input data-field="inventory.constraints.maxVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Max W</span></span><input data-field="inventory.constraints.maxWidthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Max H</span></span><input data-field="inventory.constraints.maxHeightCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Max D</span></span><input data-field="inventory.constraints.maxDepthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+              </div>
+            </details>
+            <details class="collapsible-fields">
+              <summary>Advanced port limits</summary>
+              <div class="field-grid">
+                <label class="field-card"><span class="field-top"><span>Max vent</span></span><input data-field="inventory.constraints.maxPortVelocityMs" type="number" step="0.5" /></label>
+                <label class="field-card"><span class="field-top"><span>Max port L</span></span><input data-field="inventory.constraints.maxPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Min port ID</span></span><input data-field="inventory.portFabrication.minDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Max port ID</span></span><input data-field="inventory.portFabrication.maxDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Wall</span></span><input data-field="inventory.portFabrication.wallThicknessMm" data-unit-type="length" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Flare</span></span><input data-field="inventory.portFabrication.flareAllowed" type="checkbox" /></label>
+                <label class="field-card"><span class="field-top"><span>Fold</span></span><input data-field="inventory.portFabrication.bendAllowed" type="checkbox" /></label>
+              </div>
+            </details>
+            <div id="plannerStatus" class="search-status">Settings edit the active config. Auto plan optimizes it.</div>
+            <div id="plannerResults" class="search-results"></div>
+          </div>
+        </section>
+
+        <section class="panel sidebar-panel" data-sidebar-panel="crossover">
+          <label class="driver-select-row">
+            <span>Group</span>
+            <select id="crossoverGroupSelect"></select>
+          </label>
+          <div id="crossoverMemberList" class="crossover-member-list"></div>
+          <div class="crossover-add-row">
+            <select id="signalFilterTypeSelect" aria-label="Signal filter type">
+              <option value="transition">Transition</option>
+              <option value="parametric">Parametric EQ</option>
+              <option value="low-shelf">Low shelf</option>
+              <option value="high-shelf">High shelf</option>
+              <option value="linkwitz-transform">Linkwitz Transform</option>
+              <option value="subsonic">Subsonic / rumble</option>
+            </select>
+            <button id="signalFilterAddButton" class="crossover-add-button" type="button">+ Filter</button>
+          </div>
+          <div id="signalFilterList" class="search-results"></div>
+          <div id="crossoverStatus" class="search-status"></div>
+        </section>
+
+        <div class="sidebar-footer">
+          <button id="importExportButton" type="button">Import / Export</button>
+        </div>
       </aside>
+
+      <dialog id="importExportDialog" class="project-dialog" aria-label="Import and export">
+        <form method="dialog" class="project-dialog-shell">
+          <div class="project-dialog-header">
+            <button id="closeImportExportDialog" type="button" aria-label="Close import export dialog">Close</button>
+          </div>
+          <textarea id="projectJson" spellcheck="false" aria-label="Project JSON"></textarea>
+          <div id="projectDialogStatus" class="search-status"></div>
+          <div class="project-dialog-actions">
+            <label class="file-button">
+              Import file
+              <input id="importInput" type="file" accept="application/json" />
+            </label>
+            <button id="importJsonButton" type="button">Apply JSON</button>
+            <button id="exportButton" type="button">Export</button>
+          </div>
+        </form>
+      </dialog>
 
       <section class="workspace">
         <header class="app-toolbar">
           <div class="toolbar-group">
-            <span class="toolbar-label">View</span>
             <button class="preset-button active" data-layout-preset="overview" type="button">Overview</button>
             <button class="preset-button" data-layout-preset="tuning" type="button">Tuning</button>
             <button class="preset-button" data-layout-preset="limits" type="button">Limits</button>
             <button class="preset-button" data-layout-preset="model" type="button">Model</button>
           </div>
-          <div class="toolbar-group panel-tabs" aria-label="Panel visibility">
-            <span class="toolbar-label">Panels</span>
-            <button class="panel-toggle active" data-panel-toggle="splPlot" type="button">SPL</button>
-            <button class="panel-toggle active" data-panel-toggle="impedancePlot" type="button">Z</button>
-            <button class="panel-toggle active" data-panel-toggle="excursionPlot" type="button">X</button>
-            <button class="panel-toggle active" data-panel-toggle="portPlot" type="button">Port</button>
-            <button class="panel-toggle active" data-panel-toggle="phasePlot" type="button">Phase</button>
-            <button class="panel-toggle active" data-panel-toggle="boxPreview" type="button">Box</button>
+          <details class="toolbar-group panel-menu" aria-label="Panel visibility">
+            <summary>Graphs</summary>
+            <div class="panel-menu-list">
+              <label><input class="panel-toggle" data-panel-toggle="splPlot" type="checkbox" checked /> SPL</label>
+              <label><input class="panel-toggle" data-panel-toggle="impedancePlot" type="checkbox" checked /> Impedance</label>
+              <label><input class="panel-toggle" data-panel-toggle="excursionPlot" type="checkbox" checked /> Cone excursion</label>
+              <label><input class="panel-toggle" data-panel-toggle="portPlot" type="checkbox" checked /> Port velocity</label>
+              <label><input class="panel-toggle" data-panel-toggle="prExcursionPlot" type="checkbox" checked /> PR excursion</label>
+              <label><input class="panel-toggle" data-panel-toggle="phasePlot" type="checkbox" checked /> Phase</label>
+              <label><input class="panel-toggle" data-panel-toggle="groupDelayPlot" type="checkbox" checked /> Group delay</label>
+              <label><input class="panel-toggle" data-panel-toggle="boxPreview" type="checkbox" checked /> Box</label>
+            </div>
+          </details>
+          <div class="toolbar-group theme-toolbar" aria-label="Theme">
+            <div class="segmented theme-toggle">
+              <button class="theme-button" data-theme-choice="dark" type="button">Dark</button>
+              <button class="theme-button" data-theme-choice="light" type="button">Light</button>
+              <button class="theme-button active" data-theme-choice="sync" type="button">Sync</button>
+            </div>
           </div>
         </header>
-
-        <section class="summary-strip">
-          <div>
-            <span class="metric-label">Qts</span>
-            <strong id="qtsMetric">-</strong>
-          </div>
-          <div>
-            <span class="metric-label">Fc / Qtc</span>
-            <strong id="sealedMetric">-</strong>
-          </div>
-          <div>
-            <span class="metric-label">Port length</span>
-            <strong id="portMetric">-</strong>
-          </div>
-          <div>
-            <span class="metric-label">Warnings</span>
-            <strong id="warningMetric">-</strong>
-          </div>
-        </section>
 
         <section class="plot-grid" data-reorder-group="plots">
           <div class="plot-panel" draggable="true" data-reorder-id="spl-plot" data-panel="splPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>SPL</span></div><canvas id="splPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="impedance-plot" data-panel="impedancePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Impedance</span></div><canvas id="impedancePlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="excursion-plot" data-panel="excursionPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Excursion</span></div><canvas id="excursionPlot"></canvas></div>
-          <div class="plot-panel" draggable="true" data-reorder-id="port-plot" data-panel="portPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Port</span></div><canvas id="portPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="port-plot" data-panel="portPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Port velocity</span></div><canvas id="portPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="pr-excursion-plot" data-panel="prExcursionPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>PR excursion</span></div><canvas id="prExcursionPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="phase-plot" data-panel="phasePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Phase</span></div><canvas id="phasePlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="group-delay-plot" data-panel="groupDelayPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Group delay</span></div><canvas id="groupDelayPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="box-preview" data-panel="boxPreview"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Box</span></div><canvas id="boxPreview"></canvas></div>
         </section>
+
+        <footer class="config-bar" aria-label="Configurations">
+          <div class="config-bar-main">
+            <div id="configGroupList" class="config-group-list"></div>
+            <div id="configBarList" class="config-bar-list"></div>
+          </div>
+          <div class="config-actions">
+            <button id="newConfigButton" class="config-new-button" type="button"><span class="desktop-label">New</span><span class="mobile-label">+</span></button>
+            <button id="newConfigGroupButton" type="button"><span class="desktop-label">Group</span><span class="mobile-label">G</span></button>
+          </div>
+        </footer>
       </section>
     </main>
 
+    <script src="/src/vendor/golden-layout/golden-layout.min.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

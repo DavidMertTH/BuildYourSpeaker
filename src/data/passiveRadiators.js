@@ -24,6 +24,52 @@ export const passiveRadiators = [
     ]
   },
   {
+    "id": "parts-express-pr-295495",
+    "name": "Dayton Audio DS135 PR 5 Designer Series Passive Radiator",
+    "source": "https://www.parts-express.com/Dayton-Audio-DS135-PR-5-Designer-Series-Passive-Radiator-295-495",
+    "passiveRadiator": {
+      "qms": 3.93,
+      "xmaxMm": 8,
+      "fs": 27.7,
+      "mmsG": 21.8,
+      "cmsMmN": 1.52,
+      "sdCm2": 75.4,
+      "vasL": 12.18
+    },
+    "matched": [
+      "Fs",
+      "Qms",
+      "Mms",
+      "Cms",
+      "Sd",
+      "Xmax",
+      "Vas"
+    ]
+  },
+  {
+    "id": "parts-express-pr-295498",
+    "name": "Dayton Audio DS175 PR 6 1 2 Designer Series Passive Radiator",
+    "source": "https://www.parts-express.com/Dayton-Audio-DS175-PR-6-1-2-Designer-Series-Passive-Radiator-295-498",
+    "passiveRadiator": {
+      "qms": 5.57,
+      "xmaxMm": 8,
+      "fs": 24.5,
+      "mmsG": 36.6,
+      "cmsMmN": 1.15,
+      "sdCm2": 128.7,
+      "vasL": 26.9
+    },
+    "matched": [
+      "Fs",
+      "Qms",
+      "Mms",
+      "Cms",
+      "Sd",
+      "Xmax",
+      "Vas"
+    ]
+  },
+  {
     "id": "parts-express-pr-295492",
     "name": "Dayton Audio DS215 PR 8 Designer Series Passive Radiator",
     "source": "https://www.parts-express.com/Dayton-Audio-DS215-PR-8-Designer-Series-Passive-Radiator-295-492",
@@ -35,6 +81,29 @@ export const passiveRadiators = [
       "cmsMmN": 0.68,
       "sdCm2": 211.2,
       "vasL": 43.04
+    },
+    "matched": [
+      "Fs",
+      "Qms",
+      "Mms",
+      "Cms",
+      "Sd",
+      "Xmax",
+      "Vas"
+    ]
+  },
+  {
+    "id": "parts-express-pr-295549",
+    "name": "Dayton Audio DSA215 PR 8 Designer Series Aluminum Cone Passive Radiator",
+    "source": "https://www.parts-express.com/Dayton-Audio-DSA215-PR-8-Designer-Series-Aluminum-Cone-Passive-Radiator-295-549",
+    "passiveRadiator": {
+      "qms": 7.66,
+      "xmaxMm": 11,
+      "fs": 25.6,
+      "mmsG": 67,
+      "cmsMmN": 0.58,
+      "sdCm2": 211.2,
+      "vasL": 36.81
     },
     "matched": [
       "Fs",
@@ -93,6 +162,29 @@ export const passiveRadiators = [
     ]
   },
   {
+    "id": "parts-express-pr-295729",
+    "name": "Dayton Audio SS8 PR 8 Signature Series Passive Radiator",
+    "source": "https://www.parts-express.com/Dayton-Audio-SS8-PR-8-Signature-Series-Passive-Radiator-295-729",
+    "passiveRadiator": {
+      "qms": 2.55,
+      "xmaxMm": 25,
+      "fs": 37.4,
+      "mmsG": 85,
+      "cmsMmN": 0.212,
+      "sdCm2": 198.6,
+      "vasL": 11.89
+    },
+    "matched": [
+      "Fs",
+      "Qms",
+      "Mms",
+      "Cms",
+      "Sd",
+      "Xmax",
+      "Vas"
+    ]
+  },
+  {
     "id": "parts-express-pr-2641060",
     "name": "Peerless 830878 3 1 2 Passive Radiator",
     "source": "https://www.parts-express.com/Peerless-830878-3-1-2-Passive-Radiator-264-1060",
@@ -117,9 +209,9 @@ export const passiveRadiators = [
 ];
 export const passiveRadiatorImportMeta = {
   "source": "parts-express-passive-radiators",
-  "generatedAt": "2026-06-09T13:32:48.891Z",
+  "generatedAt": "2026-06-14T22:55:31.437Z",
   "totalCandidateUrls": 38,
   "scanned": 38,
-  "matched": 5,
+  "matched": 9,
   "failures": 0
 };

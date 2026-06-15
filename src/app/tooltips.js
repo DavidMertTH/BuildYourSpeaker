@@ -1,0 +1,169 @@
+export const FIELD_TOOLTIPS = {
+  "driver.re": "Voice coil DC resistance. Use the value from the driver datasheet.",
+  "driver.leMh": "Voice coil inductance. It affects impedance and high-frequency rolloff.",
+  "driver.fs": "Driver free-air resonance frequency.",
+  "driver.minFrequencyHz": "Lowest frequency this driver should be used for. Set this for tweeters and mids; SPL below this is rolled off.",
+  "driver.maxFrequencyHz": "Highest frequency this driver should be used for. Datasheet frequency ranges can fill this automatically.",
+  "driver.qms": "Mechanical damping of the driver suspension.",
+  "driver.qes": "Electrical damping from the motor and voice coil.",
+  "driver.vasL": "Equivalent air volume of the driver suspension.",
+  "driver.sdCm2": "Effective cone area that moves air.",
+  "driver.xmaxMm": "Linear one-way cone excursion limit.",
+  "driver.mmsG": "Moving mass of cone, coil, and air load.",
+  "driver.bl": "Motor strength. Higher values mean stronger electromagnetic control.",
+  "inventory.preference": "Choose the design goal Auto plan should prefer.",
+  "inventory.constraints.hasMaxVolume": "Enable this when the enclosure must fit within a maximum volume.",
+  "inventory.constraints.maxVolumeL": "Largest internal box volume Auto plan may use.",
+  "inventory.constraints.maxWidthCm": "Maximum outside width for the suggested cabinet.",
+  "inventory.constraints.maxHeightCm": "Maximum outside height for the suggested cabinet.",
+  "inventory.constraints.maxDepthCm": "Maximum outside depth for the suggested cabinet.",
+  "inventory.constraints.maxPortVelocityMs": "Maximum air speed in the port before the design is considered noisy.",
+  "inventory.constraints.maxPortLengthCm": "Longest printable or buildable port path.",
+  "inventory.portFabrication.minDiameterCm": "Smallest port inner diameter you want Auto plan to use.",
+  "inventory.portFabrication.maxDiameterCm": "Largest port inner diameter you want Auto plan to use.",
+  "inventory.portFabrication.wallThicknessMm": "Wall thickness used for printed port dimensions.",
+  "inventory.portFabrication.flareAllowed": "Allow flared port ends when planning printed ports.",
+  "inventory.portFabrication.bendAllowed": "Allow a folded or bent port when a straight port is too long.",
+  "box.volumeL": "Internal enclosure volume for the active config. In vented mode, volume plus target Fb and port diameter determine the calculated port length.",
+  "box.driverCount": "Number of identical active drivers sharing this enclosure.",
+  "box.driverWiring": "Electrical wiring for the identical active drivers.",
+  "box.powerW": "Total amplifier power into the active driver array for SPL, excursion, and port velocity estimates.",
+  "box.highPassHz": "Electrical high-pass or crossover frequency applied before the enclosure model. Use this for tweeters and midrange protection.",
+  "box.highPassOrder": "High-pass slope. 2nd order is 12 dB/oct, 4th order is 24 dB/oct, similar to the filter blocks used in box simulators.",
+  "box.seriesResistanceOhm": "Extra series resistance from wiring, coils, or amplifier output.",
+  "box.fillPercent": "Amount of acoustic stuffing. More fill makes a sealed box act slightly larger.",
+  "box.qa": "Absorption loss inside the enclosure.",
+  "box.ql": "Leakage loss through the enclosure and joints.",
+  "box.volumeTuningHz": "Resulting box tuning from the current volume and port geometry.",
+  "box.fb": "Target vented box tuning. The app calculates the port length needed for this Fb.",
+  "box.portCount": "Number of identical ports. More ports increase total port area, lower air speed, and require longer ports for the same tuning.",
+  "box.portShape": "Choose a round tube or a rectangular/slot port. Both use the same tuning model, but rectangular ports use width times height as port area.",
+  "box.portDiameterCm": "Inner diameter for a round port. Larger ports reduce air speed and require a longer calculated port for the same Fb.",
+  "box.portWidthCm": "Inside width of a rectangular port. Wider ports reduce air speed and require a longer calculated path for the same Fb.",
+  "box.portHeightCm": "Inside height of a rectangular port. Taller ports reduce air speed and require a longer calculated path for the same Fb.",
+  "box.portLengthCm": "Calculated physical port path length from volume, target Fb, and port geometry. Editing it in Advanced retunes Fb.",
+  "box.portEndCorrection": "Port end correction factor for open, flanged, or flared ends.",
+  "box.bandpass.frontPortCount": "Number of identical front chamber ports.",
+  "box.bandpass.rearPortCount": "Number of identical rear chamber ports for 6th order bandpass designs.",
+  "box.passiveRadiator.count": "Number of passive radiators used in the active config.",
+  "box.passiveRadiator.diameterCm": "Equivalent circular passive radiator diameter calculated from effective piston area.",
+  "box.passiveRadiator.fs": "Passive radiator free-air resonance frequency.",
+  "box.passiveRadiator.qms": "Mechanical damping of the passive radiator.",
+  "box.passiveRadiator.mmsG": "Moving mass of the passive radiator.",
+  "box.passiveRadiator.cmsMmN": "Compliance of the passive radiator suspension.",
+  "box.passiveRadiator.sdCm2": "Effective moving area of the passive radiator.",
+  "box.passiveRadiator.xmaxMm": "Linear one-way excursion limit of the passive radiator.",
+};
+export const CONTROL_TOOLTIPS = {
+  driverSelect: "Choose a known driver or keep the current custom driver.",
+  driverLibraryFilter: "Filter the driver preset list by name, source, or key specs.",
+  driverLibrarySort: "Sort the driver preset list.",
+  driverLibraryFilterEnabled: "Turn brand and diameter filtering on or off.",
+  driverLibraryBrand: "Show only driver presets from one brand.",
+  driverLibraryDiameter: "Show only driver presets near a nominal diameter.",
+  driverSearchInput: "Search by model name or paste a direct datasheet/product-page URL.",
+  driverSearchButton: "Search for driver specifications or scrape the pasted URL.",
+  passiveRadiatorSearchInput: "Search by P-Radiator model name or paste a direct datasheet/product-page URL.",
+  passiveRadiatorSearchButton: "Search for P-Radiator specifications or scrape the pasted URL.",
+  addDriverGroupButton: "Add another active driver group to the shared enclosure model.",
+  planDesignsButton: "Automatically optimize the active config using the planning settings.",
+  importExportButton: "Open project import and export tools.",
+  closeImportExportDialog: "Close the import and export dialog.",
+  passiveRadiatorSelect: "Choose a known or custom P-Radiator for passive mode.",
+  passiveRadiatorLibraryFilter: "Filter the P-Radiator preset list by name, source, or key specs.",
+  passiveRadiatorLibrarySort: "Sort the P-Radiator preset list.",
+  passiveRadiatorLibraryFilterEnabled: "Turn brand and diameter filtering on or off.",
+  passiveRadiatorLibraryBrand: "Show only P-Radiator presets from one brand.",
+  passiveRadiatorLibraryDiameter: "Show only P-Radiator presets near a nominal diameter.",
+  exportButton: "Export the current project as a JSON file.",
+  importInput: "Import a previously exported project JSON file.",
+  importJsonButton: "Apply the JSON currently shown in this dialog.",
+  projectJson: "Raw project data for export, import, or inspection.",
+  projectDialogStatus: "Shows import or export status messages.",
+  newConfigButton: "Create a new config from the current settings.",
+  newConfigGroupButton: "Create a group for related configs that should be viewed together.",
+  crossoverGroupSelect: "Choose the config group whose crossover you want to edit.",
+};
+export const SIDEBAR_TOOLTIPS = {
+  driver: "Enter or search the driver parameters.",
+  planning: "Edit the active config, choose the enclosure type, and run Auto plan.",
+  crossover: "Plan filters between configs in a group.",
+};
+export const MODE_TOOLTIPS = {
+  sealed: "Use a closed box without a port.",
+  vented: "Use a ported box tuned by volume, port diameter, and port length.",
+  passive: "Use a passive radiator instead of a port.",
+};
+export const PRESET_TOOLTIPS = {
+  overview: "Show the general overview layout.",
+  tuning: "Focus the layout on tuning-related graphs.",
+  limits: "Focus the layout on excursion and port velocity limits.",
+  model: "Focus the layout on model and phase views.",
+};
+export const PANEL_TOOLTIPS = {
+  splPlot: "Show or hide the SPL graph.",
+  impedancePlot: "Show or hide the impedance graph.",
+  excursionPlot: "Show or hide the cone excursion graph.",
+  portPlot: "Show or hide the port velocity graph.",
+  prExcursionPlot: "Show or hide the passive radiator excursion graph.",
+  phasePlot: "Show or hide the phase graph.",
+  groupDelayPlot: "Show or hide the group delay graph.",
+  boxPreview: "Show or hide the box preview.",
+};
+export const THEME_TOOLTIPS = {
+  dark: "Use the dark interface theme.",
+  light: "Use the light interface theme.",
+  sync: "Follow your operating system color theme.",
+};
+export const PLOT_PANEL_TOOLTIPS = {
+  splPlot:
+    "SPL shows the predicted linear sound pressure level over frequency. It is limited by Xmax and the driver's usable low-frequency range, so tweeters and small mids no longer appear to produce deep bass.",
+  impedancePlot:
+    "Impedance shows the electrical load seen by the amplifier. Sealed boxes usually show one main peak, vented boxes show two peaks around tuning, and unusual dips can indicate a difficult amplifier load.",
+  excursionPlot:
+    "Excursion shows how far the woofer cone moves at the selected power. Keep the curve below Xmax for clean output. In vented designs, excursion rises quickly below tuning, so a high-pass filter may be needed.",
+  portPlot:
+    "Port velocity shows linear air speed in the vent for vented designs. It is reduced when the woofer would exceed Xmax, because the linear model cannot support more output cleanly.",
+  prExcursionPlot:
+    "PR excursion shows passive radiator movement for passive radiator designs. Keep it below the passive radiator Xmax.",
+  phasePlot:
+    "Phase shows acoustic phase rotation over frequency. Large phase swings are normal around resonances, but this view helps compare alignments and understand timing changes near tuning.",
+  groupDelayPlot:
+    "Group delay shows the time delay derived from acoustic phase. Peaks reveal stored energy and timing changes around resonance or tuning.",
+  boxPreview:
+    "Box preview shows the estimated cabinet proportions for the active config. Use it as a quick buildability check, not as a final woodworking drawing.",
+};
+export const PANEL_LABELS = {
+  splPlot: "SPL",
+  impedancePlot: "Impedance",
+  excursionPlot: "Cone excursion",
+  portPlot: "Port velocity",
+  prExcursionPlot: "PR excursion",
+  phasePlot: "Phase",
+  groupDelayPlot: "Group delay",
+  boxPreview: "Box",
+};
+export const RANGE_TOOLTIPS = {
+  "box.volumeL": "Adjust the active config volume quickly.",
+  "box.highPassHz": "Adjust the electrical high-pass frequency quickly.",
+  "box.fb": "Adjust target Fb and recalculate port length.",
+  "box.portCount": "Adjust the number of identical ports and recalculate port length.",
+  "box.portWidthCm": "Adjust the rectangular port width quickly.",
+  "box.portHeightCm": "Adjust the rectangular port height quickly.",
+  "box.portDiameterCm": "Adjust the port diameter quickly.",
+  "box.portLengthCm": "Adjust physical port length directly and retune Fb.",
+  "box.portEndCorrection": "Adjust the port end correction factor quickly.",
+  "box.passiveRadiator.diameterCm": "Adjust the equivalent passive radiator diameter quickly. This updates Sd.",
+  "box.passiveRadiator.fs": "Adjust the passive radiator resonance frequency quickly.",
+  "box.passiveRadiator.mmsG": "Adjust the passive radiator moving mass quickly.",
+};
+
+export function summaryTooltip(label) {
+  if (label === "Qts") return "Total driver damping calculated from Qms and Qes.";
+  if (label === "Fc / Qtc") return "Sealed box resonance and damping for the active config.";
+  if (label === "Port length") return "Calculated physical port length for the active config.";
+  if (label === "Calc. port length") return "Calculated physical port length for the active config.";
+  if (label === "Warnings") return "Potential problems detected in the current setup.";
+  return `Shows ${label}.`;
+}
+

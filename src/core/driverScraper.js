@@ -1,6 +1,31 @@
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 const SEARCH_URL = "https://duckduckgo.com/html/";
 const SEARCH_SUFFIX = " loudspeaker driver Thiele Small parameters Fs Qes Qms Vas Sd Xmax Bl Mms Re";
+const PASSIVE_RADIATOR_SEARCH_SUFFIX = " loudspeaker passive radiator parameters Fs Qms Mms Cms Sd Xmax";
 const REQUEST_TIMEOUT_MS = 7000;
+const MAX_PDF_PAGES = 12;
+const MIN_USEFUL_DRIVER_FIELDS = 3;
+const MIN_USEFUL_PASSIVE_RADIATOR_FIELDS = 3;
+const MAX_LINKED_PDFS_PER_PAGE = 3;
+const DRIVER_PARAMETER_FIELDS = ["re", "leMh", "fs", "qms", "qes", "vasL", "sdCm2", "xmaxMm", "mmsG", "bl"];
+const PASSIVE_RADIATOR_PARAMETER_FIELDS = ["fs", "qms", "mmsG", "cmsMmN", "sdCm2", "xmaxMm"];
+const PDF_LINK_KEYWORDS = [
+  "datasheet",
+  "data-sheet",
+  "data sheet",
+  "specsheet",
+  "spec-sheet",
+  "spec sheet",
+  "specification",
+  "specifications",
+  "technical data",
+  "parameter",
+  "thiele",
+  "small",
+  "manual",
+];
 
 const parameterPatterns = [
   { field: "re", label: "Re", regex: /\b(?:Re|Revc|DCR|DC\s+Resistance|Voice\s+coil\s+resistance)\b[\s:=\-()a-zA-Z/]*(-?\d+(?:[.,]\d+)?)/i },
@@ -13,6 +38,31 @@ const parameterPatterns = [
   { field: "xmaxMm", label: "Xmax", regex: /\b(?:Xmax|X-max|Linear\s+excursion|Maximum\s+linear\s+excursion)\b[\s:=\-()a-zA-Z/+-]*(-?\d+(?:[.,]\d+)?)\s*(mm|cm|in|inch|inches)?/i, unit: "length" },
   { field: "mmsG", label: "Mms", regex: /\b(?:Mms|M\(ms\)|Moving\s+mass)\b[\s:=\-()a-zA-Z/]*(-?\d+(?:[.,]\d+)?)\s*(g|grams?|kg)?/i, unit: "mass" },
   { field: "bl", label: "Bl", regex: /\b(?:BL|Bxl|Force\s+factor|Motor\s+force\s+factor)\b[\s:=\-()a-zA-Z/]*(-?\d+(?:[.,]\d+)?)\s*(Tm|T·m|N\/A)?/i },
+];
+
+const usableFrequencyPatterns = [
+  {
+    label: "Usable range",
+    regex: /\b(?:usable\s*frequency\s*range|frequency\s*(?:response|range)|effective\s*frequency\s*range|operating\s*frequency\s*range)\b[\s:=\-()a-zA-Z/]*?(\d[\d.,]*)\s*(kHz|Hz)?\s*(?:[-–—]|to)\s*(\d[\d.,]*)\s*(kHz|Hz)?/i,
+    range: true,
+    score: 12,
+  },
+  {
+    label: "Usable range",
+    regex: /\b(?:frequency\s*(?:response|range)|usable\s*frequency\s*range|effective\s*frequency\s*range|operating\s*frequency\s*range)\b[\s:=\-()a-zA-Z/]*?(\d+(?:[.,]\d+)?)\s*(kHz|Hz)\s*(?:[-–—]|to)\s*(\d+(?:[.,]\d+)?)\s*(kHz|Hz)?/i,
+    range: true,
+    score: 8,
+  },
+  {
+    label: "Recommended crossover",
+    regex: /\b(?:recommended|minimum|suggested)\s+(?:crossover|cross\s*over|x[-\s]?over)(?:\s+frequency)?\b[\s:=\-()a-zA-Z/]*?(\d+(?:[.,]\d+)?)\s*(kHz|Hz)/i,
+    score: 10,
+  },
+  {
+    label: "Crossover",
+    regex: /\b(?:crossover|cross\s*over|x[-\s]?over)\b[\s:=\-()a-zA-Z/]*?(\d+(?:[.,]\d+)?)\s*(kHz|Hz)/i,
+    score: 5,
+  },
 ];
 
 const passiveRadiatorPatterns = [
@@ -31,16 +81,104 @@ export async function searchDrivers(query) {
     return { query: cleanQuery, results: [] };
   }
 
-  const pages = await findCandidatePages(cleanQuery);
-  const fetched = await Promise.allSettled(pages.slice(0, 8).map(fetchCandidate));
+  const directUrl = normalizeDirectUrl(cleanQuery);
+  if (directUrl) {
+    const result = await scrapeDriverPage(directUrl, { title: titleFromUrl(directUrl) });
+    if (!isUsefulDriverResult(result)) {
+      if (result.imageOnlyPdf) {
+        const fallbackQuery = inferQueryFromUrl(directUrl);
+        const fallbackResults = fallbackQuery ? await searchWebCandidates(fallbackQuery) : [];
+        if (fallbackResults.length) {
+          return {
+            query: cleanQuery,
+            url: directUrl,
+            results: fallbackResults,
+            directUrl: true,
+            imageOnlyPdf: true,
+            fallbackQuery,
+          };
+        }
+        throw imageOnlyPdfNeedsOcrError(directUrl);
+      }
+      throw noUsefulDriverDataError(result, directUrl);
+    }
+    return {
+      query: cleanQuery,
+      url: directUrl,
+      results: [result],
+      directUrl: true,
+    };
+  }
+
+  const results = await searchWebCandidates(cleanQuery);
+  return { query: cleanQuery, results };
+}
+
+export async function searchPassiveRadiators(query) {
+  const cleanQuery = String(query || "").trim();
+  if (cleanQuery.length < 2) {
+    return { query: cleanQuery, results: [] };
+  }
+
+  const directUrl = normalizeDirectUrl(cleanQuery);
+  if (directUrl) {
+    const result = await scrapePassiveRadiatorPage(directUrl, { title: titleFromUrl(directUrl) });
+    if (!isUsefulPassiveRadiatorResult(result)) {
+      if (result.imageOnlyPdf) {
+        const fallbackQuery = inferQueryFromUrl(directUrl);
+        const fallbackResults = fallbackQuery ? await searchPassiveRadiatorWebCandidates(fallbackQuery) : [];
+        if (fallbackResults.length) {
+          return {
+            query: cleanQuery,
+            url: directUrl,
+            results: fallbackResults,
+            directUrl: true,
+            imageOnlyPdf: true,
+            fallbackQuery,
+          };
+        }
+        throw imageOnlyPdfNeedsOcrError(directUrl);
+      }
+      throw noUsefulPassiveRadiatorDataError(result, directUrl);
+    }
+    return {
+      query: cleanQuery,
+      url: directUrl,
+      results: [result],
+      directUrl: true,
+    };
+  }
+
+  const results = await searchPassiveRadiatorWebCandidates(cleanQuery);
+  return { query: cleanQuery, results };
+}
+
+async function searchWebCandidates(query) {
+  const pages = await findCandidatePages(query);
+  const fetched = await Promise.allSettled(pages.slice(0, 8).map((page) => fetchCandidate(page, query)));
   const results = fetched
     .filter((item) => item.status === "fulfilled" && item.value)
     .map((item) => item.value)
-    .filter((result) => Object.keys(result.driver).length >= 3)
+    .flat()
+    .filter(isUsefulDriverResult)
+    .filter((result) => candidateMatchesQuery(result, query))
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
 
-  return { query: cleanQuery, results };
+  return results;
+}
+
+async function searchPassiveRadiatorWebCandidates(query) {
+  const pages = await findCandidatePages(query, PASSIVE_RADIATOR_SEARCH_SUFFIX);
+  const fetched = await Promise.allSettled(pages.slice(0, 8).map((page) => fetchPassiveRadiatorCandidate(page, query)));
+  return fetched
+    .filter((item) => item.status === "fulfilled" && item.value)
+    .map((item) => item.value)
+    .flat()
+    .filter(isUsefulPassiveRadiatorResult)
+    .filter((result) => candidateMatchesQuery(result, query))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
 }
 
 export function extractDriverData(html, source = {}) {
@@ -57,6 +195,16 @@ export function extractDriverData(html, source = {}) {
     driver[pattern.field] = roundValue(value);
     matched.push(pattern.label);
     snippets.push(makeSnippet(text, match.index));
+  }
+
+  const usableFrequency = findBestUsableFrequencyMatch(text);
+  if (usableFrequency) {
+    driver.minFrequencyHz = roundValue(usableFrequency.value);
+    if (Number.isFinite(usableFrequency.maxValue) && usableFrequency.maxValue > usableFrequency.value) {
+      driver.maxFrequencyHz = roundValue(usableFrequency.maxValue);
+    }
+    matched.push(usableFrequency.label);
+    snippets.push(makeSnippet(text, usableFrequency.index));
   }
 
   if (driver.bl && driver.bl < 3 && driver.fs && driver.mmsG && driver.re && driver.qes) {
@@ -109,13 +257,92 @@ export function extractPassiveRadiatorData(html, source = {}) {
 }
 
 export async function scrapeDriverPage(url, source = {}) {
-  const html = await fetchText(url);
-  return extractDriverData(html, { ...source, url });
+  const document = await fetchDocument(url);
+  return {
+    ...extractDriverData(document.text, { ...source, url: document.finalUrl }),
+    imageOnlyPdf: Boolean(document.isPdf && !document.text.trim()),
+  };
 }
 
 export async function scrapePassiveRadiatorPage(url, source = {}) {
-  const html = await fetchText(url);
-  return extractPassiveRadiatorData(html, { ...source, url });
+  const document = await fetchDocument(url);
+  return {
+    ...extractPassiveRadiatorData(document.text, { ...source, url: document.finalUrl }),
+    imageOnlyPdf: Boolean(document.isPdf && !document.text.trim()),
+  };
+}
+
+function isUsefulDriverResult(result) {
+  const driver = result?.driver || {};
+  const parameterCount = DRIVER_PARAMETER_FIELDS.filter((field) => Number.isFinite(Number(driver[field]))).length;
+  return parameterCount >= MIN_USEFUL_DRIVER_FIELDS;
+}
+
+function isUsefulPassiveRadiatorResult(result) {
+  const passiveRadiator = result?.passiveRadiator || {};
+  const parameterCount = PASSIVE_RADIATOR_PARAMETER_FIELDS.filter((field) => Number.isFinite(Number(passiveRadiator[field]))).length;
+  const hasFs = Number.isFinite(Number(passiveRadiator.fs));
+  const hasMassOrCompliance = Number.isFinite(Number(passiveRadiator.mmsG)) || Number.isFinite(Number(passiveRadiator.cmsMmN));
+  const hasAreaOrExcursion = Number.isFinite(Number(passiveRadiator.sdCm2)) || Number.isFinite(Number(passiveRadiator.xmaxMm));
+  return hasFs && hasMassOrCompliance && hasAreaOrExcursion && parameterCount >= MIN_USEFUL_PASSIVE_RADIATOR_FIELDS;
+}
+
+function noUsefulPassiveRadiatorDataError(result, url) {
+  const matched = result?.matched?.length ? ` Found only: ${result.matched.join(", ")}.` : "";
+  const error = new Error(
+    `No usable passive radiator parameters found in this datasheet. The link was read, but it did not contain enough recognizable PR values.${matched}`,
+  );
+  error.statusCode = 422;
+  error.directUrl = true;
+  error.url = url;
+  return error;
+}
+
+function noUsefulDriverDataError(result, url) {
+  const matched = result?.matched?.length ? ` Found only: ${result.matched.join(", ")}.` : "";
+  const error = new Error(
+    `No usable T/S parameters found in this datasheet. The link was read, but it did not contain enough recognizable driver values.${matched}`,
+  );
+  error.statusCode = 422;
+  error.directUrl = true;
+  error.url = url;
+  return error;
+}
+
+function imageOnlyPdfNeedsOcrError(url) {
+  const error = new Error(
+    "This PDF contains no selectable text, so it needs OCR or an alternate product page. No usable fallback source was found.",
+  );
+  error.statusCode = 422;
+  error.directUrl = true;
+  error.imageOnlyPdf = true;
+  error.url = url;
+  return error;
+}
+
+function inferQueryFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const segments = parsed.pathname
+      .split("/")
+      .map((segment) => decodeURIComponentSafe(segment).replace(/\.[a-z0-9]+$/i, ""))
+      .map((segment) => segment.replace(/^pdf[_\s-]*/i, "").replace(/[_+]+/g, " ").trim())
+      .filter(Boolean)
+      .filter((segment) => !/^(pdf|doc|docs|brand|brands|download|downloads|file|files)$/i.test(segment));
+    const modelSegmentIndex = segments.findIndex((segment) => modelTokens(segment).some((token) => /\d/.test(token)));
+    const modelTokensInUrl = [...new Set(modelTokens(segments.join(" ")).filter((token) => /\d/.test(token)))];
+    const brand = modelSegmentIndex > 0 ? segments[modelSegmentIndex - 1] : "";
+    return `${brand} ${modelTokensInUrl.join(" ")} datasheet`.replace(/\s+/g, " ").trim();
+  } catch {
+    return "";
+  }
+}
+
+function candidateMatchesQuery(result, query) {
+  const tokens = modelTokens(query).filter((token) => /\d/.test(token));
+  if (!tokens.length) return true;
+  const haystack = `${result?.title || ""} ${result?.url || ""} ${(result?.snippets || []).join(" ")}`.toLowerCase();
+  return tokens.some((token) => haystack.includes(token));
 }
 
 function findBestParameterMatch(text, pattern) {
@@ -144,6 +371,32 @@ function findBestParameterMatch(text, pattern) {
   return best;
 }
 
+function findBestUsableFrequencyMatch(text) {
+  let best = null;
+  for (const pattern of usableFrequencyPatterns) {
+    const regex = new RegExp(pattern.regex.source, "gi");
+    let match;
+
+    while ((match = regex.exec(text))) {
+      const value = convertFrequency(parseNumber(match[1]), match[2] || (pattern.range ? match[4] : match[3]));
+      if (!Number.isFinite(value) || value <= 0 || value > 20000) continue;
+      const maxValue = pattern.range ? convertFrequency(parseNumber(match[3]), match[4] || match[2]) : NaN;
+      if (pattern.range && (!Number.isFinite(maxValue) || maxValue <= value || maxValue > 100000)) continue;
+
+      const snippet = makeSnippet(text, match.index);
+      let score = pattern.score;
+      if (/tweeter|compression\s+driver|horn|midrange|full[-\s]?range/i.test(snippet)) score += 2;
+      if (/woofer|subwoofer/i.test(snippet) && value > 200) score -= 2;
+      if (value < 10) score -= 3;
+
+      if (!best || score > best.score) {
+        best = { value, maxValue, index: match.index, score, label: pattern.label };
+      }
+    }
+  }
+  return best;
+}
+
 function isPlausible(field, value) {
   const ranges = {
     re: [0.1, 100],
@@ -161,8 +414,8 @@ function isPlausible(field, value) {
   return !range || (value >= range[0] && value <= range[1]);
 }
 
-async function findCandidatePages(query) {
-  const url = `${SEARCH_URL}?q=${encodeURIComponent(query + SEARCH_SUFFIX)}`;
+async function findCandidatePages(query, suffix = SEARCH_SUFFIX) {
+  const url = `${SEARCH_URL}?q=${encodeURIComponent(query + suffix)}`;
   const html = await fetchText(url);
   const results = [];
   const linkRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/gis;
@@ -180,12 +433,86 @@ async function findCandidatePages(query) {
   return uniqueByUrl(results);
 }
 
-async function fetchCandidate(candidate) {
-  const html = await fetchText(candidate.url);
-  return extractDriverData(html, candidate);
+function normalizeDirectUrl(value) {
+  const text = String(value || "").trim();
+  const explicitMatch = text.match(/https?:\/\/[^\s<>"']+/i);
+  const candidate = explicitMatch?.[0] || text.match(/(?:www\.|(?:[a-z0-9-]+\.)+[a-z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?\/[^\s<>"']+/i)?.[0];
+  if (!candidate) return "";
+  const cleaned = candidate.replace(/[),.;\]]+$/g, "");
+  const defaultProtocol = /^(localhost|\d{1,3}(?:\.\d{1,3}){3})(?::|\/)/i.test(cleaned) ? "http" : "https";
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `${defaultProtocol}://${cleaned}`;
+
+  try {
+    const url = new URL(withProtocol);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function titleFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const file = parsed.pathname.split("/").filter(Boolean).pop() || parsed.hostname;
+    return decodeURIComponent(file).replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim() || parsed.hostname;
+  } catch {
+    return "Linked datasheet";
+  }
+}
+
+async function fetchCandidate(candidate, query = "") {
+  const document = await fetchDocument(candidate.url);
+  const results = [];
+  const pageResult = extractDriverData(document.text, { ...candidate, url: document.finalUrl });
+  results.push(pageResult);
+
+  if (!document.isPdf) {
+    const pdfCandidates = findDatasheetPdfLinks(document.text, document.finalUrl, `${query} ${candidate.title || ""}`);
+    const pdfResults = await Promise.allSettled(
+      pdfCandidates.slice(0, MAX_LINKED_PDFS_PER_PAGE).map(async (pdfCandidate) => {
+        const pdfText = await fetchText(pdfCandidate.url);
+        const result = extractDriverData(pdfText, pdfCandidate);
+        result.score += pdfCandidate.scoreBoost || 0;
+        return result;
+      }),
+    );
+    pdfResults
+      .filter((item) => item.status === "fulfilled" && item.value)
+      .forEach((item) => results.push(item.value));
+  }
+
+  return results;
+}
+
+async function fetchPassiveRadiatorCandidate(candidate, query = "") {
+  const document = await fetchDocument(candidate.url);
+  const results = [];
+  const pageResult = extractPassiveRadiatorData(document.text, { ...candidate, url: document.finalUrl });
+  results.push(pageResult);
+
+  if (!document.isPdf) {
+    const pdfCandidates = findDatasheetPdfLinks(document.text, document.finalUrl, `${query} ${candidate.title || ""}`);
+    const pdfResults = await Promise.allSettled(
+      pdfCandidates.slice(0, MAX_LINKED_PDFS_PER_PAGE).map(async (pdfCandidate) => {
+        const pdfText = await fetchText(pdfCandidate.url);
+        const result = extractPassiveRadiatorData(pdfText, pdfCandidate);
+        result.score += pdfCandidate.scoreBoost || 0;
+        return result;
+      }),
+    );
+    pdfResults
+      .filter((item) => item.status === "fulfilled" && item.value)
+      .forEach((item) => results.push(item.value));
+  }
+
+  return results;
 }
 
 async function fetchText(url) {
+  return (await fetchDocument(url)).text;
+}
+
+async function fetchDocument(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -199,9 +526,268 @@ async function fetchText(url) {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    return await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    if (/application\/pdf/i.test(contentType) || new URL(response.url).pathname.toLowerCase().endsWith(".pdf")) {
+      return {
+        finalUrl: response.url,
+        isPdf: true,
+        text: await extractPdfText(await response.arrayBuffer()),
+      };
+    }
+    return {
+      finalUrl: response.url,
+      isPdf: false,
+      text: await response.text(),
+    };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export function findDatasheetPdfLinks(html, baseUrl, query = "") {
+  const links = [];
+  const elementRegex = /<(a|button|div|span)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  const urlTokens = modelTokens(query);
+  let match;
+
+  while ((match = elementRegex.exec(String(html || "")))) {
+    const tag = match[1].toLowerCase();
+    const attrs = match[2] || "";
+    const text = htmlToText(match[3]);
+    if (!shouldInspectDocumentElement(tag, attrs, text)) continue;
+
+    const attrText = htmlToText(attrs);
+    const urls = extractDocumentUrls(attrs, baseUrl);
+    urls.forEach((url) => {
+      const label = `${text} ${attrText} ${decodeURIComponentSafe(url)}`.trim();
+      const score = datasheetPdfScore(label, urlTokens);
+      if (!isLikelyDatasheetDocument(url, score)) return;
+
+      links.push({
+        url,
+        title: text || titleFromUrl(url),
+        score,
+        scoreBoost: Math.min(18, score),
+      });
+    });
+  }
+
+  return uniqueByUrl(links)
+    .sort((a, b) => b.score - a.score)
+    .map(({ score, ...candidate }) => candidate);
+}
+
+function shouldInspectDocumentElement(tag, attrs, text) {
+  if (tag === "a" || tag === "button") return true;
+  const descriptor = `${attrs} ${text}`.toLowerCase();
+  return /\b(?:button|download|datasheet|data[-\s]?sheet|spec[-\s]?sheet|manual)\b/.test(descriptor);
+}
+
+function extractDocumentUrls(attrs, baseUrl) {
+  const urls = [];
+  const values = [];
+  const attrRegex = /([a-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  let attrMatch;
+
+  while ((attrMatch = attrRegex.exec(attrs))) {
+    const name = attrMatch[1] || "";
+    const value = decodeHtml(attrMatch[2] || attrMatch[3] || attrMatch[4] || "");
+    values.push(value);
+    if (/href|src|url|download|file|pdf|onclick/i.test(name)) values.push(`${name} ${value}`);
+  }
+
+  values.forEach((value) => {
+    extractUrlLikeValues(value).forEach((candidate) => {
+      const url = resolveHttpUrl(candidate, baseUrl);
+      if (url) urls.push(url);
+    });
+  });
+
+  return [...new Set(urls)];
+}
+
+function extractUrlLikeValues(value) {
+  const text = String(value || "").replace(/\\\//g, "/");
+  const matches = text.match(/https?:\/\/[^\s"'<>),]+|(?:\.{1,2}\/|\/)[^\s"'<>),]+|[a-z0-9][a-z0-9._~%/-]*\.pdf(?:[?#][^\s"'<>),]+)?/gi) || [];
+  return matches
+    .map((match) => match.replace(/[.;]+$/g, ""))
+    .filter((match) => !/^javascript:/i.test(match) && !/^mailto:/i.test(match) && !match.startsWith("#"));
+}
+
+function isLikelyDatasheetDocument(url, score) {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.toLowerCase();
+    if (/\/(?:cart|basket|checkout|account|login|wishlist|compare)(?:\/|$)/i.test(pathname)) return false;
+    if (pathname.endsWith(".pdf")) return score > 0;
+    if (score >= 8 && !/\.(?:jpg|jpeg|png|gif|svg|webp|css|js|json|zip)$/i.test(pathname)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function resolveHttpUrl(href, baseUrl) {
+  try {
+    const url = new URL(href, baseUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function datasheetPdfScore(label, queryTokens = []) {
+  const text = String(label || "").toLowerCase();
+  let score = text.includes(".pdf") ? 1 : 0;
+  PDF_LINK_KEYWORDS.forEach((keyword) => {
+    if (text.includes(keyword)) score += keyword.includes("sheet") || keyword.includes("spec") ? 6 : 3;
+  });
+  queryTokens.forEach((token) => {
+    if (token.length >= 3 && text.includes(token)) score += 3;
+  });
+  if (/datasheet|data[-\s]?sheet|spec[-\s]?sheet/i.test(text)) score += 8;
+  if (/warranty|catalog|brochure|drawing|image|logo|terms|shipping/i.test(text)) score -= 5;
+  return score;
+}
+
+function modelTokens(value) {
+  return [...new Set(String(value || "")
+    .toLowerCase()
+    .match(/[a-z]*\d+[a-z0-9-]*|[a-z]{3,}/g) || [])]
+    .filter((token) => token.length >= 3 && !PDF_LINK_KEYWORDS.includes(token));
+}
+
+function decodeURIComponentSafe(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return String(value || "");
+  }
+}
+
+async function extractPdfText(arrayBuffer) {
+  const pdfjs = await loadPdfJs();
+  const document = await pdfjs.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    disableWorker: true,
+    useSystemFonts: true,
+  }).promise;
+  const pages = [];
+  const pageCount = Math.min(document.numPages, MAX_PDF_PAGES);
+
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent({ disableCombineTextItems: false });
+    const layoutText = pdfItemsToLayoutText(content.items);
+    const streamText = content.items.map((item) => item.str || "").join(" ");
+    pages.push([layoutText, streamText].filter(Boolean).join("\n"));
+  }
+
+  return pages.join("\n");
+}
+
+function pdfItemsToLayoutText(items) {
+  const yTolerance = 2.5;
+  const lines = [];
+  const textItems = items
+    .map((item) => ({
+      text: String(item.str || "").trim(),
+      x: Number(item.transform?.[4]),
+      y: Number(item.transform?.[5]),
+    }))
+    .filter((item) => item.text && Number.isFinite(item.x) && Number.isFinite(item.y))
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+
+  textItems.forEach((item) => {
+    const line = lines.find((candidate) => Math.abs(candidate.y - item.y) <= yTolerance);
+    if (line) {
+      const previousCount = line.items.length;
+      line.items.push(item);
+      line.y = (line.y * previousCount + item.y) / line.items.length;
+    } else {
+      lines.push({ y: item.y, items: [item] });
+    }
+  });
+
+  return lines
+    .sort((a, b) => b.y - a.y)
+    .map((line) => line.items
+      .sort((a, b) => a.x - b.x)
+      .map((item) => item.text)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function loadPdfJs() {
+  ensurePdfDomPolyfills();
+  const candidates = [
+    "pdfjs-dist/legacy/build/pdf.mjs",
+    pathToFileURL(join(dirname(process.execPath), "..", "node_modules", "pdfjs-dist", "legacy", "build", "pdf.mjs")).href,
+  ];
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      return await importPdfJs(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`PDF datasheet parsing needs pdfjs-dist. ${lastError?.message || ""}`.trim());
+}
+
+async function importPdfJs(candidate) {
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    const message = String(args[0] || "");
+    if (message.includes("@napi-rs/canvas")) return;
+    originalWarn(...args);
+  };
+  try {
+    return await import(candidate);
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
+function ensurePdfDomPolyfills() {
+  if (!globalThis.DOMMatrix) {
+    globalThis.DOMMatrix = class DOMMatrix {
+      constructor() {
+        this.a = 1;
+        this.b = 0;
+        this.c = 0;
+        this.d = 1;
+        this.e = 0;
+        this.f = 0;
+        this.is2D = true;
+        this.isIdentity = true;
+      }
+
+      multiplySelf() { return this; }
+      preMultiplySelf() { return this; }
+      translateSelf() { return this; }
+      scaleSelf() { return this; }
+      rotateSelf() { return this; }
+      invertSelf() { return this; }
+      transformPoint(point = {}) { return point; }
+    };
+  }
+  if (!globalThis.ImageData) {
+    globalThis.ImageData = class ImageData {
+      constructor(data = [], width = 0, height = 0) {
+        this.data = data;
+        this.width = width;
+        this.height = height;
+      }
+    };
+  }
+  if (!globalThis.Path2D) {
+    globalThis.Path2D = class Path2D {};
   }
 }
 
@@ -250,7 +836,22 @@ function decodeHtml(value) {
 }
 
 function parseNumber(value) {
-  return Number(String(value).replace(",", "."));
+  const text = String(value || "").trim();
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) return Number(text.replace(/,/g, ""));
+  if (/^-?\d{1,3}(\.\d{3})+,(\d+)$/.test(text)) return Number(text.replace(/\./g, "").replace(",", "."));
+  if (text.includes(",") && text.includes(".")) {
+    const decimalSeparator = text.lastIndexOf(",") > text.lastIndexOf(".") ? "," : ".";
+    return Number(
+      decimalSeparator === ","
+        ? text.replace(/\./g, "").replace(",", ".")
+        : text.replace(/,/g, ""),
+    );
+  }
+  if (text.includes(",")) {
+    const [, decimals = ""] = text.split(",");
+    return Number(decimals.length === 3 ? text.replace(/,/g, "") : text.replace(",", "."));
+  }
+  return Number(text);
 }
 
 function convertValue(value, unit = "", type = "") {
@@ -284,6 +885,12 @@ function convertValue(value, unit = "", type = "") {
     if (normalizedUnit === "um/n" || normalizedUnit === "µm/n") return value / 1000;
     return value;
   }
+  return value;
+}
+
+function convertFrequency(value, unit = "") {
+  const normalizedUnit = String(unit || "").toLowerCase();
+  if (normalizedUnit === "khz") return value * 1000;
   return value;
 }
 

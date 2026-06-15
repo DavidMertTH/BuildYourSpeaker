@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { searchDrivers } from "./src/core/driverScraper.js";
+import { searchDrivers, searchPassiveRadiators } from "./src/core/driverScraper.js";
 
 const root = process.cwd();
 const port = Number(process.env.PORT ?? 4173);
+const host = process.env.HOST ?? "0.0.0.0";
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -24,8 +25,20 @@ createServer(async (req, res) => {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(result));
       } catch (error) {
-        res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: error.message || "Driver search failed" }));
+        res.writeHead(error.statusCode || 502, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message || "Driver search failed", directUrl: Boolean(error.directUrl) }));
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/passive-radiator-search") {
+      try {
+        const result = await searchPassiveRadiators(url.searchParams.get("q"));
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.writeHead(error.statusCode || 502, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message || "P-Radiator search failed", directUrl: Boolean(error.directUrl) }));
       }
       return;
     }
@@ -46,6 +59,9 @@ createServer(async (req, res) => {
     res.writeHead(404);
     res.end("Not found");
   }
-}).listen(port, () => {
+}).listen(port, host, () => {
   console.log(`AudioSim running at http://localhost:${port}`);
+  if (host === "0.0.0.0" || host === "::") {
+    console.log(`AudioSim also accepts LAN connections on port ${port}`);
+  }
 });
