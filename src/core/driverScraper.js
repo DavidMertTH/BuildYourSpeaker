@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const SEARCH_URL = "https://duckduckgo.com/html/";
+const PARTS_EXPRESS_ITEMS_URL = "https://www.parts-express.com/api/cacheable/items";
 const SEARCH_SUFFIX = " loudspeaker driver Thiele Small parameters Fs Qes Qms Vas Sd Xmax Bl Mms Re";
 const PASSIVE_RADIATOR_SEARCH_SUFFIX = " loudspeaker passive radiator parameters Fs Qms Mms Cms Sd Xmax";
 const REQUEST_TIMEOUT_MS = 7000;
@@ -154,18 +155,20 @@ export async function searchPassiveRadiators(query) {
 }
 
 async function searchWebCandidates(query) {
+  const partsExpressResults = await searchPartsExpressDriverCandidates(query);
   const pages = await findCandidatePages(query);
   const fetched = await Promise.allSettled(pages.slice(0, 8).map((page) => fetchCandidate(page, query)));
-  const results = fetched
+  const webResults = fetched
     .filter((item) => item.status === "fulfilled" && item.value)
     .map((item) => item.value)
     .flat()
     .filter(isUsefulDriverResult)
     .filter((result) => candidateMatchesQuery(result, query))
+    .filter((result) => !isBrokenSearchResult(result));
+
+  return uniqueByUrl([...partsExpressResults, ...webResults])
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
-
-  return results;
 }
 
 async function searchPassiveRadiatorWebCandidates(query) {
@@ -179,6 +182,128 @@ async function searchPassiveRadiatorWebCandidates(query) {
     .filter((result) => candidateMatchesQuery(result, query))
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
+}
+
+async function searchPartsExpressDriverCandidates(query) {
+  try {
+    const items = await fetchPartsExpressItems(query);
+    return items
+      .filter((item) => partsExpressItemMatchesQuery(item, query))
+      .map(partsExpressItemToDriverResult)
+      .filter(isUsefulDriverResult)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchPartsExpressItems(query) {
+  const url = new URL(PARTS_EXPRESS_ITEMS_URL);
+  url.searchParams.set("q", query);
+  url.searchParams.set("fieldset", "details");
+  const response = await fetch(url.href, {
+    headers: {
+      "User-Agent": "AudioSim/0.1 (+parts-express driver search)",
+      Accept: "application/json,*/*;q=0.8",
+    },
+  });
+  if (!response.ok) throw new Error(`Parts Express HTTP ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.items) ? payload.items : [];
+}
+
+function partsExpressItemMatchesQuery(item, query) {
+  const haystack = [item?.displayname, item?.storedisplayname2, item?.itemid, item?.mpn, item?.urlcomponent].filter(Boolean).join(" ");
+  const modelTokensForQuery = partsExpressModelTokens(query);
+  if (modelTokensForQuery.length) {
+    const normalized = normalizePartsExpressMatchText(haystack);
+    return modelTokensForQuery.every((token) => normalized.includes(token));
+  }
+  return candidateMatchesQuery({ title: haystack, url: "" }, query);
+}
+
+function partsExpressItemToDriverResult(item) {
+  const driver = {};
+  setPositiveField(driver, "re", item.custitem_pe_dc_resistance_re);
+  setPositiveField(driver, "leMh", item.custitem_pe_voice_coil_inductance_le);
+  setPositiveField(driver, "fs", item.custitem_pe_resonant_frequency_fs);
+  setPositiveField(driver, "qms", item.custitem_pe_mechanical_q_qms);
+  setPositiveField(driver, "qes", item.custitem_pe_electromagnetic_q_qes);
+  setPositiveField(driver, "vasL", item.custitem_pe_compliance_equiv_volume);
+  setPositiveField(driver, "sdCm2", item.custitem_pe_surface_area_of_cone_sd);
+  setPositiveField(driver, "xmaxMm", item.custitem_pe_max_linear_excursion);
+  setPositiveField(driver, "mmsG", item.custitem_pe_diaphragm_mass_airload);
+  setPositiveField(driver, "bl", item.custitem_pe_bl_product_bl);
+
+  const frequencyRange = partsExpressFrequencyRange(item.custitem_pe_frequency_response);
+  if (frequencyRange) {
+    driver.minFrequencyHz = frequencyRange.min;
+    driver.maxFrequencyHz = frequencyRange.max;
+  }
+
+  const matched = [];
+  DRIVER_PARAMETER_FIELDS.forEach((field) => {
+    if (Number.isFinite(driver[field])) matched.push(fieldLabel(field));
+  });
+  if (frequencyRange) matched.push("Usable range");
+
+  const title = item.displayname || item.storedisplayname2 || item.mpn || item.itemid || "Parts Express driver";
+  const url = item.urlcomponent ? `https://www.parts-express.com/${item.urlcomponent}` : "https://www.parts-express.com/";
+  return {
+    title,
+    url,
+    driver,
+    matched,
+    snippets: ["Parts Express product API"],
+    score: 500 + Object.keys(driver).length * 10 + matched.length,
+  };
+}
+
+function setPositiveField(target, field, value) {
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 0) target[field] = roundValue(number);
+}
+
+function partsExpressFrequencyRange(value) {
+  const match = String(value || "").match(/(\d[\d.,]*)\s*(kHz|Hz)?\s*(?:-|to|–|—)\s*(\d[\d.,]*)\s*(kHz|Hz)?/i);
+  if (!match) return null;
+  const min = convertFrequency(parseNumber(match[1]), match[2] || match[4]);
+  const max = convertFrequency(parseNumber(match[3]), match[4] || match[2]);
+  return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min: roundValue(min), max: roundValue(max) } : null;
+}
+
+function fieldLabel(field) {
+  const labels = {
+    re: "Re",
+    leMh: "Le",
+    fs: "Fs",
+    qms: "Qms",
+    qes: "Qes",
+    vasL: "Vas",
+    sdCm2: "Sd",
+    xmaxMm: "Xmax",
+    mmsG: "Mms",
+    bl: "Bl",
+  };
+  return labels[field] || field;
+}
+
+function partsExpressModelTokens(query) {
+  return [...new Set(String(query || "").match(/[a-z0-9]+(?:[-_][a-z0-9]+)+/gi) || [])]
+    .map(normalizePartsExpressMatchText)
+    .filter((token) => token.length >= 4 && /\d/.test(token));
+}
+
+function normalizePartsExpressMatchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function isBrokenSearchResult(result) {
+  const title = String(result?.title || "").trim();
+  return !title || /[+][$][(]this[)]|function\s*\(|<script|<\/|undefined|null/i.test(title);
 }
 
 export function extractDriverData(html, source = {}) {

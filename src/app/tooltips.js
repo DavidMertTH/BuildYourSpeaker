@@ -82,12 +82,29 @@ export const CONTROL_TOOLTIPS = {
   projectDialogStatus: "Shows import or export status messages.",
   newConfigButton: "Create a new config from the current settings.",
   newConfigGroupButton: "Create a group for related configs that should be viewed together.",
+  configAddMenu: "Choose whether to add a config or a group.",
+  mobileNewConfigButton: "Create a new config from the current settings.",
+  mobileNewConfigGroupButton: "Create a group for related configs that should be viewed together.",
   crossoverGroupSelect: "Choose the config group whose filters you want to edit.",
+  measurementNameInput: "Name used for the next imported frequency response.",
+  measurementAngleInput: "Measurement angle in degrees. Zero degrees is on-axis.",
+  measurementPlaneSelect: "Measurement plane for the imported response.",
+  measurementGroupAddButton: "Create a recording group for organizing imported and recorded responses.",
+  frequencyResponseInput: "Import FRD, TXT, or CSV frequency response data.",
+  measurementAddButton: "Add a new measurement graph from the current recording settings.",
+  measurementStatus: "Shows frequency response import status.",
+  recordingMicrophoneSelect: "Choose the microphone used for new recording graphs.",
+  recordingSignalSelect: "Choose noise or sweep as the recording stimulus.",
+  recordingLevelInput: "Set the target recording level.",
+  recordingDurationInput: "Set the recording duration.",
+  recordingAveragingInput: "Set how many captures are averaged into a graph.",
+  recordingAddButton: "Add a new recording graph using these settings.",
 };
 export const SIDEBAR_TOOLTIPS = {
   driver: "Enter or search the driver parameters.",
   planning: "Edit the active config, choose the enclosure type, and run Auto plan.",
   crossover: "Edit filters between configs in a group.",
+  measurement: "Import measured frequency responses.",
 };
 export const MODE_TOOLTIPS = {
   sealed: "Use a closed box without a port.",
@@ -99,16 +116,21 @@ export const PRESET_TOOLTIPS = {
   tuning: "Focus the layout on tuning-related graphs.",
   limits: "Focus the layout on excursion and port velocity limits.",
   model: "Focus the layout on model and phase views.",
+  recording: "Focus the layout on recording and response views.",
 };
 export const PANEL_TOOLTIPS = {
   splPlot: "Show or hide the SPL graph.",
+  onAxisResponsePlot: "Show or hide imported on-axis measurements.",
+  offAxisResponsePlot: "Show or hide imported off-axis measurements.",
   impedancePlot: "Show or hide the impedance graph.",
   excursionPlot: "Show or hide the cone excursion graph.",
   portPlot: "Show or hide the port velocity graph.",
   prExcursionPlot: "Show or hide the passive radiator excursion graph.",
   phasePlot: "Show or hide the phase graph.",
   groupDelayPlot: "Show or hide the group delay graph.",
+  horizontalPolarPlot: "Show or hide the horizontal polar directivity graph.",
   boxPreview: "Show or hide the box preview.",
+  recordingPanel: "Show or hide the recording workbench.",
 };
 export const THEME_TOOLTIPS = {
   dark: "Use the dark interface theme.",
@@ -118,6 +140,10 @@ export const THEME_TOOLTIPS = {
 export const PLOT_PANEL_TOOLTIPS = {
   splPlot:
     "SPL shows the predicted linear sound pressure level over frequency. It is limited by Xmax and the driver's usable low-frequency range, so tweeters and small mids no longer appear to produce deep bass.",
+  onAxisResponsePlot:
+    "On-axis response shows imported 0 degree frequency response measurements.",
+  offAxisResponsePlot:
+    "Off-axis response shows imported frequency response measurements away from the listening axis.",
   impedancePlot:
     "Impedance shows the electrical load seen by the amplifier. Sealed boxes usually show one main peak, vented boxes show two peaks around tuning, and unusual dips can indicate a difficult amplifier load.",
   excursionPlot:
@@ -130,18 +156,26 @@ export const PLOT_PANEL_TOOLTIPS = {
     "Phase shows acoustic phase rotation over frequency. Large phase swings are normal around resonances, but this view helps compare alignments and understand timing changes near tuning.",
   groupDelayPlot:
     "Group delay shows the time delay derived from acoustic phase. Peaks reveal stored energy and timing changes around resonance or tuning.",
+  horizontalPolarPlot:
+    "Horizontal polar shows imported horizontal measurements by angle at selected frequencies.",
   boxPreview:
     "Box preview shows the estimated cabinet proportions for the active config. Use it as a quick buildability check, not as a final woodworking drawing.",
+  recordingPanel:
+    "Recording combines level, microphone and signal settings with a graph of captured or imported measurements.",
 };
 export const PANEL_LABELS = {
   splPlot: "SPL",
+  onAxisResponsePlot: "On-axis",
+  offAxisResponsePlot: "Off-axis",
   impedancePlot: "Impedance",
   excursionPlot: "Cone excursion",
   portPlot: "Port velocity",
   prExcursionPlot: "PR excursion",
   phasePlot: "Phase",
   groupDelayPlot: "Group delay",
+  horizontalPolarPlot: "H polar",
   boxPreview: "Box",
+  recordingPanel: "Recording",
 };
 export const RANGE_TOOLTIPS = {
   "box.volumeL": "Adjust the active config volume quickly.",

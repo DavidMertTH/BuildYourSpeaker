@@ -1,4 +1,5 @@
 import { partsExpressDrivers } from "./data/partsExpressDrivers.js";
+import { driverFrequencyResponses } from "./data/driverFrequencyResponses.js";
 import { passiveRadiators } from "./data/passiveRadiators.js";
 import { DEFAULT_INVENTORY } from "./core/planner/componentInventory.js";
 
@@ -90,7 +91,10 @@ export const knownDrivers = [
     },
   },
   ...partsExpressDrivers,
-];
+].map((entry) => ({
+  ...entry,
+  frequencyResponseMatches: driverFrequencyResponses[entry.id] || entry.frequencyResponseMatches || [],
+}));
 
 export const sampleProject = {
   mode: "vented",

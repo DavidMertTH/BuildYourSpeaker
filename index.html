@@ -17,6 +17,7 @@
           <button class="sidebar-tab active" data-sidebar-tab="driver" type="button">Driver</button>
           <button class="sidebar-tab" data-sidebar-tab="planning" type="button">Box</button>
           <button class="sidebar-tab" data-sidebar-tab="crossover" type="button">Filter</button>
+          <button class="sidebar-tab" data-sidebar-tab="measurement" type="button">Measurement</button>
         </nav>
 
         <section class="panel sidebar-panel active" data-sidebar-panel="driver">
@@ -250,6 +251,44 @@
           <div id="crossoverStatus" class="search-status"></div>
         </section>
 
+        <section class="panel sidebar-panel" data-sidebar-panel="measurement">
+          <div class="measurement-name-row">
+            <label class="driver-select-row">
+              <span>Response name</span>
+              <input id="measurementNameInput" type="text" placeholder="Imported response" />
+            </label>
+            <button id="measurementAddButton" class="measurement-add-button" type="button" aria-label="Add measurement graph">+</button>
+          </div>
+          <div class="driver-setup-panel">
+            <label class="driver-setup-field">
+              <span>Angle</span>
+              <input id="measurementAngleInput" type="number" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="driver-setup-field">
+              <span>Plane</span>
+              <select id="measurementPlaneSelect">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+              </select>
+            </label>
+          </div>
+          <label class="driver-select-row">
+            <span>Target</span>
+            <select id="measurementTargetSelect"></select>
+          </label>
+          <div class="measurement-group-toolbar">
+            <span>Recording groups</span>
+            <button id="measurementGroupAddButton" class="measurement-group-add-button" type="button" aria-label="Add recording group">+</button>
+          </div>
+          <div id="measurementGroupList" class="measurement-group-list"></div>
+          <label class="file-button measurement-file-button">
+            Load response
+            <input id="frequencyResponseInput" type="file" accept=".frd,.txt,.csv,text/plain,text/csv" />
+          </label>
+          <div id="measurementStatus" class="search-status"></div>
+          <div id="measurementList" class="search-results"></div>
+        </section>
+
         <div class="sidebar-footer">
           <button id="importExportButton" type="button">Import / Export</button>
         </div>
@@ -280,38 +319,104 @@
             <button class="preset-button" data-layout-preset="tuning" type="button">Tuning</button>
             <button class="preset-button" data-layout-preset="limits" type="button">Limits</button>
             <button class="preset-button" data-layout-preset="model" type="button">Model</button>
+            <button class="preset-button" data-layout-preset="recording" type="button">Recording</button>
           </div>
           <details class="toolbar-group panel-menu" aria-label="Panel visibility">
             <summary>Graphs</summary>
             <div class="panel-menu-list">
               <label><input class="panel-toggle" data-panel-toggle="splPlot" type="checkbox" checked /> SPL</label>
+              <label><input class="panel-toggle" data-panel-toggle="onAxisResponsePlot" type="checkbox" checked /> On-axis</label>
+              <label><input class="panel-toggle" data-panel-toggle="offAxisResponsePlot" type="checkbox" checked /> Off-axis</label>
               <label><input class="panel-toggle" data-panel-toggle="impedancePlot" type="checkbox" checked /> Impedance</label>
               <label><input class="panel-toggle" data-panel-toggle="excursionPlot" type="checkbox" checked /> Cone excursion</label>
               <label><input class="panel-toggle" data-panel-toggle="portPlot" type="checkbox" checked /> Port velocity</label>
               <label><input class="panel-toggle" data-panel-toggle="prExcursionPlot" type="checkbox" checked /> PR excursion</label>
               <label><input class="panel-toggle" data-panel-toggle="phasePlot" type="checkbox" checked /> Phase</label>
               <label><input class="panel-toggle" data-panel-toggle="groupDelayPlot" type="checkbox" checked /> Group delay</label>
+              <label><input class="panel-toggle" data-panel-toggle="horizontalPolarPlot" type="checkbox" checked /> H polar</label>
               <label><input class="panel-toggle" data-panel-toggle="boxPreview" type="checkbox" checked /> Box</label>
+              <label><input class="panel-toggle" data-panel-toggle="recordingPanel" type="checkbox" checked /> Recording</label>
             </div>
           </details>
           <div class="toolbar-group theme-toolbar" aria-label="Theme">
             <div class="segmented theme-toggle">
-              <button class="theme-button" data-theme-choice="dark" type="button">Dark</button>
-              <button class="theme-button" data-theme-choice="light" type="button">Light</button>
-              <button class="theme-button active" data-theme-choice="sync" type="button">Sync</button>
+              <button class="theme-button" data-theme-choice="dark" type="button" aria-label="Dark theme">
+                <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"></path>
+                </svg>
+                <span class="visually-hidden">Dark</span>
+              </button>
+              <button class="theme-button" data-theme-choice="light" type="button" aria-label="Light theme">
+                <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4"></circle>
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+                </svg>
+                <span class="visually-hidden">Light</span>
+              </button>
+              <button class="theme-button active" data-theme-choice="sync" type="button" aria-label="Sync with system theme">
+                <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="12" rx="2"></rect>
+                  <path d="M8 20h8M12 16v4"></path>
+                </svg>
+                <span class="visually-hidden">Sync</span>
+              </button>
             </div>
           </div>
         </header>
 
         <section class="plot-grid" data-reorder-group="plots">
           <div class="plot-panel" draggable="true" data-reorder-id="spl-plot" data-panel="splPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>SPL</span></div><canvas id="splPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="on-axis-response-plot" data-panel="onAxisResponsePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>On-axis response</span></div><canvas id="onAxisResponsePlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="off-axis-response-plot" data-panel="offAxisResponsePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Off-axis response</span></div><canvas id="offAxisResponsePlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="impedance-plot" data-panel="impedancePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Impedance</span></div><canvas id="impedancePlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="excursion-plot" data-panel="excursionPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Excursion</span></div><canvas id="excursionPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="port-plot" data-panel="portPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Port velocity</span></div><canvas id="portPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="pr-excursion-plot" data-panel="prExcursionPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>PR excursion</span></div><canvas id="prExcursionPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="phase-plot" data-panel="phasePlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Phase</span></div><canvas id="phasePlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="group-delay-plot" data-panel="groupDelayPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Group delay</span></div><canvas id="groupDelayPlot"></canvas></div>
+          <div class="plot-panel" draggable="true" data-reorder-id="horizontal-polar-plot" data-panel="horizontalPolarPlot"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Horizontal polar</span></div><canvas id="horizontalPolarPlot"></canvas></div>
           <div class="plot-panel" draggable="true" data-reorder-id="box-preview" data-panel="boxPreview"><div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Box</span></div><canvas id="boxPreview"></canvas></div>
+          <div class="plot-panel recording-panel" draggable="true" data-reorder-id="recording-panel" data-panel="recordingPanel">
+            <div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Recording</span></div>
+            <div class="recording-workbench">
+              <section class="recording-controls" aria-label="Recording controls">
+                <div class="recording-level">
+                  <span>Level</span>
+                  <strong id="recordingLevelReadout">75 dB</strong>
+                  <div class="recording-meter" aria-hidden="true"><span id="recordingMeterBar"></span></div>
+                </div>
+                <label>
+                  <span>Microphone</span>
+                  <select id="recordingMicrophoneSelect">
+                    <option value="default">System default</option>
+                    <option value="usb-measurement">USB measurement mic</option>
+                    <option value="calibrated">Calibrated mic</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Signal</span>
+                  <select id="recordingSignalSelect">
+                    <option value="sweep">Sweep</option>
+                    <option value="noise">Noise</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Level dB</span>
+                  <input id="recordingLevelInput" type="number" min="35" max="105" step="1" />
+                </label>
+                <label>
+                  <span>Duration</span>
+                  <input id="recordingDurationInput" type="number" min="1" max="60" step="1" />
+                </label>
+                <label>
+                  <span>Averaging</span>
+                  <input id="recordingAveragingInput" type="number" min="1" max="32" step="1" />
+                </label>
+                <button id="recordingAddButton" class="recording-add-button" type="button">Record</button>
+              </section>
+              <canvas id="recordingPlot"></canvas>
+            </div>
+          </div>
         </section>
 
         <footer class="config-bar" aria-label="Configurations">
@@ -322,6 +427,13 @@
           <div class="config-actions">
             <button id="newConfigButton" class="config-new-button" type="button"><span class="desktop-label">New</span><span class="mobile-label">+</span></button>
             <button id="newConfigGroupButton" type="button"><span class="desktop-label">Group</span><span class="mobile-label">G</span></button>
+            <details id="configAddMenu" class="config-add-menu config-more-menu">
+              <summary aria-label="Add config or group">+</summary>
+              <div class="config-more-list">
+                <button id="mobileNewConfigButton" type="button">Config</button>
+                <button id="mobileNewConfigGroupButton" type="button">Group</button>
+              </div>
+            </details>
           </div>
         </footer>
       </section>

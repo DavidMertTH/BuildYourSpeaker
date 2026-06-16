@@ -6,10 +6,12 @@ import { simulatePassiveRadiator } from "./core/passiveRadiatorBox.js";
 import { normalizeBandpassOptions, simulateBandpass } from "./core/bandpassBox.js";
 import { validateEnclosureOptions } from "./core/enclosure.js";
 import { filterChainResponse } from "./core/filters.js";
+import { inferAngleFromName, normalizeFrequencyResponse, normalizeFrequencyResponseCandidate, normalizeMeasurementGroups, normalizeMeasurements, normalizeRecordingSettings, parseFrequencyResponseText } from "./core/measurements.js";
 import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, recommendedLowFrequencyLimit } from "./core/realism.js";
 import { normalizeInventory } from "./core/planner/componentInventory.js";
 import { planDesigns } from "./core/planner/designPlanner.js";
 import { adoptPlotState, autoRange, drawPlot } from "./ui/plot.js";
+import { drawPolarPlot } from "./ui/polarPlot.js";
 import { drawBoxPreview } from "./ui/preview.js";
 import { cloneProject, knownDrivers, knownPassiveRadiators, sampleProject } from "./state.js";
 
@@ -49,6 +51,7 @@ import {
   THEME_CHOICES,
   THEME_STORAGE_KEY,
   UNGROUPED_CONFIG_GROUP_ID,
+  UNGROUPED_MEASUREMENT_GROUP_ID,
   UNIT_PREF_STORAGE_KEY,
 } from "./app/constants.js";
 import { PANEL_PRESETS } from "./app/presets.js";
@@ -89,6 +92,13 @@ let applyingLayout = false;
 let resizePersistenceReady = false;
 let resizeTimer = null;
 const frequencies = logFrequencyVector(FREQUENCY_MIN_HZ, FREQUENCY_MAX_HZ, 640);
+const FREQUENCY_RESPONSE_RESULT_FIELDS = [
+  { key: "pointCount", label: "Points", unit: "" },
+  { key: "frequencyMinHz", label: "From", unit: "Hz" },
+  { key: "frequencyMaxHz", label: "To", unit: "Hz" },
+  { key: "magnitudeMinDb", label: "Min", unit: "dB" },
+  { key: "magnitudeMaxDb", label: "Max", unit: "dB" },
+];
 
 const {
   fields,
@@ -140,10 +150,31 @@ const {
   signalFilterTypeSelect,
   signalFilterAddButton,
   signalFilterList,
+  measurementNameInput,
+  measurementAngleInput,
+  measurementPlaneSelect,
+  measurementTargetSelect,
+  measurementGroupAddButton,
+  measurementGroupList,
+  frequencyResponseInput,
+  measurementAddButton,
+  measurementStatus,
+  measurementList,
+  recordingMicrophoneSelect,
+  recordingSignalSelect,
+  recordingLevelInput,
+  recordingDurationInput,
+  recordingAveragingInput,
+  recordingAddButton,
+  recordingLevelReadout,
+  recordingMeterBar,
   configGroupList,
   configBarList,
   newConfigButton,
   newConfigGroupButton,
+  configAddMenu,
+  mobileNewConfigButton,
+  mobileNewConfigGroupButton,
 } = collectDomRefs();
 let driverLibrary = loadDriverLibrary();
 let passiveRadiatorLibrary = loadPassiveRadiatorLibrary();
@@ -163,13 +194,17 @@ let plotPanDrag = null;
 let plotResizeDrag = null;
 let draggedConfigDesignId = "";
 let configPointerDrag = null;
+let draggedMeasurementResponseId = "";
+let measurementPointerDrag = null;
 const plotSpans = {};
 let goldenLayout = null;
 let goldenLayoutStaging = null;
 let goldenLayoutSaveTimer = null;
 let goldenLayoutRenderTimer = null;
 let loadingGoldenLayout = false;
+let goldenLayoutLoadToken = 0;
 let desktopGoldenLayoutConfig = null;
+let stagedRecordingResponse = null;
 
 function init() {
   const isGoldenPopout = isGoldenLayoutPopoutWindow();
@@ -282,42 +317,9 @@ function initializePlotControls() {
   PLOT_IDS.forEach((plotId) => {
     const canvas = document.querySelector(`#${plotId}`);
     const panel = canvas?.closest(".plot-panel");
-    const bar = panel?.querySelector(".pane-bar");
-    if (!canvas || !panel || !bar || bar.querySelector(".plot-toolbar")) return;
+    if (!canvas || !panel || [...panel.children].some((child) => child.classList?.contains("plot-toolbar"))) return;
 
-    const toolbar = document.createElement("div");
-    toolbar.className = "plot-toolbar";
-    toolbar.addEventListener("click", (event) => event.stopPropagation());
-    toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
-
-    const zoomOut = plotToolButton("-", "Zoom out");
-    zoomOut.addEventListener("click", () => zoomPlot(plotId, 1.28));
-
-    const zoomIn = plotToolButton("+", "Zoom in");
-    zoomIn.addEventListener("click", () => zoomPlot(plotId, 0.78));
-
-    const reset = plotToolButton("Reset", "Reset zoom and manual axes");
-    reset.className = "plot-tool-button plot-tool-reset";
-    reset.addEventListener("click", () => resetPlotView(plotId));
-
-    const axes = document.createElement("details");
-    axes.className = "plot-axis-menu";
-    const summary = document.createElement("summary");
-    summary.textContent = "Axes";
-    setTooltip(summary, "Set exact X and Y axis limits.");
-    const panelBody = document.createElement("div");
-    panelBody.className = "plot-axis-panel";
-    panelBody.append(
-      plotAxisModeToggle(plotId),
-      plotAxisField(plotId, "xMin", "X min"),
-      plotAxisField(plotId, "xMax", "X max"),
-      plotAxisField(plotId, "yMin", "Y min"),
-      plotAxisField(plotId, "yMax", "Y max"),
-    );
-    axes.append(summary, panelBody);
-
-    toolbar.append(zoomOut, zoomIn, reset, axes);
-    bar.append(toolbar);
+    panel.append(createPlotToolbar(plotId, "plot-overlay-toolbar"));
 
     canvas.addEventListener("wheel", (event) => {
       if (isMobileLayout()) return;
@@ -497,6 +499,8 @@ function queueGoldenLayoutRender() {
 
 function loadGoldenLayoutConfig(config, options = {}) {
   if (!goldenLayout) return;
+  const loadToken = goldenLayoutLoadToken + 1;
+  goldenLayoutLoadToken = loadToken;
   loadingGoldenLayout = true;
   try {
     const closableConfig = makeGoldenLayoutTabsClosable(config);
@@ -514,7 +518,9 @@ function loadGoldenLayoutConfig(config, options = {}) {
   } catch (error) {
     console.error("Golden Layout load failed.", error);
   } finally {
-    loadingGoldenLayout = false;
+    window.setTimeout(() => {
+      if (goldenLayoutLoadToken === loadToken) loadingGoldenLayout = false;
+    }, 300);
   }
 }
 
@@ -595,6 +601,80 @@ function applyPlotPanelSize(panel, size) {
   panel.style.gridRow = "";
   panel.style.width = `${size.widthPct}%`;
   panel.style.height = `${size.heightPx}px`;
+}
+
+function createPlotToolbar(plotId, placementClass = "") {
+  const toolbar = document.createElement("div");
+  toolbar.className = ["plot-toolbar", placementClass].filter(Boolean).join(" ");
+  toolbar.dataset.plotToolbar = plotId;
+  toolbar.addEventListener("click", (event) => event.stopPropagation());
+  toolbar.addEventListener("dblclick", (event) => event.stopPropagation());
+  toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
+
+  const pill = document.createElement("button");
+  pill.type = "button";
+  pill.className = "plot-toolbar-pill";
+  pill.textContent = "Axes";
+  setTooltip(pill, "Show graph zoom and axis controls.");
+
+  const menu = document.createElement("div");
+  menu.className = "plot-toolbar-menu";
+
+  const zoomOut = plotToolButton("-", "Zoom out");
+  zoomOut.addEventListener("click", () => zoomPlot(plotId, 1.28));
+
+  const zoomIn = plotToolButton("+", "Zoom in");
+  zoomIn.addEventListener("click", () => zoomPlot(plotId, 0.78));
+
+  const zoomRow = document.createElement("div");
+  zoomRow.className = "plot-zoom-row";
+  zoomRow.append(zoomIn, zoomOut);
+
+  const reset = plotToolButton("Reset", "Reset zoom and manual axes");
+  reset.className = "plot-tool-button plot-tool-reset";
+  reset.addEventListener("click", () => resetPlotView(plotId));
+
+  const axes = document.createElement("details");
+  axes.className = "plot-axis-menu";
+  const summary = document.createElement("summary");
+  summary.textContent = "Axes";
+  summary.addEventListener("click", (event) => {
+    event.preventDefault();
+  });
+  setTooltip(summary, "Set exact X and Y axis limits.");
+  const panelBody = document.createElement("div");
+  panelBody.className = "plot-axis-panel";
+  panelBody.append(
+    plotAxisModeToggle(plotId),
+    plotAxisField(plotId, "xMin", "X min"),
+    plotAxisField(plotId, "xMax", "X max"),
+    plotAxisField(plotId, "yMin", "Y min"),
+    plotAxisField(plotId, "yMax", "Y max"),
+  );
+  axes.append(summary, panelBody);
+  axes.addEventListener("mouseenter", () => {
+    axes.open = true;
+  });
+  axes.addEventListener("mouseleave", () => {
+    if (!axes.matches(":focus-within")) axes.open = false;
+  });
+  axes.addEventListener("focusin", () => {
+    axes.open = true;
+  });
+  axes.addEventListener("focusout", () => {
+    window.setTimeout(() => {
+      if (!axes.matches(":focus-within")) axes.open = false;
+    });
+  });
+  axes.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    axes.open = false;
+    summary.focus();
+  });
+
+  menu.append(zoomRow, reset, axes);
+  toolbar.append(pill, menu);
+  return toolbar;
 }
 
 function currentPlotPanelSize(panel) {
@@ -880,6 +960,14 @@ function bindEvents() {
 
   newConfigButton.addEventListener("click", createDesignFromCurrentProject);
   newConfigGroupButton.addEventListener("click", createConfigGroup);
+  mobileNewConfigButton?.addEventListener("click", () => {
+    createDesignFromCurrentProject();
+    if (configAddMenu) configAddMenu.open = false;
+  });
+  mobileNewConfigGroupButton?.addEventListener("click", () => {
+    createConfigGroup();
+    if (configAddMenu) configAddMenu.open = false;
+  });
   addDriverGroupButton?.addEventListener("click", addDriverGroup);
 
   driverSelect.addEventListener("change", () => {
@@ -1003,6 +1091,25 @@ function bindEvents() {
     event.target.value = "";
   });
 
+  frequencyResponseInput?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await importFrequencyResponseFile(file);
+    event.target.value = "";
+  });
+  measurementAddButton?.addEventListener("click", () => addRecordingFrequencyResponse("measurement"));
+  recordingAddButton?.addEventListener("click", () => addRecordingFrequencyResponse("recording"));
+  measurementGroupAddButton?.addEventListener("click", addMeasurementGroup);
+  [
+    recordingMicrophoneSelect,
+    recordingSignalSelect,
+    recordingLevelInput,
+    recordingDurationInput,
+    recordingAveragingInput,
+  ].forEach((control) => {
+    control?.addEventListener("change", updateRecordingSettingsFromControls);
+  });
+
   window.addEventListener("popstate", (event) => {
     const project = event.state?.project;
     if (!project) return;
@@ -1023,6 +1130,7 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     if (event.target.closest(".config-chip-menu")) return;
     closeConfigChipMenus();
+    if (configAddMenu && !event.target.closest("#configAddMenu")) configAddMenu.open = false;
   });
 
   configBarList.addEventListener("pointerdown", (event) => {
@@ -1057,6 +1165,12 @@ function bindEvents() {
   configBarList.addEventListener("drop", handleConfigChipDrop);
   configBarList.addEventListener("dragend", handleConfigChipDragEnd);
   configBarList.addEventListener("pointerdown", handleConfigChipPointerDown);
+  measurementList?.addEventListener("dragstart", handleMeasurementChipDragStart);
+  measurementList?.addEventListener("dragover", handleMeasurementChipDragOver);
+  measurementList?.addEventListener("dragleave", handleMeasurementChipDragLeave);
+  measurementList?.addEventListener("drop", handleMeasurementChipDrop);
+  measurementList?.addEventListener("dragend", handleMeasurementChipDragEnd);
+  measurementList?.addEventListener("pointerdown", handleMeasurementChipPointerDown);
 
   window.addEventListener("resize", () => {
     updateMobileToolbarOffset();
@@ -1497,6 +1611,7 @@ function normalizeProjectState(project) {
   const fallbackBox = completeBox(nextState.box || sampleProject.box);
   const fallbackMode = nextState.mode || "vented";
   nextState.inventory = normalizeInventory(nextState.inventory || sampleProject.inventory);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
   nextState.configGroups = normalizeConfigGroups(nextState.configGroups);
   const defaultConfigGroupId = nextState.configGroups[0]?.id || UNGROUPED_CONFIG_GROUP_ID;
   nextState.driverGroups = normalizeDriverGroups(nextState, fallbackBox);
@@ -1559,13 +1674,57 @@ function normalizeProjectState(project) {
   if (!nextState.designs.some((design) => design.id === nextState.activeDesignId)) {
     nextState.activeDesignId = nextState.designs[0].id;
   }
+  const fallbackMeasurementTarget = nextState.activeDesignId ? `design:${nextState.activeDesignId}` : `configGroup:${defaultConfigGroupId}`;
+  nextState.measurements.recordingGroups = normalizeMeasurementGroups(nextState.measurements.recordingGroups).map((group) => {
+    const groupedResponse = nextState.measurements.frequencyResponses.find((response) => response.recordingGroupId === group.id);
+    return {
+      ...group,
+      target: group.target || groupedResponse?.target || fallbackMeasurementTarget,
+    };
+  });
+  if (!nextState.measurements.recordingGroups.length) {
+    nextState.measurements.recordingGroups = [{
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: fallbackMeasurementTarget,
+      kind: "manual",
+      driverId: "",
+    }];
+  }
+  nextState.measurements.frequencyResponses = nextState.measurements.frequencyResponses.map((response) => {
+    const target = String(response.target || "");
+    const nextResponse = { ...response };
+    if (
+      nextResponse.recordingGroupId
+      && !nextState.measurements.recordingGroups.some((group) => group.id === nextResponse.recordingGroupId)
+    ) {
+      nextResponse.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID;
+    }
+    if (!nextResponse.recordingGroupId) nextResponse.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID;
+    if (target === "design:" || target === "configGroup:") {
+      return { ...nextResponse, target: fallbackMeasurementTarget };
+    }
+    if (target.startsWith("design:")) {
+      const designId = target.slice("design:".length);
+      return nextState.designs.some((design) => design.id === designId)
+        ? nextResponse
+        : { ...nextResponse, target: fallbackMeasurementTarget };
+    }
+    if (target.startsWith("configGroup:")) {
+      const groupId = target.slice("configGroup:".length);
+      return !groupId || nextState.configGroups.some((group) => group.id === groupId)
+        ? nextResponse
+        : { ...nextResponse, target: fallbackMeasurementTarget };
+    }
+    return { ...nextResponse, target: fallbackMeasurementTarget };
+  });
 
   applyActiveDesignToProject(nextState);
   return nextState;
 }
 
 function normalizeConfigGroups(groupsInput) {
-  const sourceGroups = Array.isArray(groupsInput) && groupsInput.length
+  const sourceGroups = Array.isArray(groupsInput)
     ? groupsInput
     : sampleProject.configGroups;
   const groups = sourceGroups.map((group, index) => ({
@@ -1575,15 +1734,6 @@ function normalizeConfigGroups(groupsInput) {
     showCombined: group.showCombined === true,
     crossover: normalizeGroupCrossover(group.crossover),
   }));
-  if (groups.length === 0) {
-    groups.push({
-      id: "config-group-main",
-      name: "Main group",
-      showMembers: true,
-      showCombined: false,
-      crossover: normalizeGroupCrossover(),
-    });
-  }
   return groups;
 }
 
@@ -1859,12 +2009,12 @@ function updateConfigGroup(groupId, patch) {
 }
 
 function deleteConfigGroup(groupId) {
-  if (state.configGroups.length <= 1) return;
   const nextState = cloneProject(state);
   nextState.configGroups = nextState.configGroups.filter((group) => group.id !== groupId);
   nextState.designs.forEach((design) => {
     if (design.groupId === groupId) design.groupId = UNGROUPED_CONFIG_GROUP_ID;
   });
+  if (activeCrossoverGroupId === groupId) setActiveCrossoverGroupId("");
   commitState(nextState, { hydrate: true });
 }
 
@@ -2096,6 +2246,633 @@ function renderCrossoverControls() {
   if (crossoverStatus) {
     crossoverStatus.textContent = canAdd ? "" : "Transitions need at least two configs in one group.";
   }
+}
+
+function renderMeasurementControls() {
+  if (!measurementList) return;
+  hydrateMeasurementTargetSelect();
+  renderMeasurementGroups();
+  const responses = state.measurements?.frequencyResponses || [];
+  const candidates = state.measurements?.frequencyResponseCandidates || [];
+  const expectedIds = new Set(responses.map((response) => `response:${response.id}`));
+  measurementList.querySelectorAll('.measurement-chip[data-measurement-id^="response:"]').forEach((item) => {
+    if (!expectedIds.has(item.dataset.measurementId)) item.remove();
+  });
+
+  renderStagedRecordingSection();
+  renderMeasurementResponseGroups(responses);
+  renderMeasurementCandidateSection(candidates);
+
+  const hasNamedGroups = Boolean(state.measurements?.recordingGroups?.length);
+  const hasRenderableSections = Boolean(stagedRecordingResponse) || hasNamedGroups || responses.length || candidates.length;
+  if (!hasRenderableSections) {
+    measurementList.querySelectorAll("[data-measurement-section]").forEach((item) => item.remove());
+    if (!measurementList.querySelector("[data-measurement-empty]")) {
+      const empty = document.createElement("div");
+      empty.className = "crossover-empty";
+      empty.dataset.measurementEmpty = "true";
+      empty.textContent = "No frequency responses loaded.";
+      measurementList.append(empty);
+    }
+    return;
+  }
+  measurementList.querySelector("[data-measurement-empty]")?.remove();
+}
+
+function renderStagedRecordingSection() {
+  let section = measurementList.querySelector('[data-measurement-section="staged-recording"]');
+  if (!stagedRecordingResponse) {
+    section?.remove();
+    return;
+  }
+
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "measurement-group-block measurement-staged-section";
+    section.dataset.measurementSection = "staged-recording";
+
+    const header = document.createElement("div");
+    header.className = "measurement-group-header";
+    header.innerHTML = '<span class="measurement-group-title">Staged recording</span>';
+
+    const actions = document.createElement("div");
+    actions.className = "measurement-staged-actions";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.dataset.stagedRecordingAction = "save";
+    save.textContent = "Save";
+    const discard = document.createElement("button");
+    discard.type = "button";
+    discard.className = "danger";
+    discard.dataset.stagedRecordingAction = "discard";
+    discard.textContent = "Discard";
+    actions.append(save, discard);
+    header.append(actions);
+
+    const body = document.createElement("div");
+    body.className = "measurement-staged-body";
+    body.dataset.measurementPart = "staged-body";
+
+    section.append(header, body);
+  }
+
+  const body = section.querySelector('[data-measurement-part="staged-body"]');
+  body.replaceChildren(createStagedRecordingSummary(stagedRecordingResponse));
+
+  const save = section.querySelector('[data-staged-recording-action="save"]');
+  save.onclick = saveStagedRecording;
+  setTooltip(save, "Save this staged recording into Measurement.");
+  const discard = section.querySelector('[data-staged-recording-action="discard"]');
+  discard.onclick = discardStagedRecording;
+  setTooltip(discard, "Discard this staged recording.");
+
+  const firstSection = measurementList.querySelector('[data-measurement-section]:not([data-measurement-section="staged-recording"])');
+  measurementList.insertBefore(section, firstSection || measurementList.firstElementChild);
+}
+
+function createStagedRecordingSummary(response) {
+  const summary = document.createElement("div");
+  summary.className = "measurement-staged-summary";
+  setTooltip(summary, fullMeasurementName(response));
+
+  const name = document.createElement("strong");
+  name.textContent = compactMeasurementSeriesName(response);
+
+  const meta = document.createElement("span");
+  meta.textContent = `${response.points.length} pts / ${formatFrequencyValue(response.points[0]?.frequencyHz)}-${formatFrequencyValue(response.points[response.points.length - 1]?.frequencyHz)} / ${measurementTargetLabel(response.target)}`;
+
+  summary.append(name, meta);
+  return summary;
+}
+
+function renderMeasurementGroups() {
+  if (!measurementGroupList) return;
+  measurementGroupList.replaceChildren();
+  state.measurements?.recordingGroups?.forEach((group) => {
+    const pill = document.createElement("div");
+    pill.className = "config-group-chip measurement-group-chip";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = group.name;
+    input.ariaLabel = "Recording group name";
+    setTooltip(input, "Rename this recording group.");
+    input.addEventListener("change", () => updateMeasurementGroup(group.id, { name: input.value.trim() || group.name }));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.append(createTrashIcon());
+    remove.ariaLabel = `Remove ${group.name}`;
+    setTooltip(remove, "Remove this recording group and move its measurements to the next group.");
+    remove.addEventListener("click", () => deleteMeasurementGroup(group.id));
+
+    pill.append(input, remove);
+    measurementGroupList.append(pill);
+  });
+}
+
+function renderMeasurementResponseGroups(responses) {
+  const expectedSections = new Set((state.measurements?.recordingGroups || []).map((group) => `group:${group.id}`));
+  measurementList.querySelectorAll('[data-measurement-section="responses"]').forEach((item) => {
+    if (!expectedSections.has(item.dataset.measurementKey)) item.remove();
+  });
+
+  let placement = measurementList.querySelector('[data-measurement-section="candidates"]');
+  const grouped = (state.measurements?.recordingGroups || []).map((group) => ({
+    key: `group:${group.id}`,
+    groupId: group.id,
+    group,
+    responses: responses.filter((response) => response.recordingGroupId === group.id),
+    emptyLabel: "Empty",
+  }));
+
+  grouped.forEach((entry) => {
+    let section = measurementList.querySelector(`[data-measurement-key="${cssEscape(entry.key)}"]`);
+    if (!section) section = createMeasurementGroupBlock(entry.groupId, entry.group?.name || "Recording group", entry.emptyLabel);
+    updateMeasurementGroupBlock(section, entry);
+    measurementList.insertBefore(section, placement || null);
+  });
+}
+
+function createMeasurementGroupBlock(groupId, label, emptyLabel) {
+  const section = document.createElement("section");
+  section.className = "measurement-group-block";
+  section.dataset.measurementSection = "responses";
+  section.dataset.measurementKey = `group:${groupId}`;
+
+  const header = document.createElement("div");
+  header.className = "measurement-group-header";
+  header.append(...createMeasurementGroupHeaderControls(groupId, label));
+
+  const chips = document.createElement("div");
+  chips.className = "measurement-group-chips";
+  chips.dataset.measurementGroupId = groupId;
+  chips.dataset.emptyLabel = emptyLabel;
+
+  section.append(header, chips);
+  return section;
+}
+
+function updateMeasurementGroupBlock(section, entry) {
+  section.dataset.measurementKey = entry.key;
+  const groupNameInput = section.querySelector('[data-measurement-group-field="name"]');
+  const groupTargetSelect = section.querySelector('[data-measurement-group-field="target"]');
+  const groupTitle = section.querySelector(".measurement-group-title");
+  const removeButton = section.querySelector('[data-measurement-group-action="remove"]');
+  const group = entry.group;
+  if (!group) return;
+
+  groupNameInput.hidden = false;
+  groupNameInput.disabled = false;
+  if (document.activeElement !== groupNameInput) groupNameInput.value = group.name;
+  groupNameInput.onchange = () => updateMeasurementGroup(group.id, { name: groupNameInput.value.trim() || group.name });
+  groupTargetSelect.hidden = false;
+  groupTargetSelect.disabled = false;
+  hydrateMeasurementTargetOptions(groupTargetSelect, group.target || defaultMeasurementTarget());
+  groupTargetSelect.onchange = () => updateMeasurementGroupTarget(group.id, groupTargetSelect.value);
+  groupTitle.hidden = true;
+  removeButton.hidden = false;
+  removeButton.style.display = "";
+  removeButton.onclick = () => deleteMeasurementGroup(group.id);
+
+  section.querySelector('[data-measurement-part="count"]').textContent = `${entry.responses.length}`;
+  const chips = section.querySelector(".measurement-group-chips");
+  chips.dataset.measurementGroupId = group.id;
+  chips.dataset.emptyLabel = entry.emptyLabel;
+  chips.replaceChildren(...entry.responses.map((response) => {
+    const measurementId = `response:${response.id}`;
+    let item = measurementList.querySelector(`.measurement-chip[data-measurement-id="${cssEscape(measurementId)}"]`);
+    if (!item) item = createMeasurementResponseItem(measurementId);
+    updateMeasurementResponseItem(item, response);
+    return item;
+  }));
+}
+
+function renderMeasurementCandidateSection(candidates) {
+  let section = measurementList.querySelector('[data-measurement-section="candidates"]');
+  if (!candidates.length) {
+    section?.remove();
+    return;
+  }
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "measurement-candidate-section";
+    section.dataset.measurementSection = "candidates";
+    section.dataset.measurementKey = "candidates";
+
+    const title = document.createElement("div");
+    title.className = "measurement-group-header";
+    title.innerHTML = '<span class="measurement-group-title">Candidates</span>';
+
+    const list = document.createElement("div");
+    list.className = "measurement-candidate-list";
+    list.dataset.measurementPart = "candidate-list";
+    section.append(title, list);
+  }
+
+  const list = section.querySelector('[data-measurement-part="candidate-list"]');
+  list.replaceChildren(...candidates.map((candidate) => {
+    const measurementId = `candidate:${candidate.id}`;
+    let item = measurementList.querySelector(`[data-measurement-id="${cssEscape(measurementId)}"]`);
+    if (!item) item = createMeasurementCandidateItem(measurementId);
+    updateMeasurementCandidateItem(item, candidate);
+    return item;
+  }));
+  measurementList.append(section);
+}
+
+function createMeasurementGroupHeaderControls(groupId, label) {
+  const wrap = document.createElement("div");
+  wrap.className = "measurement-group-header-main";
+
+  const title = document.createElement("span");
+  title.className = "measurement-group-title";
+  title.textContent = label;
+
+  const name = document.createElement("input");
+  name.type = "text";
+  name.className = "measurement-group-name-input";
+  name.dataset.measurementGroupField = "name";
+  name.ariaLabel = "Measurement group name";
+
+  const target = document.createElement("select");
+  target.className = "measurement-group-target-select";
+  target.dataset.measurementGroupField = "target";
+  target.ariaLabel = "Measurement group target";
+
+  wrap.append(title, name, target);
+
+  const count = document.createElement("span");
+  count.className = "measurement-group-count";
+  count.dataset.measurementPart = "count";
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "measurement-group-remove";
+  remove.dataset.measurementGroupAction = "remove";
+  remove.ariaLabel = `Remove ${label}`;
+  remove.append(createTrashIcon());
+
+  const actions = document.createElement("div");
+  actions.className = "measurement-group-header-actions";
+  actions.append(count, remove);
+
+  return [wrap, actions];
+}
+
+function createMeasurementResponseItem(measurementId) {
+  const item = document.createElement("article");
+  item.className = "measurement-chip";
+  item.dataset.measurementId = measurementId;
+  item.draggable = true;
+
+  const name = document.createElement("span");
+  name.className = "measurement-chip-name";
+  name.dataset.measurementPart = "name";
+
+  const angleInput = document.createElement("input");
+  angleInput.type = "number";
+  angleInput.min = "-180";
+  angleInput.max = "180";
+  angleInput.step = "1";
+  angleInput.className = "measurement-angle-inline";
+  angleInput.dataset.measurementPart = "angle";
+
+  const meta = document.createElement("span");
+  meta.className = "measurement-chip-meta";
+  meta.dataset.measurementPart = "meta";
+
+  const actions = document.createElement("div");
+  actions.className = "measurement-chip-actions";
+  const visible = document.createElement("button");
+  visible.type = "button";
+  visible.dataset.measurementAction = "visibility";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger";
+  remove.dataset.measurementAction = "remove";
+  remove.append(createTrashIcon());
+  actions.append(visible, remove);
+  item.append(name, meta, angleInput, actions);
+  return item;
+}
+
+function updateMeasurementResponseItem(item, response) {
+  const shortName = shortMeasurementName(response);
+  const fullName = fullMeasurementName(response);
+  const name = item.querySelector('[data-measurement-part="name"]');
+  name.textContent = shortName;
+  setTooltip(name, fullName);
+  setTooltip(item, fullName);
+  item.querySelector('[data-measurement-part="meta"]').textContent = `${formatMeasurementAngleCompact(response)} / ${response.plane === "vertical" ? "V" : "H"} / ${formatFrequencyValue(response.points[0]?.frequencyHz)}-${formatFrequencyValue(response.points[response.points.length - 1]?.frequencyHz)}`;
+
+  const angleInput = item.querySelector('[data-measurement-part="angle"]');
+  if (document.activeElement !== angleInput) angleInput.value = String(Math.round(Number(response.angleDeg || 0)));
+  angleInput.onchange = () => updateFrequencyResponseAngle(response.id, angleInput.value);
+
+  const visible = item.querySelector('[data-measurement-action="visibility"]');
+  visible.replaceChildren(createEyeIcon(response.visible !== false));
+  visible.classList.toggle("active", response.visible !== false);
+  visible.setAttribute("aria-pressed", String(response.visible !== false));
+  visible.ariaLabel = `${response.visible === false ? "Show" : "Hide"} ${shortName}`;
+  setTooltip(visible, response.visible === false ? "Show this measurement." : "Hide this measurement.");
+  visible.onclick = () => setFrequencyResponseVisibility(response.id, !response.visible);
+
+  const remove = item.querySelector('[data-measurement-action="remove"]');
+  remove.ariaLabel = `Remove ${shortName}`;
+  setTooltip(remove, "Delete this measurement.");
+  remove.onclick = () => removeFrequencyResponse(response.id);
+}
+
+function createMeasurementCandidateItem(measurementId) {
+  const item = document.createElement("article");
+  item.className = "search-result frequency-response-result";
+  item.dataset.measurementId = measurementId;
+
+  const title = document.createElement("div");
+  title.className = "search-result-title";
+  const name = document.createElement("span");
+  name.dataset.measurementPart = "name";
+
+  const actions = document.createElement("div");
+  actions.className = "crossover-transition-actions";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.textContent = "Open";
+  open.dataset.measurementAction = "open";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger";
+  remove.textContent = "Remove";
+  remove.dataset.measurementAction = "remove";
+  actions.append(open, remove);
+  title.append(name, actions);
+
+  const meta = document.createElement("div");
+  meta.className = "search-result-meta";
+  meta.dataset.measurementPart = "meta";
+
+  const values = document.createElement("div");
+  values.className = "search-result-values";
+  values.append(
+    measurementValue("Status", "", "status"),
+    measurementValue("Format", "", "format"),
+    measurementValue("Graph", "", "graph"),
+  );
+
+  const reason = document.createElement("div");
+  reason.className = "search-result-fields";
+  reason.dataset.measurementPart = "reason";
+
+  item.append(title, meta, values, reason);
+  return item;
+}
+
+function updateMeasurementCandidateItem(item, candidate) {
+  item.querySelector('[data-measurement-part="name"]').textContent = candidate.name;
+  item.querySelector('[data-measurement-part="meta"]').textContent = [candidate.source, candidate.format, candidate.url].filter(Boolean).join(" / ");
+  item.querySelector('[data-measurement-value="status"]').textContent = candidate.status || "candidate";
+  item.querySelector('[data-measurement-value="format"]').textContent = candidate.format || "html";
+  item.querySelector('[data-measurement-value="graph"]').textContent = "needs data";
+  item.querySelector('[data-measurement-part="reason"]').textContent = candidate.reason || "Candidate found by driver search; numeric response data was not available yet.";
+
+  const open = item.querySelector('[data-measurement-action="open"]');
+  open.disabled = !candidate.url;
+  open.onclick = () => {
+    if (candidate.url) window.open(candidate.url, "_blank", "noopener");
+  };
+
+  const remove = item.querySelector('[data-measurement-action="remove"]');
+  remove.onclick = () => removeFrequencyResponseCandidate(candidate.id);
+}
+
+function recordingSettings() {
+  return normalizeRecordingSettings(state.measurements?.recording);
+}
+
+function hydrateRecordingControls() {
+  const settings = recordingSettings();
+  if (recordingMicrophoneSelect && document.activeElement !== recordingMicrophoneSelect) {
+    recordingMicrophoneSelect.value = settings.microphone;
+  }
+  if (recordingSignalSelect && document.activeElement !== recordingSignalSelect) {
+    recordingSignalSelect.value = settings.signal;
+  }
+  if (recordingLevelInput && document.activeElement !== recordingLevelInput) {
+    recordingLevelInput.value = String(settings.levelDb);
+  }
+  if (recordingDurationInput && document.activeElement !== recordingDurationInput) {
+    recordingDurationInput.value = String(settings.durationSec);
+  }
+  if (recordingAveragingInput && document.activeElement !== recordingAveragingInput) {
+    recordingAveragingInput.value = String(settings.averaging);
+  }
+  if (recordingLevelReadout) recordingLevelReadout.textContent = `${settings.levelDb.toFixed(0)} dB`;
+  if (recordingMeterBar) {
+    const width = clampNumber((settings.levelDb - 35) / 70, 0, 1) * 100;
+    recordingMeterBar.style.width = `${width.toFixed(0)}%`;
+  }
+}
+
+function updateRecordingSettingsFromControls() {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  nextState.measurements.recording = normalizeRecordingSettings({
+    microphone: recordingMicrophoneSelect?.value,
+    signal: recordingSignalSelect?.value,
+    levelDb: recordingLevelInput?.value,
+    durationSec: recordingDurationInput?.value,
+    averaging: recordingAveragingInput?.value,
+  });
+  commitState(nextState, { replaceHistory: true });
+}
+
+function addRecordingFrequencyResponse(source = "recording") {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  if (!nextState.measurements.recordingGroups?.length) {
+    nextState.measurements.recordingGroups = [{
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      kind: "manual",
+      driverId: "",
+    }];
+  }
+  const settings = normalizeRecordingSettings({
+    ...nextState.measurements.recording,
+    microphone: recordingMicrophoneSelect?.value || nextState.measurements.recording?.microphone,
+    signal: recordingSignalSelect?.value || nextState.measurements.recording?.signal,
+    levelDb: recordingLevelInput?.value || nextState.measurements.recording?.levelDb,
+    durationSec: recordingDurationInput?.value || nextState.measurements.recording?.durationSec,
+    averaging: recordingAveragingInput?.value || nextState.measurements.recording?.averaging,
+  });
+  nextState.measurements.recording = settings;
+
+  const fallbackName = `${settings.signal === "noise" ? "Noise" : "Sweep"} ${nextState.measurements.frequencyResponses.length + 1}`;
+  const name = measurementNameInput?.value?.trim() || fallbackName;
+  stagedRecordingResponse = normalizeFrequencyResponse({
+    name,
+    source: `${settings.microphone} ${settings.signal}`,
+    target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+    recordingGroupId: nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID,
+    plane: measurementPlaneSelect?.value || "horizontal",
+    angleDeg: measurementAngleInput?.value || 0,
+    importedAt: new Date().toISOString(),
+    points: generatedRecordingPoints(settings, Date.now() % 997),
+  });
+
+  commitState(nextState, { replaceHistory: true, animatePlots: true });
+  if (measurementStatus) {
+    const origin = source === "recording" ? "Recording" : "Measurement";
+    measurementStatus.textContent = `${origin} staged: ${stagedRecordingResponse.name}. Save it to add the frequency response.`;
+  }
+}
+
+function saveStagedRecording() {
+  if (!stagedRecordingResponse) return;
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  if (!nextState.measurements.recordingGroups?.length) {
+    nextState.measurements.recordingGroups = [{
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      kind: "manual",
+      driverId: "",
+    }];
+  }
+  const validGroupId = nextState.measurements.recordingGroups.some((group) => group.id === stagedRecordingResponse.recordingGroupId)
+    ? stagedRecordingResponse.recordingGroupId
+    : nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID;
+  const targetGroup = nextState.measurements.recordingGroups.find((group) => group.id === validGroupId);
+  const response = normalizeFrequencyResponse({
+    ...stagedRecordingResponse,
+    recordingGroupId: validGroupId,
+    target: stagedRecordingResponse.target || targetGroup?.target || measurementTargetSelect?.value || defaultMeasurementTarget(),
+    importedAt: stagedRecordingResponse.importedAt || new Date().toISOString(),
+  });
+  nextState.measurements.frequencyResponses.push(response);
+  stagedRecordingResponse = null;
+  commitState(nextState, { animatePlots: true });
+  if (measurementNameInput) measurementNameInput.value = "";
+  if (measurementStatus) measurementStatus.textContent = `Saved recording: ${response.name}.`;
+}
+
+function discardStagedRecording() {
+  if (!stagedRecordingResponse) return;
+  const name = stagedRecordingResponse.name;
+  stagedRecordingResponse = null;
+  render({ animatePlots: true });
+  if (measurementStatus) measurementStatus.textContent = `Discarded staged recording: ${name}.`;
+}
+
+function generatedRecordingPoints(settings, seed = 0) {
+  return frequencies
+    .filter((frequency, index) => index % 7 === 0 || frequency === frequencies[frequencies.length - 1])
+    .map((frequency, index) => {
+      const logPosition = Math.log10(frequency / FREQUENCY_MIN_HZ) / Math.log10(FREQUENCY_MAX_HZ / FREQUENCY_MIN_HZ);
+      const sweepTilt = settings.signal === "sweep" ? -5.5 * logPosition : -1.8 * Math.sin(logPosition * Math.PI);
+      const roomRipple = 2.2 * Math.sin(Math.log2(frequency / 120) * Math.PI + seed * 0.7);
+      const averagedRipple = roomRipple / Math.sqrt(Math.max(settings.averaging, 1));
+      const sourceOffset = settings.microphone === "calibrated" ? 0 : settings.microphone === "usb-measurement" ? 0.8 : 1.4;
+      return {
+        frequencyHz: frequency,
+        magnitudeDb: settings.levelDb + sweepTilt + averagedRipple + sourceOffset + 0.15 * Math.sin(index + seed),
+      };
+    });
+}
+
+function measurementValue(label, value, key = "") {
+  const item = document.createElement("div");
+  item.className = "search-result-value";
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  const valueElement = document.createElement("strong");
+  if (key) valueElement.dataset.measurementValue = key;
+  valueElement.textContent = value;
+  item.append(labelElement, valueElement);
+  return item;
+}
+
+function measurementTargetOptions() {
+  const options = state.configGroups.map((group) => ({
+    value: `configGroup:${group.id}`,
+    label: `Group: ${group.name}`,
+  }));
+  options.push({ value: "configGroup:", label: "Group: No group" });
+  state.designs.forEach((design) => {
+    options.push({ value: `design:${design.id}`, label: `Config: ${design.name}` });
+  });
+  return options;
+}
+
+function defaultMeasurementTarget() {
+  const activeDesign = getActiveDesign();
+  return activeDesign ? `design:${activeDesign.id}` : "configGroup:";
+}
+
+function hydrateMeasurementTargetOptions(select, value = "") {
+  if (!select) return;
+  const options = measurementTargetOptions();
+  select.replaceChildren();
+  options.forEach((option) => select.append(new Option(option.label, option.value)));
+  const resolved = options.some((option) => option.value === value) ? value : defaultMeasurementTarget();
+  select.value = resolved;
+  setTooltip(select, "Choose whether this measurement belongs to one config or one config group.");
+}
+
+function hydrateMeasurementTargetSelect() {
+  hydrateMeasurementTargetOptions(measurementTargetSelect, measurementTargetSelect?.value || defaultMeasurementTarget());
+}
+
+function measurementTargetLabel(target) {
+  if (String(target || "").startsWith("design:")) {
+    const designId = String(target).slice("design:".length);
+    return `Config: ${state.designs.find((design) => design.id === designId)?.name || "Unknown"}`;
+  }
+  if (String(target || "").startsWith("configGroup:")) {
+    const groupId = String(target).slice("configGroup:".length);
+    if (!groupId) return "Group: No group";
+    return `Group: ${state.configGroups.find((group) => group.id === groupId)?.name || "Unknown"}`;
+  }
+  return "Config";
+}
+
+function shortMeasurementName(response) {
+  const sourceName = responseEntryName(response.source || response.name || "");
+  const withoutExtension = sourceName.replace(/\.(?:frd|txt|csv|dat|zip)$/i, "");
+  const withoutAngle = withoutExtension.replace(/@-?\d+(?:[\.,]\d+)?(?:deg)?$/i, "");
+  const compact = withoutAngle
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return compact || String(response.name || "Response").slice(0, 32);
+}
+
+function fullMeasurementName(response) {
+  return [response.name, response.source].filter(Boolean).join(" / ") || response.name || "Frequency response";
+}
+
+function formatMeasurementAngleCompact(response) {
+  return `${Number(response.angleDeg || 0).toFixed(0)} deg`;
+}
+
+function compactMeasurementSeriesName(response) {
+  return `${shortMeasurementName(response)} ${formatMeasurementAngleCompact(response)}`;
+}
+
+function measurementLevelRange(response) {
+  const values = response.points.map((point) => point.magnitudeDb).filter(Number.isFinite);
+  if (!values.length) return "n/a";
+  return `${Math.min(...values).toFixed(1)}..${Math.max(...values).toFixed(1)} dB`;
+}
+
+function formatFrequencyValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "n/a";
+  if (number >= 1000) return `${roundTo(number / 1000, number >= 10000 ? 1 : 2)} kHz`;
+  return `${roundTo(number, 1)} Hz`;
 }
 
 function activeCrossoverGroup() {
@@ -2782,7 +3559,6 @@ function createConfigGroupControls(group, groupIndex) {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.textContent = "x";
-  remove.disabled = state.configGroups.length <= 1;
   remove.ariaLabel = `Remove ${group.name}`;
   setTooltip(remove, "Remove this group and move its configs to the next group.");
   remove.addEventListener("click", (event) => {
@@ -2860,7 +3636,7 @@ function createConfigChip(design, index) {
 
   const menu = createConfigChipMenu(design, index);
 
-  chip.append(checkbox, swatch, name, visibility, menu);
+  chip.append(checkbox, visibility, swatch, name, menu);
   return chip;
 }
 
@@ -2904,6 +3680,25 @@ function createEyeIcon(isVisible) {
       ];
 
   paths.forEach((definition) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", definition);
+    svg.append(path);
+  });
+  return svg;
+}
+
+function createTrashIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6", "M10 11v6", "M14 11v6"].forEach((definition) => {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", definition);
     svg.append(path);
@@ -3188,6 +3983,182 @@ function clearConfigChipDropMarkers() {
   });
 }
 
+function handleMeasurementChipDragStart(event) {
+  const chip = event.target.closest(".measurement-chip");
+  if (!chip || !measurementList?.contains(chip)) return;
+  if (isMeasurementChipInteractiveTarget(event.target)) {
+    event.preventDefault();
+    return;
+  }
+
+  cancelMeasurementPointerDrag();
+  draggedMeasurementResponseId = chip.dataset.measurementId?.replace(/^response:/, "") || "";
+  if (!draggedMeasurementResponseId) {
+    event.preventDefault();
+    return;
+  }
+
+  chip.classList.add("is-dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", draggedMeasurementResponseId);
+}
+
+function handleMeasurementChipDragOver(event) {
+  if (!draggedMeasurementResponseId) return;
+  const dropZone = event.target.closest(".measurement-group-chips");
+  if (!dropZone || !measurementList?.contains(dropZone)) return;
+  event.preventDefault();
+  updateMeasurementChipDropPreview(event.target, event.clientX, event.clientY);
+  event.dataTransfer.dropEffect = "move";
+}
+
+function handleMeasurementChipDragLeave(event) {
+  const dropZone = event.target.closest(".measurement-group-chips");
+  if (dropZone && !dropZone.contains(event.relatedTarget)) {
+    dropZone.classList.remove("drop-target");
+    clearDropMarkers(dropZone);
+  }
+}
+
+function handleMeasurementChipDrop(event) {
+  if (!draggedMeasurementResponseId) return;
+  const dropZone = event.target.closest(".measurement-group-chips");
+  if (!dropZone || !measurementList?.contains(dropZone)) return;
+  event.preventDefault();
+  dropMeasurementChipAt(event.target, event.clientX, event.clientY);
+  clearMeasurementChipDropMarkers();
+}
+
+function handleMeasurementChipDragEnd() {
+  draggedMeasurementResponseId = "";
+  clearMeasurementChipDropMarkers();
+  measurementList?.querySelectorAll(".measurement-chip.is-dragging").forEach((item) => item.classList.remove("is-dragging"));
+}
+
+function handleMeasurementChipPointerDown(event) {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  const chip = event.target.closest(".measurement-chip");
+  if (!chip || !measurementList?.contains(chip) || isMeasurementChipInteractiveTarget(event.target)) return;
+  const responseId = chip.dataset.measurementId?.replace(/^response:/, "") || "";
+  if (!responseId) return;
+
+  measurementPointerDrag = {
+    chip,
+    responseId,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+  };
+  document.addEventListener("pointermove", handleMeasurementChipPointerMove, { passive: false });
+  document.addEventListener("pointerup", handleMeasurementChipPointerUp, { passive: false });
+  document.addEventListener("pointercancel", cancelMeasurementPointerDrag, { passive: false });
+}
+
+function handleMeasurementChipPointerMove(event) {
+  if (!measurementPointerDrag || event.pointerId !== measurementPointerDrag.pointerId) return;
+  const distance = Math.hypot(event.clientX - measurementPointerDrag.startX, event.clientY - measurementPointerDrag.startY);
+  if (!measurementPointerDrag.moved && distance < 7) return;
+
+  event.preventDefault();
+  if (!measurementPointerDrag.moved) {
+    measurementPointerDrag.moved = true;
+    draggedMeasurementResponseId = measurementPointerDrag.responseId;
+    measurementPointerDrag.chip.classList.add("is-dragging");
+  }
+  updateMeasurementChipDropPreview(document.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY);
+}
+
+function handleMeasurementChipPointerUp(event) {
+  if (!measurementPointerDrag || event.pointerId !== measurementPointerDrag.pointerId) return;
+  const drag = measurementPointerDrag;
+  if (drag.moved) {
+    event.preventDefault();
+    drag.chip.dataset.justDragged = "true";
+    window.setTimeout(() => {
+      delete drag.chip.dataset.justDragged;
+    }, 0);
+    dropMeasurementChipAt(document.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY);
+  }
+  cancelMeasurementPointerDrag();
+}
+
+function cancelMeasurementPointerDrag() {
+  document.removeEventListener("pointermove", handleMeasurementChipPointerMove);
+  document.removeEventListener("pointerup", handleMeasurementChipPointerUp);
+  document.removeEventListener("pointercancel", cancelMeasurementPointerDrag);
+  measurementPointerDrag?.chip.classList.remove("is-dragging");
+  measurementPointerDrag = null;
+  draggedMeasurementResponseId = "";
+  clearMeasurementChipDropMarkers();
+}
+
+function updateMeasurementChipDropPreview(target, x, y) {
+  const dropZone = target?.closest?.(".measurement-group-chips");
+  if (!dropZone || !measurementList?.contains(dropZone)) {
+    clearMeasurementChipDropMarkers();
+    return;
+  }
+
+  clearMeasurementChipDropMarkers();
+  const targetChip = measurementDropTargetChip(target, dropZone);
+  if (targetChip && targetChip.dataset.measurementId !== `response:${draggedMeasurementResponseId}`) {
+    const placement = getDropPlacement(targetChip, x, y);
+    targetChip.classList.add(placement === "before" ? "drop-before" : "drop-after");
+  } else {
+    dropZone.classList.add("drop-target");
+  }
+}
+
+function dropMeasurementChipAt(target, x, y) {
+  if (!draggedMeasurementResponseId) return;
+  const dropZone = target?.closest?.(".measurement-group-chips");
+  if (!dropZone || !measurementList?.contains(dropZone)) return;
+
+  const targetChip = measurementDropTargetChip(target, dropZone);
+  if (targetChip?.dataset.measurementId === `response:${draggedMeasurementResponseId}`) return;
+
+  let beforeResponseId = "";
+  if (targetChip) {
+    const placement = getDropPlacement(targetChip, x, y);
+    beforeResponseId = placement === "before"
+      ? targetChip.dataset.measurementId.replace(/^response:/, "")
+      : nextMeasurementChipResponseId(targetChip);
+  }
+
+  moveFrequencyResponseToMeasurementGroup(
+    draggedMeasurementResponseId,
+    dropZone.dataset.measurementGroupId || UNGROUPED_MEASUREMENT_GROUP_ID,
+    beforeResponseId,
+  );
+}
+
+function isMeasurementChipInteractiveTarget(target) {
+  return Boolean(target.closest("button, input, select, textarea, label"));
+}
+
+function measurementDropTargetChip(target, dropZone) {
+  const chip = target.closest?.(".measurement-chip");
+  return chip?.parentElement === dropZone ? chip : null;
+}
+
+function nextMeasurementChipResponseId(chip) {
+  let next = chip.nextElementSibling;
+  while (next) {
+    if (next.classList?.contains("measurement-chip") && next.dataset.measurementId !== `response:${draggedMeasurementResponseId}`) {
+      return next.dataset.measurementId.replace(/^response:/, "");
+    }
+    next = next.nextElementSibling;
+  }
+  return "";
+}
+
+function clearMeasurementChipDropMarkers() {
+  measurementList?.querySelectorAll(".measurement-chip.drop-before, .measurement-chip.drop-after, .measurement-group-chips.drop-target").forEach((item) => {
+    item.classList.remove("drop-before", "drop-after", "drop-target");
+  });
+}
+
 function positionConfigChipMenu(menu) {
   const panel = menu.querySelector(".config-chip-menu-panel");
   const button = menu.querySelector(".config-menu-button");
@@ -3372,6 +4343,7 @@ function renameActiveDesign(rawName) {
 
 function importProjectJson(text) {
   try {
+    stagedRecordingResponse = null;
     commitState(normalizeProjectState(JSON.parse(text)), { hydrate: true });
     projectDialogStatus.textContent = "";
     importExportDialog.close();
@@ -3379,6 +4351,344 @@ function importProjectJson(text) {
     projectDialogStatus.textContent = "Could not import JSON. Check the project data and try again.";
     console.error(error);
   }
+}
+
+async function importFrequencyResponseFile(file) {
+  try {
+    const source = file.name || "frequency-response";
+    const fallbackName = source.replace(/\.[^.]+$/, "");
+    const rawAngle = measurementAngleInput?.value?.trim();
+    const angleDeg = rawAngle ? Number(rawAngle) : inferAngleFromName(source);
+    const response = parseFrequencyResponseText(await file.text(), {
+      name: measurementNameInput?.value?.trim() || fallbackName,
+      source,
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      recordingGroupId: UNGROUPED_MEASUREMENT_GROUP_ID,
+      angleDeg,
+      plane: measurementPlaneSelect?.value || "horizontal",
+      importedAt: new Date().toISOString(),
+    });
+    const nextState = cloneProject(state);
+    nextState.measurements = normalizeMeasurements(nextState.measurements);
+    if (!nextState.measurements.recordingGroups?.length) {
+      nextState.measurements.recordingGroups = [{
+        id: createMeasurementGroupId(),
+        name: "Recording group",
+        target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      }];
+    }
+    response.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || response.recordingGroupId;
+    nextState.measurements.frequencyResponses.push(response);
+    commitState(nextState, { animatePlots: true });
+    if (measurementNameInput) measurementNameInput.value = "";
+    if (measurementStatus) {
+      measurementStatus.textContent = `Imported ${response.points.length} points from ${source}.`;
+    }
+  } catch (error) {
+    if (measurementStatus) measurementStatus.textContent = error.message || "Could not import frequency response.";
+    console.error(error);
+  }
+}
+
+function addFrequencyResponseSearchCandidate(result) {
+  try {
+    if (!result?.response?.points?.length) throw new Error("This result does not contain numeric response data.");
+    const response = normalizeFrequencyResponse({
+      ...result.response,
+      name: result.response.name || result.title || "Scraped response",
+      source: result.response.source || result.url || result.source || "",
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      recordingGroupId: UNGROUPED_MEASUREMENT_GROUP_ID,
+      importedAt: new Date().toISOString(),
+    });
+    if (response.points.length < 2) throw new Error("This response has too few points to import.");
+
+    const nextState = cloneProject(state);
+    nextState.measurements = normalizeMeasurements(nextState.measurements);
+    if (!nextState.measurements.recordingGroups?.length) {
+      nextState.measurements.recordingGroups = [{
+        id: createMeasurementGroupId(),
+        name: "Recording group",
+        target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      }];
+    }
+    response.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || response.recordingGroupId;
+    nextState.measurements.frequencyResponses.push(response);
+    commitState(nextState, { animatePlots: true });
+    setActiveSidebarPanel("measurement");
+    if (measurementStatus) {
+      measurementStatus.textContent = `Added ${response.points.length} points from ${result.source || "web search"}.`;
+    }
+    driverSearchStatus.textContent = `${response.name} added to Measurement.`;
+  } catch (error) {
+    driverSearchStatus.textContent = error.message || "Could not add frequency response.";
+    console.error(error);
+  }
+}
+
+function addFrequencyResponseSearchResultsToMeasurements(results = [], query = "", options = {}) {
+  const validResults = Array.isArray(results) ? results.filter(Boolean) : [];
+  if (!validResults.length) return { added: 0, parsed: 0, candidates: 0 };
+
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  if (!nextState.measurements.recordingGroups?.length) {
+    nextState.measurements.recordingGroups = [{
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+    }];
+  }
+  const shouldCreateGroup = options.createGroup === true;
+  const parsedSourceResults = validResults.filter((result) => result.status === "parsed" && result.response?.points?.length >= 2);
+  let targetRecordingGroupId = nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID;
+  let createdGroup = false;
+  if (shouldCreateGroup && parsedSourceResults.length) {
+    const group = {
+      id: createMeasurementGroupId(),
+      name: uniqueMeasurementGroupName(
+        nextState.measurements.recordingGroups,
+        options.groupName || measurementGroupNameFromQuery(query),
+      ),
+      target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+      kind: options.groupKind === "driver" ? "driver" : "manual",
+      driverId: options.groupKind === "driver" ? String(options.groupDriverId || "").trim() : "",
+    };
+    nextState.measurements.recordingGroups.push(group);
+    targetRecordingGroupId = group.id;
+    createdGroup = true;
+  }
+  const responseKeys = new Set(nextState.measurements.frequencyResponses.map(frequencyResponseIdentity));
+  const candidateKeys = new Set(nextState.measurements.frequencyResponseCandidates.map(frequencyResponseCandidateIdentity));
+  let parsed = 0;
+  let candidates = 0;
+  let reassigned = 0;
+
+  validResults.forEach((result) => {
+    if (result.status === "parsed" && result.response?.points?.length >= 2) {
+      const response = normalizeFrequencyResponse({
+        ...result.response,
+        name: result.response.name || result.title || query || "Scraped response",
+        source: result.response.source || result.url || result.source || "",
+        recordingGroupId: targetRecordingGroupId,
+        importedAt: new Date().toISOString(),
+      });
+      const key = frequencyResponseIdentity(response);
+      if (!responseKeys.has(key)) {
+        nextState.measurements.frequencyResponses.push(response);
+        responseKeys.add(key);
+        parsed += 1;
+      } else if (createdGroup) {
+        const existing = nextState.measurements.frequencyResponses.find((item) => frequencyResponseIdentity(item) === key);
+        if (existing && existing.recordingGroupId !== targetRecordingGroupId) {
+          existing.recordingGroupId = targetRecordingGroupId;
+          const group = nextState.measurements.recordingGroups.find((item) => item.id === targetRecordingGroupId);
+          if (group?.target) existing.target = group.target;
+          reassigned += 1;
+        }
+      }
+      return;
+    }
+
+    const candidate = normalizeFrequencyResponseCandidate({
+      name: result.title || query || "Frequency response candidate",
+      title: result.title,
+      source: result.source || "",
+      url: result.url || "",
+      status: result.status || "candidate",
+      format: result.format || "html",
+      reason: result.reason || "",
+      importedAt: new Date().toISOString(),
+    });
+    const key = frequencyResponseCandidateIdentity(candidate);
+    if (!candidateKeys.has(key) && !responseKeys.has(key)) {
+      nextState.measurements.frequencyResponseCandidates.push(candidate);
+      candidateKeys.add(key);
+      candidates += 1;
+    }
+  });
+
+  const added = parsed + candidates;
+  if (added || reassigned || createdGroup) {
+    commitState(nextState, { animatePlots: parsed > 0 });
+    if (measurementStatus) {
+      const sourceLabel = options.sourceLabel || "driver search";
+      const actionText = added
+        ? `${added} frequency response ${added === 1 ? "entry" : "entries"} added from ${sourceLabel}${parsed ? `; ${parsed} plotted` : ""}.`
+        : reassigned
+          ? `${reassigned} existing frequency response ${reassigned === 1 ? "entry" : "entries"} moved into a new recording group from ${sourceLabel}.`
+          : `New recording group created for ${sourceLabel}.`;
+      measurementStatus.textContent = actionText;
+    }
+  }
+  return { added, parsed, candidates, reassigned };
+}
+
+function frequencyResponseIdentity(response = {}) {
+  const points = response.points || [];
+  const first = points[0]?.frequencyHz;
+  const last = points[points.length - 1]?.frequencyHz;
+  return normalizeResponseIdentity([
+    responseEntryName(response.source || response.url || response.name),
+    response.angleDeg,
+    points.length,
+    Number.isFinite(first) ? first.toFixed(3) : "",
+    Number.isFinite(last) ? last.toFixed(3) : "",
+  ].join(":"));
+}
+
+function frequencyResponseCandidateIdentity(candidate = {}) {
+  return normalizeResponseIdentity(candidate.url || `${candidate.source}:${candidate.name}`);
+}
+
+function normalizeResponseIdentity(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function responseEntryName(value) {
+  const text = String(value || "");
+  const fragment = text.includes("#") ? text.split("#").pop() : text;
+  return fragment.split(/[\\/]/).pop() || fragment || text;
+}
+
+function setFrequencyResponseVisibility(responseId, visible) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const response = nextState.measurements.frequencyResponses.find((item) => item.id === responseId);
+  if (!response) return;
+  response.visible = visible;
+  commitState(nextState, { animatePlots: true });
+}
+
+function updateFrequencyResponseAngle(responseId, angleDeg) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const response = nextState.measurements.frequencyResponses.find((item) => item.id === responseId);
+  if (!response) return;
+  const nextAngle = clampNumber(Number(angleDeg), -180, 180, response.angleDeg || 0);
+  response.angleDeg = nextAngle;
+  commitState(nextState, { animatePlots: true });
+  if (measurementStatus) measurementStatus.textContent = `${shortMeasurementName(response)} angle set to ${Math.round(nextAngle)} deg.`;
+}
+
+function removeFrequencyResponse(responseId) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  nextState.measurements.frequencyResponses = nextState.measurements.frequencyResponses.filter((item) => item.id !== responseId);
+  commitState(nextState, { animatePlots: true });
+  if (measurementStatus) measurementStatus.textContent = "Frequency response removed.";
+}
+
+function removeFrequencyResponseCandidate(candidateId) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  nextState.measurements.frequencyResponseCandidates = nextState.measurements.frequencyResponseCandidates.filter((item) => item.id !== candidateId);
+  commitState(nextState, { animatePlots: true });
+  if (measurementStatus) measurementStatus.textContent = "Frequency response candidate removed.";
+}
+
+function updateFrequencyResponseTarget(responseId, target) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const response = nextState.measurements.frequencyResponses.find((item) => item.id === responseId);
+  if (!response) return;
+  response.target = String(target || "").trim() || defaultMeasurementTarget();
+  commitState(nextState, { animatePlots: true });
+  if (measurementStatus) measurementStatus.textContent = `${shortMeasurementName(response)} target set to ${measurementTargetLabel(response.target)}.`;
+}
+
+function addMeasurementGroup() {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  nextState.measurements.recordingGroups = normalizeMeasurementGroups(nextState.measurements.recordingGroups);
+  const group = {
+    id: createMeasurementGroupId(),
+    name: uniqueMeasurementGroupName(nextState.measurements.recordingGroups, "Recording group"),
+    target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+    kind: "manual",
+    driverId: "",
+  };
+  nextState.measurements.recordingGroups.push(group);
+  commitState(nextState);
+}
+
+function updateMeasurementGroup(groupId, updates = {}) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const group = nextState.measurements.recordingGroups.find((item) => item.id === groupId);
+  if (!group) return;
+  group.name = String(updates.name || group.name).trim() || group.name;
+  if (updates.target) group.target = String(updates.target).trim() || group.target;
+  commitState(nextState, { replaceHistory: true });
+}
+
+function updateMeasurementGroupTarget(groupId, target) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const group = nextState.measurements.recordingGroups.find((item) => item.id === groupId);
+  if (!group) return;
+  group.target = String(target || "").trim() || defaultMeasurementTarget();
+  nextState.measurements.frequencyResponses = nextState.measurements.frequencyResponses.map((response) => (
+    response.recordingGroupId === groupId
+      ? { ...response, target: group.target }
+      : response
+  ));
+  commitState(nextState, { animatePlots: true });
+}
+
+function deleteMeasurementGroup(groupId) {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const remainingGroups = nextState.measurements.recordingGroups.filter((group) => group.id !== groupId);
+  if (!remainingGroups.length) {
+    remainingGroups.push({
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: defaultMeasurementTarget(),
+      kind: "manual",
+      driverId: "",
+    });
+  }
+  const fallbackGroupId = remainingGroups[0].id;
+  const fallbackTarget = remainingGroups[0].target || defaultMeasurementTarget();
+  nextState.measurements.recordingGroups = remainingGroups;
+  nextState.measurements.frequencyResponses = nextState.measurements.frequencyResponses.map((response) => (
+    response.recordingGroupId === groupId
+      ? { ...response, recordingGroupId: fallbackGroupId, target: fallbackTarget }
+      : response
+  ));
+  commitState(nextState, { animatePlots: true });
+}
+
+function moveFrequencyResponseToMeasurementGroup(responseId, groupId, beforeResponseId = "") {
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const responses = nextState.measurements.frequencyResponses;
+  const responseIndex = responses.findIndex((item) => item.id === responseId);
+  if (responseIndex < 0) return;
+
+  const [response] = responses.splice(responseIndex, 1);
+  response.recordingGroupId = groupId || UNGROUPED_MEASUREMENT_GROUP_ID;
+  if (groupId) {
+    const group = nextState.measurements.recordingGroups.find((item) => item.id === groupId);
+    if (group?.target) response.target = group.target;
+  }
+
+  let insertIndex = responses.length;
+  if (beforeResponseId) {
+    const beforeIndex = responses.findIndex((item) => item.id === beforeResponseId);
+    if (beforeIndex >= 0) insertIndex = beforeIndex;
+  } else {
+    const lastIndexInGroup = responses.reduce((lastIndex, item, index) => (
+      (item.recordingGroupId || UNGROUPED_MEASUREMENT_GROUP_ID) === (groupId || UNGROUPED_MEASUREMENT_GROUP_ID) ? index : lastIndex
+    ), -1);
+    insertIndex = lastIndexInGroup + 1;
+  }
+
+  responses.splice(insertIndex, 0, response);
+  commitState(nextState, { animatePlots: true });
 }
 
 function createDesignId() {
@@ -3399,6 +4709,10 @@ function createSignalFilterId() {
 
 function createDriverGroupId() {
   return `driver-group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function createMeasurementGroupId() {
+  return `measurement-group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function uniqueDesignName(designs, baseName) {
@@ -3483,25 +4797,34 @@ async function searchDriverSpecs() {
 
   driverSearchButton.disabled = true;
   const directUrl = isHttpUrl(query);
-  driverSearchStatus.textContent = directUrl ? "Reading datasheet URL..." : "Searching web for T/S parameters...";
+  driverSearchStatus.textContent = directUrl ? "Reading datasheet and response sources..." : "Searching web for T/S parameters and frequency responses...";
   driverSearchResults.replaceChildren();
 
   try {
-    const response = await fetch(`/api/driver-search?q=${encodeURIComponent(query)}`);
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || `Search failed with HTTP ${response.status}`);
-    renderDriverSearchResults(payload.results || []);
-    if (payload.results?.length) {
-      driverSearchStatus.textContent = payload.imageOnlyPdf
-        ? `PDF has no selectable text. Values found from "${payload.fallbackQuery || "an alternate source"}"; verify before applying.`
-        : payload.directUrl
+    const driverPayload = await fetchSearchJson(`/api/driver-search?q=${encodeURIComponent(query)}`);
+    const driverResults = driverPayload.results || [];
+    const frequencyResults = driverPayload.frequencyResponses || [];
+
+    renderDriverSearchResults(driverResults, frequencyResults, query);
+
+    const statusParts = [];
+    if (driverResults.length) {
+      statusParts.push(driverPayload.imageOnlyPdf
+        ? `PDF has no selectable text. Values found from "${driverPayload.fallbackQuery || "an alternate source"}"; verify before applying.`
+        : driverPayload.directUrl
           ? "Datasheet parsed. Verify the values before applying."
-          : `${payload.results.length} candidate${payload.results.length === 1 ? "" : "s"} found. Verify before applying.`;
+          : `${driverResults.length} driver candidate${driverResults.length === 1 ? "" : "s"} found. Verify before applying.`);
     } else {
-      driverSearchStatus.textContent = payload.directUrl
+      statusParts.push(driverPayload.directUrl
         ? "No usable T/S parameter set found at this URL."
-        : "No usable T/S parameter set found.";
+        : "No usable T/S parameter set found.");
     }
+    if (frequencyResults.length) {
+      const parsedCount = frequencyResults.filter((result) => result.status === "parsed").length;
+      statusParts.push(`${frequencyResults.length} response candidate${frequencyResults.length === 1 ? "" : "s"} found${parsedCount ? `, ${parsedCount} importable` : ""}; added only when you apply a driver.`);
+    }
+    if (driverPayload.frequencyResponseError) statusParts.push(`Response search failed: ${driverPayload.frequencyResponseError}.`);
+    driverSearchStatus.textContent = statusParts.join(" ");
   } catch (error) {
     driverSearchStatus.textContent = error.message || "Search failed.";
   } finally {
@@ -3509,12 +4832,63 @@ async function searchDriverSpecs() {
   }
 }
 
-function renderDriverSearchResults(results) {
-  driverSearchResults.replaceChildren();
+function uniqueMeasurementGroupName(groups, baseName) {
+  const names = new Set((groups || []).map((group) => group.name));
+  if (!names.has(baseName)) return baseName;
+  let index = 2;
+  while (names.has(`${baseName} ${index}`)) index += 1;
+  return `${baseName} ${index}`;
+}
 
-  results.forEach((result, index) => {
+function isDriverMeasurementGroup(group) {
+  return String(group?.kind || "") === "driver";
+}
+
+function removeDriverMeasurementGroups(project) {
+  const nextProject = project;
+  nextProject.measurements = normalizeMeasurements(nextProject.measurements);
+  const removedGroupIds = new Set(
+    nextProject.measurements.recordingGroups
+      .filter((group) => isDriverMeasurementGroup(group))
+      .map((group) => group.id),
+  );
+  if (!removedGroupIds.size) return 0;
+  nextProject.measurements.recordingGroups = nextProject.measurements.recordingGroups.filter((group) => !removedGroupIds.has(group.id));
+  nextProject.measurements.frequencyResponses = nextProject.measurements.frequencyResponses.filter(
+    (response) => !removedGroupIds.has(response.recordingGroupId),
+  );
+  if (!nextProject.measurements.recordingGroups.length) {
+    nextProject.measurements.recordingGroups = [{
+      id: createMeasurementGroupId(),
+      name: "Recording group",
+      target: defaultMeasurementTarget(),
+      kind: "manual",
+      driverId: "",
+    }];
+  }
+  return removedGroupIds.size;
+}
+
+function measurementGroupNameFromQuery(query) {
+  const text = String(query || "").trim().replace(/\s+/g, " ");
+  if (!text) return "Recording group";
+  return text.length > 42 ? `${text.slice(0, 42).trim()}...` : text;
+}
+
+async function fetchSearchJson(url) {
+  const response = await fetch(url);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || `Search failed with HTTP ${response.status}`);
+  return payload;
+}
+
+function renderDriverSearchResults(results, frequencyResults = [], query = "") {
+  driverSearchResults.replaceChildren();
+  const rankedResults = rankDriverResultsByFrequencyResponses(results, frequencyResults, query);
+
+  rankedResults.forEach(({ result, matches }, index) => {
     const item = document.createElement("article");
-    item.className = "search-result";
+    item.className = matches.length ? "search-result has-frequency-response" : "search-result";
     setTooltip(item, "Review this driver candidate before applying it.");
 
     const titleRow = document.createElement("div");
@@ -3539,7 +4913,60 @@ function renderDriverSearchResults(results) {
     fields.className = "search-result-fields";
     fields.textContent = `Found: ${(result.matched || []).join(", ")}`;
 
+    const responseFields = document.createElement("div");
+    responseFields.className = "search-result-fields driver-response-summary";
+    responseFields.textContent = formatDriverFrequencyResponseSummary(matches);
+
     const values = renderDriverResultValues(result.driver || {});
+
+    item.append(titleRow, meta, responseFields, values, fields);
+    driverSearchResults.append(item);
+  });
+
+  if (frequencyResults.length) {
+    const label = document.createElement("div");
+    label.className = "search-result-section";
+    label.textContent = "Frequency responses";
+    driverSearchResults.append(label);
+  }
+
+  frequencyResults.forEach((result, index) => {
+    const item = document.createElement("article");
+    item.className = "search-result frequency-response-result";
+    setTooltip(item, result.status === "parsed" ? "Add this parsed response to Measurement." : "Inspect this response candidate before importing it.");
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "search-result-title";
+
+    const title = document.createElement("span");
+    title.textContent = result.title || `Frequency response ${index + 1}`;
+
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.textContent = result.status === "parsed" ? "Add" : "Open";
+    setTooltip(actionButton, result.status === "parsed" ? "Add this frequency response to the Measurement tab." : "Open the source in a new browser tab.");
+    actionButton.addEventListener("click", () => {
+      if (result.status === "parsed") {
+        addFrequencyResponseSearchCandidate(result);
+      } else if (result.url) {
+        window.open(result.url, "_blank", "noopener");
+      }
+    });
+    actionButton.disabled = result.status !== "parsed" && !result.url;
+
+    titleRow.append(title, actionButton);
+
+    const meta = document.createElement("div");
+    meta.className = "search-result-meta";
+    meta.textContent = [result.source, result.format, result.url].filter(Boolean).join(" / ");
+
+    const values = result.status === "parsed"
+      ? renderSearchResultValues(FREQUENCY_RESPONSE_RESULT_FIELDS, result, "No numeric response values recognized.")
+      : renderFrequencyResponseCandidateValues(result);
+
+    const fields = document.createElement("div");
+    fields.className = "search-result-fields";
+    fields.textContent = result.reason || "Potential frequency response source.";
 
     item.append(titleRow, meta, values, fields);
     driverSearchResults.append(item);
@@ -3548,6 +4975,92 @@ function renderDriverSearchResults(results) {
 
 function renderDriverResultValues(driver) {
   return renderSearchResultValues(DRIVER_RESULT_FIELDS, driver, "No numeric driver values recognized.");
+}
+
+function rankDriverResultsByFrequencyResponses(results, frequencyResults = [], query = "") {
+  return results
+    .map((result, index) => ({
+      result,
+      index,
+      matches: Array.isArray(result.frequencyResponseMatches)
+        ? result.frequencyResponseMatches
+        : matchingFrequencyResponseResults(result, frequencyResults, query),
+    }))
+    .sort((left, right) => {
+      const leftHasResponses = left.matches.length > 0;
+      const rightHasResponses = right.matches.length > 0;
+      if (leftHasResponses !== rightHasResponses) return rightHasResponses ? 1 : -1;
+      return left.index - right.index;
+    });
+}
+
+function formatDriverFrequencyResponseSummary(matches = []) {
+  if (!matches.length) return "Frequency response: none found for this driver.";
+  const parsedCount = matches.filter((result) => result.status === "parsed").length;
+  const sources = [...new Set(matches.map((result) => result.source).filter(Boolean))].slice(0, 2);
+  const sourceText = sources.length ? ` from ${sources.join(", ")}` : "";
+  return `Frequency response: ${matches.length} candidate${matches.length === 1 ? "" : "s"} found${parsedCount ? `, ${parsedCount} importable` : ""}${sourceText}.`;
+}
+
+function matchingFrequencyResponseResults(driverResult, frequencyResults = [], query = "") {
+  const driverTokens = driverResponseMatchTokens(driverResult);
+  const queryTokens = driverResponseMatchTokens({ title: query });
+  const tokens = [...new Set([...driverTokens, ...queryTokens])];
+  if (!frequencyResults.length) return [];
+  if (!tokens.length) return frequencyResults;
+  const matches = frequencyResults.filter((result) => {
+    const haystack = normalizeResponseMatchText([result.title, result.url, result.source].filter(Boolean).join(" "));
+    return tokens.some((token) => haystack.includes(token));
+  });
+  if (matches.length) return matches;
+  if (queryTokens.length && driverTextMatchesTokens(driverResult, queryTokens)) return frequencyResults;
+  return frequencyResults;
+}
+
+function driverResponseMatchTokens(driverResult) {
+  const text = [driverResult?.title, driverResult?.url].filter(Boolean).join(" ");
+  const normalized = normalizeResponseMatchText(text);
+  const rawTokens = [
+    ...(text.match(/[A-Z0-9]+(?:[-_][A-Z0-9]+)+/gi) || []),
+    ...(text.match(/\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9-]{4,}\b/gi) || []),
+  ];
+  return [...new Set(rawTokens.map(normalizeResponseMatchText))]
+    .filter((token) => token.length >= 4 && /\d/.test(token) && normalized.includes(token))
+    .slice(0, 8);
+}
+
+function normalizeResponseMatchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function driverTextMatchesTokens(driverResult, tokens) {
+  const haystack = normalizeResponseMatchText([driverResult?.title, driverResult?.url].filter(Boolean).join(" "));
+  return tokens.some((token) => haystack.includes(token));
+}
+
+function renderFrequencyResponseCandidateValues(result) {
+  const values = document.createElement("div");
+  values.className = "search-result-values";
+  [
+    ["Status", result.status || "candidate"],
+    ["Format", result.format || "html"],
+    ["Source", result.source || "Web"],
+  ].forEach(([labelText, valueText]) => {
+    const row = document.createElement("div");
+    row.className = "search-result-value";
+
+    const label = document.createElement("span");
+    label.textContent = labelText;
+
+    const output = document.createElement("strong");
+    output.textContent = valueText;
+
+    row.append(label, output);
+    values.append(row);
+  });
+  return values;
 }
 
 async function searchPassiveRadiatorSpecs() {
@@ -3765,6 +5278,12 @@ function applyPlannerCandidate(candidate) {
 function applyDriverCandidate(result) {
   const nextDriver = completeDriverParameters(state.driver, result.driver);
   const fieldCount = Object.keys(result.driver || {}).filter((key) => Number.isFinite(Number(result.driver[key]))).length;
+  const responseImport = addFrequencyResponseSearchResultsToMeasurements(result.frequencyResponseMatches || [], result.title || result.url || "", {
+    createGroup: true,
+    groupName: result.title || "Recording group",
+    groupKind: "driver",
+    sourceLabel: "driver search",
+  });
   const libraryEntry = addDriverToLibrary({
     id: slugify(result.title || result.url || `driver-${Date.now()}`),
     name: result.title || "Scraped driver",
@@ -3773,7 +5292,10 @@ function applyDriverCandidate(result) {
   });
   applyKnownDriver(libraryEntry);
   driverSearchResults.replaceChildren();
-  driverSearchStatus.textContent = `${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known driver.`;
+  const responseText = responseImport.added
+    ? ` ${responseImport.added} frequency response ${responseImport.added === 1 ? "entry" : "entries"} added to Measurement${responseImport.parsed ? `; ${responseImport.parsed} plotted` : ""}.`
+    : "";
+  driverSearchStatus.textContent = `${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known driver.${responseText}`;
 }
 
 function applyPassiveRadiatorCandidate(result) {
@@ -3792,9 +5314,26 @@ function applyPassiveRadiatorCandidate(result) {
 function applyKnownDriver(driverEntry) {
   const nextState = cloneProject(state);
   nextState.driver = completeDriverParameters(sampleProject.driver, driverEntry.driver);
+  const removedDriverGroups = removeDriverMeasurementGroups(nextState);
   syncActiveDriverGroupFromProject(nextState);
   syncActiveDesignFromProject(nextState);
   commitState(nextState, { hydrate: true });
+  if (Array.isArray(driverEntry.frequencyResponseMatches) && driverEntry.frequencyResponseMatches.length) {
+    const responseImport = addFrequencyResponseSearchResultsToMeasurements(driverEntry.frequencyResponseMatches, driverEntry.name || driverEntry.source || "", {
+      createGroup: true,
+      groupName: driverEntry.name || "Recording group",
+      groupKind: "driver",
+      groupDriverId: driverEntry.id,
+      sourceLabel: "known driver library",
+    });
+    if (removedDriverGroups && measurementStatus) {
+      const importedCount = responseImport.added || responseImport.reassigned;
+      const suffix = importedCount ? " New driver measurements added." : "";
+      measurementStatus.textContent = `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.${suffix}`;
+    }
+  } else if (removedDriverGroups && measurementStatus) {
+    measurementStatus.textContent = `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.`;
+  }
   renderDriverSelect();
   driverSelect.value = driverEntry.id;
 }
@@ -4166,14 +5705,21 @@ function initializeMobileLayoutControls() {
 function applyMobilePanelVisibility() {
   if (!isMobileLayout()) return;
   updateMobileToolbarOffset();
-  document.querySelector(".plot-grid")?.style.setProperty("--mobile-plot-height", mobileActivePanel === "boxPreview" ? "320px" : "300px");
+  const mobileHeight = mobilePanelHeight(mobileActivePanel);
+  document.querySelector(".plot-grid")?.style.setProperty("--mobile-plot-height", mobileHeight);
   plotPanels.forEach((panel) => {
     const isActive = panel.dataset.panel === mobileActivePanel;
     panel.classList.toggle("is-hidden", !isActive);
     panel.style.width = "100%";
-    panel.style.height = panel.dataset.panel === "boxPreview" ? "320px" : "300px";
+    panel.style.height = mobilePanelHeight(panel.dataset.panel);
   });
   updateMobilePanelMenuLabel();
+}
+
+function mobilePanelHeight(panelId) {
+  if (panelId === "recordingPanel") return "440px";
+  if (panelId === "boxPreview") return "320px";
+  return "300px";
 }
 
 function updateMobileToolbarOffset() {
@@ -4415,7 +5961,7 @@ function restoreLayout() {
     if (validSavedConfig && layout?.panelLayoutVersion !== LAYOUT_PANEL_VERSION) {
       shouldPersist = true;
       const visiblePanelIds = panelIdsFromLayoutConfig(validSavedConfig);
-      const missingPanels = ["groupDelayPlot"].filter((panelId) => !visiblePanelIds.includes(panelId));
+      const missingPanels = ["onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "groupDelayPlot", "recordingPanel"].filter((panelId) => !visiblePanelIds.includes(panelId));
       if (missingPanels.length) {
         validSavedConfig = appendPanelsToGoldenConfig(validSavedConfig, missingPanels);
       }
@@ -4920,19 +6466,17 @@ function updatePlotControlValues() {
     const range = currentPlotRange(plotId);
     const view = plotViews[plotId] || {};
     const isFixed = AXIS_KEYS.some((key) => Number.isFinite(view[key]));
-    const mode = document.querySelector(`[data-plot-axis-mode="${plotId}"]`);
-    if (mode && document.activeElement !== mode) {
-      mode.checked = isFixed;
-    }
-    if (mode) {
+    document.querySelectorAll(`[data-plot-axis-mode="${plotId}"]`).forEach((mode) => {
+      if (document.activeElement !== mode) {
+        mode.checked = isFixed;
+      }
       mode.dataset.axisMode = isFixed ? "fixed" : "adaptive";
-    }
+    });
     AXIS_KEYS.forEach((key) => {
-      const input = document.querySelector(`[data-plot-axis-input="${plotId}.${key}"]`);
-      if (input) {
+      document.querySelectorAll(`[data-plot-axis-input="${plotId}.${key}"]`).forEach((input) => {
         input.dataset.axisMode = isFixed ? "fixed" : "adaptive";
         if (document.activeElement !== input) input.value = formatAxisInput(range[key]);
-      }
+      });
     });
     const panel = document.querySelector(`#${plotId}`)?.closest(".plot-panel");
     panel?.classList.toggle("plot-has-custom-view", hasCustomPlotView(plotId));
@@ -5061,6 +6605,8 @@ function render(options = {}) {
   hydrateDerivedFields();
   hydrateRangeFields();
   renderDriverHealthPanel();
+  hydrateRecordingControls();
+  renderMeasurementControls();
   hydratePortLockButtons();
   selectMatchingDriver();
   selectMatchingPassiveRadiator();
@@ -5380,7 +6926,19 @@ function renderPlots(simulations, activeSimulation, options = {}) {
   const portVelocityLimit = positiveOrNull(state.inventory?.constraints?.maxPortVelocityMs) ?? 20;
   const passiveRadiatorLimit = positiveOrNull(activeSimulation.box.passiveRadiator?.xmaxMm);
   const physicalSimulations = simulations.filter((simulation) => !simulation.groupCombined);
+  const measurementResponses = visibleFrequencyResponses();
   const splSeries = simulations.map((simulation) => designSeries(simulation, splValuesForSimulation(simulation), colors));
+  const onAxisResponseSeries = [
+    ...measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) < 0.001)
+      .map((response, index) => frequencyResponseSeries(response, colors, index)),
+  ];
+  const offAxisResponseSeries = [
+    ...measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) >= 0.001)
+      .map((response, index) => frequencyResponseSeries(response, colors, index)),
+  ];
+  const horizontalPolarSeries = measurementPolarSeries(measurementResponses, colors, "horizontal");
   const impedanceSeries = physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.impedance, colors));
   const excursionSeries = [
     ...physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.excursionMm, colors)),
@@ -5421,6 +6979,8 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     unit: "mm",
   });
   const splRange = autoRange(splSeries.flatMap((series) => series.values));
+  const onAxisResponseRange = autoRange(onAxisResponseSeries.flatMap((series) => series.values));
+  const offAxisResponseRange = autoRange(offAxisResponseSeries.flatMap((series) => series.values));
   const impedanceRange = positiveMagnitudeRange(impedanceSeries.flatMap((series) => series.values), { fallbackMax: 16, minFloor: 0.1 });
   const excursionRange = positiveMagnitudeRange(excursionSeries.flatMap((series) => series.values), {
     fallbackMax: Math.max(3, xmaxMm * 1.25),
@@ -5447,6 +7007,27 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     onAnnotationDrag: handleFilterAnnotationDrag,
     series: splSeries,
   }), plotOptions);
+
+  drawPlot(document.querySelector("#onAxisResponsePlot"), applyPlotView("onAxisResponsePlot", {
+    title: "On-axis response",
+    yLabel: "dB SPL",
+    xMin,
+    xMax,
+    yMin: onAxisResponseRange[0],
+    yMax: onAxisResponseRange[1],
+    series: onAxisResponseSeries,
+  }), plotOptions);
+
+  drawPlot(document.querySelector("#offAxisResponsePlot"), applyPlotView("offAxisResponsePlot", {
+    title: "Off-axis response",
+    yLabel: "dB SPL",
+    xMin,
+    xMax,
+    yMin: offAxisResponseRange[0],
+    yMax: offAxisResponseRange[1],
+    series: offAxisResponseSeries,
+  }), plotOptions);
+  updateOffAxisResponseLegend(offAxisResponseSeries);
 
   drawPlot(document.querySelector("#impedancePlot"), applyPlotView("impedancePlot", {
     title: "Input impedance",
@@ -5517,10 +7098,201 @@ function renderPlots(simulations, activeSimulation, options = {}) {
     series: groupDelaySeries,
   }), plotOptions);
 
+  drawPolarPlot(document.querySelector("#horizontalPolarPlot"), {
+    title: "Horizontal polar",
+    minDb: -30,
+    maxDb: 0,
+    series: horizontalPolarSeries,
+  });
+
+  const recordingSeries = recordingPlotSeries(colors);
+  const recordingRange = autoRange(recordingSeries.flatMap((series) => series.values));
+  drawPlot(document.querySelector("#recordingPlot"), {
+    title: "Recording",
+    yLabel: "dB SPL",
+    xMin,
+    xMax,
+    yMin: recordingRange[0],
+    yMax: recordingRange[1],
+    series: recordingSeries,
+  }, plotOptions);
+
   updatePlotControlValues();
 
   const fbValue = activeSimulation.design.mode === "vented" ? nearestFrequencyValue(frequencies, activeSimulation.active.portVelocity, activeSimulation.box.fb) : null;
   void fbValue;
+}
+
+function visibleFrequencyResponses() {
+  return (state.measurements?.frequencyResponses || []).filter((response) =>
+    response.visible !== false &&
+    response.points?.length >= 2 &&
+    measurementTargetMatchesVisibleDesign(response.target)
+  );
+}
+
+function measurementTargetMatchesVisibleDesign(target) {
+  const value = String(target || defaultMeasurementTarget());
+  if (value.startsWith("design:")) {
+    const designId = value.slice("design:".length);
+    const design = state.designs.find((item) => item.id === designId);
+    return Boolean(design && design.visible !== false);
+  }
+  if (value.startsWith("configGroup:")) {
+    const groupId = value.slice("configGroup:".length);
+    return state.designs.some((design) => (design.groupId || UNGROUPED_CONFIG_GROUP_ID) === groupId && design.visible !== false);
+  }
+  return false;
+}
+
+function recordingPlotSeries(colors) {
+  if (stagedRecordingResponse?.points?.length >= 2) {
+    return [{
+      ...frequencyResponseSeries(stagedRecordingResponse, colors, 0),
+      width: 2.8,
+      opacity: 1,
+    }];
+  }
+  const settings = recordingSettings();
+  const preview = normalizeFrequencyResponse({
+    name: `${settings.signal === "noise" ? "Noise" : "Sweep"} preview`,
+    points: generatedRecordingPoints(settings, 0),
+  });
+  return [{
+    ...frequencyResponseSeries(preview, colors, 0),
+    color: colors.dim,
+    opacity: 0.72,
+  }];
+}
+
+function frequencyResponseSeries(response, colors, index = 0) {
+  const color = colors.palette[(index + 3) % colors.palette.length];
+  const compactName = shortMeasurementName(response);
+  const angleLabel = formatMeasurementAngleCompact(response);
+  return {
+    name: compactMeasurementSeriesName(response),
+    compactName,
+    angleLabel,
+    fullName: fullMeasurementName(response),
+    x: response.points.map((point) => point.frequencyHz),
+    values: response.points.map((point) => point.magnitudeDb),
+    color,
+    width: 2.4,
+    opacity: 0.92,
+  };
+}
+
+function updateOffAxisResponseLegend(series) {
+  const panel = document.querySelector('[data-panel="offAxisResponsePlot"]');
+  if (!panel) return;
+
+  let legend = panel.querySelector(".plot-series-legend");
+  if (!series.length) {
+    legend?.remove();
+    return;
+  }
+
+  if (!legend) {
+    legend = document.createElement("div");
+    legend.className = "plot-series-legend";
+    panel.append(legend);
+  }
+
+  legend.replaceChildren(...series.slice(0, 8).map((item) => {
+    const row = document.createElement("div");
+    row.className = "plot-series-legend-row";
+    setTooltip(row, item.fullName || item.name);
+
+    const swatch = document.createElement("span");
+    swatch.className = "plot-series-legend-swatch";
+    swatch.style.background = item.color;
+
+    const angle = document.createElement("strong");
+    angle.textContent = item.angleLabel || "";
+
+    const name = document.createElement("span");
+    name.textContent = item.compactName || item.name;
+
+    row.append(swatch, angle, name);
+    return row;
+  }));
+
+  if (series.length > 8) {
+    const more = document.createElement("div");
+    more.className = "plot-series-legend-more";
+    more.textContent = `+${series.length - 8}`;
+    setTooltip(more, `${series.length - 8} more off-axis curves hidden from the compact legend.`);
+    legend.append(more);
+  }
+}
+
+function measurementPolarSeries(responses, colors, plane = "horizontal") {
+  const planeResponses = responses.filter((response) => response.plane === plane && response.points?.length >= 2);
+  const grouped = new Map();
+  planeResponses.forEach((response) => {
+    const key = response.recordingGroupId || "__ungrouped__";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(response);
+  });
+  const bestGroupResponses = [...grouped.values()]
+    .map((groupResponses) => groupResponses.sort((left, right) => Number(left.angleDeg || 0) - Number(right.angleDeg || 0)))
+    .sort((left, right) => distinctMeasurementAngles(right).length - distinctMeasurementAngles(left).length)[0] || [];
+  const distinctAngles = distinctMeasurementAngles(bestGroupResponses);
+  if (distinctAngles.length < 2) return [];
+
+  const polarColors = [colors.accent, colors.blue, colors.text, colors.accent2, colors.danger];
+  return [500, 1000, 2000, 4000, 8000]
+    .map((frequency, index) => {
+      const sampled = bestGroupResponses
+        .map((response) => ({
+          angleDeg: Number(response.angleDeg) || 0,
+          magnitudeDb: interpolateMeasurementDb(response.points, frequency),
+        }))
+        .filter((point) => Number.isFinite(point.magnitudeDb));
+      const uniqueSampled = dedupePolarPoints(sampled);
+      if (uniqueSampled.length < 2) return null;
+
+      const reference = uniqueSampled.find((point) => Math.abs(point.angleDeg) < 0.001)?.magnitudeDb ?? Math.max(...uniqueSampled.map((point) => point.magnitudeDb));
+      return {
+        name: formatCrossoverFrequency(frequency),
+        color: polarColors[index % polarColors.length],
+        width: index >= 3 ? 2.4 : 1.8,
+        points: uniqueSampled.map((point) => ({
+          angleDeg: point.angleDeg,
+          db: Math.max(-30, Math.min(0, point.magnitudeDb - reference)),
+        })),
+      };
+    })
+    .filter(Boolean);
+}
+
+function distinctMeasurementAngles(responses = []) {
+  return [...new Set(responses.map((response) => Math.round(Number(response.angleDeg || 0) * 1000) / 1000))];
+}
+
+function dedupePolarPoints(points = []) {
+  const seen = new Map();
+  points.forEach((point) => {
+    const key = Math.round(Number(point.angleDeg || 0) * 1000) / 1000;
+    if (!seen.has(key)) seen.set(key, point);
+  });
+  return [...seen.values()].sort((left, right) => left.angleDeg - right.angleDeg);
+}
+
+function interpolateMeasurementDb(points, frequency) {
+  const target = Number(frequency);
+  if (!Number.isFinite(target) || !Array.isArray(points) || points.length < 2) return NaN;
+  const sorted = points;
+  if (target < sorted[0].frequencyHz || target > sorted[sorted.length - 1].frequencyHz) return NaN;
+  for (let index = 1; index < sorted.length; index += 1) {
+    const left = sorted[index - 1];
+    const right = sorted[index];
+    if (target > right.frequencyHz) continue;
+    if (Math.abs(right.frequencyHz - left.frequencyHz) < 1e-9) return right.magnitudeDb;
+    const ratio = (target - left.frequencyHz) / (right.frequencyHz - left.frequencyHz);
+    return left.magnitudeDb + (right.magnitudeDb - left.magnitudeDb) * ratio;
+  }
+  return NaN;
 }
 
 function designSeries(simulation, values, colors) {

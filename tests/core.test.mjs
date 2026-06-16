@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { deflateRawSync } from "node:zlib";
 import { analyzeDriverParameters, combineDriverGroups, combineIdenticalDrivers, deriveDriverParameters, normalizeDriver } from "../src/core/driver.js";
 import { logFrequencyVector, nearestFrequencyValue } from "../src/core/frequency.js";
 import { closedAlignment, simulateSealed, targetClosedVolumeLiters } from "../src/core/sealedBox.js";
@@ -18,8 +19,10 @@ import { simulatePassiveRadiator } from "../src/core/passiveRadiatorBox.js";
 import { simulateBandpass } from "../src/core/bandpassBox.js";
 import { normalizeEnclosureOptions, validateEnclosureOptions } from "../src/core/enclosure.js";
 import { filterChainResponse, highPassResponse, linkwitzTransformResponse, lowPassResponse, parametricEqResponse, shelvingEqResponse, subsonicResponse } from "../src/core/filters.js";
+import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
 import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, maxLinearSpl, recommendedLowFrequencyLimit } from "../src/core/realism.js";
 import { extractDriverData, extractPassiveRadiatorData, findDatasheetPdfLinks, searchDrivers, searchPassiveRadiators } from "../src/core/driverScraper.js";
+import { extractFrequencyResponseLinks, extractZipTextEntries, parseEmbeddedFrequencyResponse, partsExpressFrequencyResponseCandidatesFromItem } from "../src/core/frequencyResponseScraper.js";
 import { maxBuildableVolumeLiters, normalizeInventory } from "../src/core/planner/componentInventory.js";
 import { planDesigns } from "../src/core/planner/designPlanner.js";
 import { AIR_DENSITY } from "../src/core/constants.js";
@@ -225,6 +228,150 @@ test("subsonic filter attenuates below cutoff", () => {
 
   assert.ok(below < 0.05);
   assert.ok(above > 0.95);
+});
+
+test("frequency response parser reads FRD rows with comments and optional phase", () => {
+  const response = parseFrequencyResponseText(`
+    * measured response
+    Frequency SPL Phase
+    20 72.5 -12
+    25 76.0 -8
+    31.5 80.2 -4
+  `, { name: "Nearfield 0deg", source: "nearfield.frd", angleDeg: 0 });
+
+  assert.equal(response.name, "Nearfield 0deg");
+  assert.equal(response.source, "nearfield.frd");
+  assert.equal(response.points.length, 3);
+  assert.equal(response.points[0].frequencyHz, 20);
+  assert.equal(response.points[0].magnitudeDb, 72.5);
+  assert.equal(response.points[0].phaseDeg, -12);
+});
+
+test("frequency response parser reads CSV and semicolon decimal data", () => {
+  const csv = parseFrequencyResponseText(`
+    Freq(Hz),SPL(dB)
+    100,84.2
+    200,86.4
+  `);
+  const semicolon = parseFrequencyResponseText(`
+    100;84,2
+    200;86,4
+  `);
+
+  assert.deepEqual(csv.points.map((point) => point.magnitudeDb), [84.2, 86.4]);
+  assert.deepEqual(semicolon.points.map((point) => point.magnitudeDb), [84.2, 86.4]);
+});
+
+test("measurement angle can be inferred from file names", () => {
+  assert.equal(inferAngleFromName("woofer_30deg.frd"), 30);
+  assert.equal(inferAngleFromName("tweeter -15°.txt"), -15);
+});
+
+test("frequency response scraper discovers linked response assets", () => {
+  const html = `
+    <a href="/files/woofer_0deg.frd">Frequency response FRD</a>
+    <img src="/img/woofer-spl-chart.png" alt="SPL response graph">
+    <a href="/cart/add">Cart</a>
+  `;
+  const links = extractFrequencyResponseLinks(html, "https://example.test/product/woofer", "woofer");
+  const urls = links.map((link) => link.url);
+
+  assert.ok(urls.includes("https://example.test/files/woofer_0deg.frd"));
+  assert.ok(urls.includes("https://example.test/img/woofer-spl-chart.png"));
+  assert.ok(!urls.includes("https://example.test/cart/add"));
+  assert.equal(links.find((link) => link.url.endsWith("woofer-spl-chart.png"))?.title, "SPL response graph");
+});
+
+test("frequency response scraper parses embedded numeric response blocks", () => {
+  const response = parseEmbeddedFrequencyResponse(`
+    <h2>Frequency response</h2>
+    <pre>
+      20 72.5
+      31.5 76.0
+      50 81.0
+      80 84.2
+      125 85.0
+      200 84.4
+    </pre>
+  `, { name: "Scraped 0deg", source: "https://example.test/response" });
+
+  assert.ok(response);
+  assert.equal(response.name, "Scraped 0deg");
+  assert.equal(response.points.length, 6);
+  assert.equal(response.points[0].frequencyHz, 20);
+});
+
+test("frequency response scraper extracts text entries from ZIP resources", () => {
+  const zip = createZip([
+    { name: "FRD/TCP115-4@30.frd", text: "20 70 0\n40 78 0\n80 82 0\n160 84 0\n320 83 0\n640 80 0\n" },
+    { name: "README/readme.txt", text: "driver data package" },
+  ]);
+  const entries = extractZipTextEntries(zip);
+
+  assert.deepEqual(entries.map((entry) => entry.name), ["FRD/TCP115-4@30.frd", "README/readme.txt"]);
+  assert.match(entries[0].text, /320 83/);
+});
+
+test("Parts Express response scraper lists range and image candidates", () => {
+  const candidates = partsExpressFrequencyResponseCandidatesFromItem({
+    displayname: "Dayton Audio RSS315HF-4 12 inch Reference Subwoofer",
+    mpn: "RSS315HF-4",
+    itemid: "295-464",
+    urlcomponent: "Dayton-Audio-RSS315HF-4-12-Reference-Series-HF-Subwoofer-4-Ohm-295-464",
+    custitem_pe_frequency_response: "23 to 1,000",
+    itemimages_detail: {
+      main: {
+        urls: [
+          { url: "/SSP Applications/PartsExpress/img/295-464_HR_0.default.jpg" },
+          { url: "/SSP Applications/PartsExpress/img/295-464_ALT_2.default.jpg" },
+        ],
+      },
+    },
+  }, "RSS315HF-4");
+
+  assert.ok(candidates.some((candidate) => candidate.format === "api-range" && candidate.reason.includes("23 to 1,000")));
+  assert.ok(candidates.some((candidate) => candidate.format === "jpg" && candidate.url.includes("295-464_ALT_2")));
+});
+
+test("measurements keep response candidates without numeric points", () => {
+  const measurements = normalizeMeasurements({
+    frequencyResponses: [
+      { name: "Too sparse", points: [{ frequencyHz: 100, magnitudeDb: 80 }] },
+    ],
+    frequencyResponseCandidates: [
+      {
+        title: "Dayton Audio RSS315HF-4 SPL",
+        source: "Loudspeaker Database",
+        url: "https://loudspeakerdatabase.com/Dayton/RSS315HF-4/response.png",
+        format: "png",
+      },
+    ],
+  });
+
+  assert.equal(measurements.frequencyResponses.length, 0);
+  assert.equal(measurements.frequencyResponseCandidates.length, 1);
+  assert.equal(measurements.frequencyResponseCandidates[0].name, "Dayton Audio RSS315HF-4 SPL");
+});
+
+test("measurements normalize recording groups and preserve response group assignment", () => {
+  const measurements = normalizeMeasurements({
+    recordingGroups: [{ id: "room-a", name: "Room A", target: "configGroup:room" }],
+    frequencyResponses: [
+      {
+        name: "Nearfield",
+        recordingGroupId: "room-a",
+        points: [
+          { frequencyHz: 100, magnitudeDb: 80 },
+          { frequencyHz: 200, magnitudeDb: 82 },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(measurements.recordingGroups.length, 1);
+  assert.equal(measurements.recordingGroups[0].name, "Room A");
+  assert.equal(measurements.recordingGroups[0].target, "configGroup:room");
+  assert.equal(measurements.frequencyResponses[0].recordingGroupId, "room-a");
 });
 
 test("recommended low frequency limit protects small high-Fs drivers", () => {
@@ -898,6 +1045,28 @@ function createSimplePdf(text) {
   });
   body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
   return Buffer.from(body, "ascii");
+}
+
+function createZip(entries) {
+  const chunks = [];
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, "utf8");
+    const content = Buffer.from(entry.text, "utf8");
+    const compressed = deflateRawSync(content);
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(0, 6);
+    header.writeUInt16LE(8, 8);
+    header.writeUInt32LE(0, 10);
+    header.writeUInt32LE(0, 14);
+    header.writeUInt32LE(compressed.length, 18);
+    header.writeUInt32LE(content.length, 22);
+    header.writeUInt16LE(name.length, 26);
+    header.writeUInt16LE(0, 28);
+    chunks.push(header, name, compressed);
+  }
+  return Buffer.concat(chunks);
 }
 
 function createPositionedPdf(items) {

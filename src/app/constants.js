@@ -1,5 +1,5 @@
-export const LAYOUT_STORAGE_KEY = "audiosim.layout.v4";
-export const LAYOUT_PANEL_VERSION = 2;
+export const LAYOUT_STORAGE_KEY = "audiosim.layout.v5";
+export const LAYOUT_PANEL_VERSION = 4;
 export const PROJECT_STORAGE_KEY = "audiosim.project.v1";
 export const DRIVER_LIBRARY_STORAGE_KEY = "audiosim.driverLibrary.v1";
 export const PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY = "audiosim.passiveRadiatorLibrary.v1";
@@ -12,8 +12,20 @@ export const PROJECT_SYNC_CHANNEL = "audiosim.project.sync.v1";
 export const FREQUENCY_MIN_HZ = 10;
 export const FREQUENCY_MAX_HZ = 20000;
 export const UNGROUPED_CONFIG_GROUP_ID = "";
-export const PLOT_IDS = ["splPlot", "impedancePlot", "excursionPlot", "portPlot", "prExcursionPlot", "phasePlot", "groupDelayPlot"];
-export const PANEL_IDS = [...PLOT_IDS, "boxPreview"];
+export const UNGROUPED_MEASUREMENT_GROUP_ID = "";
+export const PLOT_IDS = [
+  "splPlot",
+  "onAxisResponsePlot",
+  "offAxisResponsePlot",
+  "impedancePlot",
+  "excursionPlot",
+  "portPlot",
+  "prExcursionPlot",
+  "phasePlot",
+  "groupDelayPlot",
+];
+export const POLAR_PLOT_IDS = ["horizontalPolarPlot"];
+export const PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
 export const AXIS_KEYS = ["xMin", "xMax", "yMin", "yMax"];
 export const GOLDEN_COMPONENT_TYPE = "plotPanel";
 export const LOG_Y_PLOTS = new Set(["impedancePlot", "excursionPlot", "portPlot", "prExcursionPlot"]);

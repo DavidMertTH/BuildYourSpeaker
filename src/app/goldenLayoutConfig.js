@@ -2,6 +2,14 @@ import { cloneProject } from "../state.js";
 import { GOLDEN_COMPONENT_TYPE, PANEL_IDS } from "./constants.js";
 import { PANEL_LABELS } from "./tooltips.js";
 
+const GOLDEN_LAYOUT_DIMENSIONS = {
+  borderWidth: 0,
+  borderGrabWidth: 8,
+  headerHeight: 24,
+  defaultMinItemWidth: "180px",
+  defaultMinItemHeight: "150px",
+};
+
 export function makeGoldenLayoutTabsClosable(config) {
   const nextConfig = cloneProject(config);
   const visit = (item) => {
@@ -19,10 +27,44 @@ export function goldenLayoutConfigFromResolved(config) {
   if (!config) return null;
   const LayoutConfig = globalThis.goldenLayout?.LayoutConfig;
   try {
-    return LayoutConfig?.isResolved?.(config) ? LayoutConfig.fromResolved(config) : config;
+    const nextConfig = LayoutConfig?.isResolved?.(config) ? LayoutConfig.fromResolved(config) : config;
+    return pruneInvalidPanels(normalizeGoldenLayoutDimensions(nextConfig));
   } catch {
     return null;
   }
+}
+
+function normalizeGoldenLayoutDimensions(config) {
+  const nextConfig = cloneProject(config);
+  nextConfig.dimensions = {
+    ...(nextConfig.dimensions || {}),
+    ...GOLDEN_LAYOUT_DIMENSIONS,
+  };
+  return nextConfig;
+}
+
+function pruneInvalidPanels(config) {
+  const nextConfig = cloneProject(config);
+  const root = pruneLayoutItem(nextConfig.root);
+  if (!root) return null;
+  nextConfig.root = root;
+  return nextConfig;
+}
+
+function pruneLayoutItem(item) {
+  if (!item) return null;
+  if (item.type === "component") {
+    const panelId = item.componentState?.panelId;
+    return PANEL_IDS.includes(panelId) ? item : null;
+  }
+
+  if (Array.isArray(item.content)) {
+    const content = item.content.map(pruneLayoutItem).filter(Boolean);
+    if (!content.length) return null;
+    return { ...item, content };
+  }
+
+  return item;
 }
 
 export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
@@ -51,13 +93,7 @@ export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
       constrainDragToContainer: true,
       popoutWholeStack: false,
     },
-    dimensions: {
-      borderWidth: 7,
-      borderGrabWidth: 8,
-      headerHeight: 24,
-      defaultMinItemWidth: "180px",
-      defaultMinItemHeight: "150px",
-    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
     header: {
       show: "top",
       close: "hide",
