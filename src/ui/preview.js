@@ -176,7 +176,7 @@ function rebuildModel(preview, state, theme) {
   const dims = enclosureDimensions(state);
 
   addCabinet(preview.model, dims, theme, mode);
-  addDriver(preview.model, dims, driverDiameterCm(state), theme);
+  addDrivers(preview.model, dims, driverGroupsForPreview(state), theme);
 
   if (mode === "vented") addVentedPorts(preview.model, dims, box, theme);
   if (mode === "passive") addPassiveRadiators(preview.model, dims, box, theme);
@@ -197,13 +197,27 @@ function addCabinet(group, dims, theme, mode) {
   group.add(edges(new THREE.BoxGeometry(dims.w, dims.h, dims.d), theme.line, 1.35));
 }
 
-function addDriver(group, dims, diameterCm, theme) {
-  const radius = clamp(diameterCm / 2, 4, Math.min(dims.w, dims.h) * 0.28);
+function addDrivers(group, dims, driverGroups, theme) {
+  const drivers = flattenDriverGroups(driverGroups);
+  if (!drivers.length) return;
+
+  const layout = driverLayout(dims, drivers.length);
+  const naturalRadii = drivers.map((item) => Math.max(item.group.diameterCm / 2, 1));
+  const maxNaturalRadius = Math.max(...naturalRadii, 1);
+  const radiusScale = Math.min(1, layout.maxRadius / maxNaturalRadius);
+  const groupColors = [theme.accent, theme.accent2, theme.text, theme.muted];
   const z = dims.d / 2 + 0.85;
-  const y = dims.h * 0.13;
-  addDisc(group, radius, new THREE.Vector3(0, y, z), theme.field, theme.line, 0.78);
-  addDisc(group, radius * 0.56, new THREE.Vector3(0, y, z + 0.35), theme.accent, theme.line, 0.92);
-  addLabel(group, `${formatNumber(radius * 2, 1)} cm driver`, new THREE.Vector3(-dims.w * 0.22, dims.h / 2 + 4, z + 2), theme.text);
+
+  drivers.forEach((item, index) => {
+    const { x, y } = driverPosition(layout, index);
+    const minimumRadius = Math.min(2.2, layout.maxRadius);
+    const radius = clamp(naturalRadii[index] * radiusScale, minimumRadius, layout.maxRadius);
+    const color = groupColors[item.groupIndex % groupColors.length];
+    addDisc(group, radius, new THREE.Vector3(x, y, z), theme.field, theme.line, 0.78);
+    addDisc(group, radius * 0.56, new THREE.Vector3(x, y, z + 0.35), color, theme.line, 0.92);
+  });
+
+  addLabel(group, driverSummaryLabel(driverGroups, drivers), new THREE.Vector3(-dims.w * 0.22, dims.h / 2 + 4, z + 2), theme.text);
 }
 
 function addVentedPorts(group, dims, box, theme) {
@@ -219,43 +233,113 @@ function addVentedPorts(group, dims, box, theme) {
 
 function addPort(group, dims, port, theme) {
   const actualLength = Math.max(Number(port.lengthCm) || 8, 3);
-  const visualLength = Math.min(actualLength, Math.max(dims.d * 2.4, 12));
-  const insideLength = Math.max(1, Math.min(visualLength, dims.d - 4));
+  const section = portSection(port, dims);
+  const visualLength = Math.min(actualLength, Math.max(dims.d * 3.2, 14));
+  const clearance = Math.max(section.width, section.height) * 0.62 + 2;
+  const insideLength = Math.max(1, Math.min(visualLength, dims.d - clearance - 1.5));
   const foldedLength = Math.max(0, visualLength - insideLength);
   const zFront = dims.d / 2 + 0.3;
   const zCenter = zFront - insideLength / 2;
+  const inlet = new THREE.Vector3(port.x, port.y, zCenter);
 
-  if (port.shape === "rectangular") {
-    const width = clamp(Number(port.widthCm) || 8, 3, dims.w * 0.42);
-    const height = clamp(Number(port.heightCm) || 3, 1.5, dims.h * 0.16);
-    const duct = new THREE.Mesh(new THREE.BoxGeometry(width, height, insideLength), material(theme.port, 0.62, true));
-    duct.position.set(port.x, port.y, zCenter);
-    group.add(duct);
-    group.add(positionedEdges(new THREE.BoxGeometry(width, height, insideLength), theme.accent2, duct.position));
-  } else {
-    const radius = clamp((Number(port.diameterCm) || 7) / 2, 1.6, dims.w * 0.12);
-    const duct = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, insideLength, 40, 1, true), material(theme.port, 0.68, true));
-    duct.rotation.x = Math.PI / 2;
-    duct.position.set(port.x, port.y, zCenter);
-    group.add(duct);
-    group.add(positionedEdges(new THREE.CylinderGeometry(radius, radius, insideLength, 40), theme.accent2, duct.position, duct.rotation));
-  }
+  addPortSegment(group, section, "z", insideLength, inlet, theme);
 
   if (foldedLength > 0) {
-    const foldWidth = Math.min(foldedLength, Math.max(3, dims.w * 0.52));
-    const foldX = clamp(port.x * 0.5, -dims.w / 2 + foldWidth / 2 + 3, dims.w / 2 - foldWidth / 2 - 3);
-    const fold = new THREE.Mesh(new THREE.BoxGeometry(foldWidth, 2.2, 2.2), material(theme.accent2, 0.44, true));
-    fold.position.set(foldX, port.y, -dims.d / 2 + 2);
-    group.add(fold);
-    group.add(positionedEdges(new THREE.BoxGeometry(foldWidth, 2.2, 2.2), theme.accent2, fold.position));
+    const start = new THREE.Vector3(port.x, port.y, zFront - insideLength);
+    addFoldedPortPath(group, dims, port, section, start, foldedLength, clearance, theme);
   }
 
   if (port.label) addLabel(group, `${formatNumber(actualLength, 1)} cm port`, new THREE.Vector3(port.x - dims.w * 0.18, -dims.h / 2 - 4, dims.d / 2 + 2), theme.text);
 }
 
+function portSection(port, dims) {
+  if (port.shape === "rectangular") {
+    const width = clamp(Number(port.widthCm) || 8, 3, dims.w * 0.42);
+    const height = clamp(Number(port.heightCm) || 3, 1.5, dims.h * 0.16);
+    return { shape: "rectangular", width, height, radius: Math.max(width, height) / 2 };
+  }
+  const radius = clamp((Number(port.diameterCm) || 7) / 2, 1.6, dims.w * 0.12);
+  return { shape: "round", width: radius * 2, height: radius * 2, radius };
+}
+
+function addFoldedPortPath(group, dims, port, section, start, length, clearance, theme) {
+  const bounds = {
+    x: [-dims.w / 2 + clearance, dims.w / 2 - clearance],
+    y: [-dims.h / 2 + clearance, dims.h / 2 - clearance],
+    z: [-dims.d / 2 + clearance, dims.d / 2 - clearance],
+  };
+  const cursor = start.clone();
+  cursor.x = clamp(cursor.x, bounds.x[0], bounds.x[1]);
+  cursor.y = clamp(cursor.y, bounds.y[0], bounds.y[1]);
+  cursor.z = clamp(cursor.z, bounds.z[0], bounds.z[1]);
+
+  const xDirection = Math.abs(port.x) > dims.w * 0.04 ? Math.sign(port.x) : 1;
+  const yDirection = port.y <= 0 ? 1 : -1;
+  const directions = [
+    { axis: "x", sign: xDirection },
+    { axis: "y", sign: yDirection },
+    { axis: "z", sign: 1 },
+    { axis: "x", sign: -xDirection },
+    { axis: "y", sign: -yDirection },
+    { axis: "z", sign: -1 },
+  ];
+
+  let remaining = length;
+  for (let index = 0; remaining > 0.2 && index < directions.length * 3; index += 1) {
+    const direction = directions[index % directions.length];
+    const limit = direction.sign > 0 ? bounds[direction.axis][1] : bounds[direction.axis][0];
+    const capacity = Math.abs(limit - cursor[direction.axis]);
+    if (capacity < Math.max(1.2, Math.min(section.width, section.height) * 0.35)) continue;
+
+    const run = Math.min(remaining, capacity);
+    const center = cursor.clone();
+    center[direction.axis] += direction.sign * run * 0.5;
+    addPortBend(group, section, cursor, theme);
+    addPortSegment(group, section, direction.axis, run, center, theme, 0.54);
+    cursor[direction.axis] += direction.sign * run;
+    remaining -= run;
+  }
+}
+
+function addPortSegment(group, section, axis, length, position, theme, opacity = null) {
+  const ductOpacity = opacity ?? (section.shape === "rectangular" ? 0.62 : 0.68);
+  const geometry = portSegmentGeometry(section, axis, length);
+  const duct = new THREE.Mesh(geometry, material(theme.port, ductOpacity, true));
+  orientPortSegment(duct, section, axis);
+  duct.position.copy(position);
+  group.add(duct);
+  group.add(positionedEdges(portSegmentGeometry(section, axis, length), theme.accent2, duct.position, duct.rotation));
+}
+
+function portSegmentGeometry(section, axis, length) {
+  if (section.shape === "rectangular") {
+    if (axis === "x") return new THREE.BoxGeometry(length, section.height, section.width);
+    if (axis === "y") return new THREE.BoxGeometry(section.width, length, section.height);
+    return new THREE.BoxGeometry(section.width, section.height, length);
+  }
+  return new THREE.CylinderGeometry(section.radius, section.radius, length, 40, 1, true);
+}
+
+function orientPortSegment(mesh, section, axis) {
+  if (section.shape !== "round") return;
+  if (axis === "x") mesh.rotation.z = Math.PI / 2;
+  if (axis === "z") mesh.rotation.x = Math.PI / 2;
+}
+
+function addPortBend(group, section, position, theme) {
+  const size = Math.max(section.width, section.height);
+  const geometry = section.shape === "round"
+    ? new THREE.SphereGeometry(section.radius * 1.02, 24, 12)
+    : new THREE.BoxGeometry(section.width, section.height, size * 0.72);
+  const bend = new THREE.Mesh(geometry, material(theme.port, 0.5, true));
+  bend.position.copy(position);
+  group.add(bend);
+  group.add(positionedEdges(geometry, theme.accent2, bend.position));
+}
+
 function addPassiveRadiators(group, dims, box, theme) {
   const passive = box.passiveRadiator || {};
-  const diameter = passive.diameterCm || diameterFromArea(passive.sdCm2) || driverDiameterCm({ driver: {} }) * 0.85;
+  const diameter = passive.diameterCm || diameterFromArea(passive.sdCm2) || driverDiameterCmFromDriver({}) * 0.85;
   const count = clampInt(passive.count || 1, 1, 4);
   const radius = clamp(diameter / 2, 3, Math.min(dims.w, dims.h) * 0.22);
   const spread = Math.min(dims.w * 0.45, count * radius * 1.6);
@@ -406,8 +490,88 @@ function volumeForState(state) {
   return Math.max(Number(state.box?.volumeL) || 1, 1);
 }
 
-function driverDiameterCm(state) {
-  const sd = Number(state.driver?.sdCm2);
+function driverGroupsForPreview(state) {
+  const rawGroups = Array.isArray(state.driverGroups) && state.driverGroups.length
+    ? state.driverGroups
+    : [{
+        id: "driver-main",
+        name: "Driver",
+        driver: state.driver || {},
+        count: state.box?.driverCount || 1,
+      }];
+
+  const fallbackDriver = state.driver || {};
+  return rawGroups
+    .map((group, index) => {
+      const driver = group?.driver || (index === 0 ? fallbackDriver : {});
+      const count = clampInt(group?.count ?? (index === 0 ? state.box?.driverCount : 1), 1, 16);
+      return {
+        id: group?.id || `driver-group-${index + 1}`,
+        name: String(group?.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
+        driver,
+        count,
+        diameterCm: driverDiameterCmFromDriver(driver || fallbackDriver),
+      };
+    })
+    .filter((group) => group.count > 0);
+}
+
+function flattenDriverGroups(driverGroups) {
+  const drivers = [];
+  driverGroups.forEach((group, groupIndex) => {
+    for (let copy = 0; copy < group.count; copy += 1) {
+      drivers.push({ group, groupIndex, copy });
+    }
+  });
+  return drivers;
+}
+
+function driverLayout(dims, count) {
+  const baffleRatio = dims.w / Math.max(dims.h * 0.72, 1);
+  const columns = clampInt(Math.ceil(Math.sqrt(count * baffleRatio)), 1, Math.min(count, 6));
+  const rows = Math.ceil(count / columns);
+  const availableWidth = dims.w * 0.76;
+  const availableHeight = dims.h * (rows <= 2 ? 0.52 : 0.62);
+  const cellW = availableWidth / columns;
+  const cellH = availableHeight / rows;
+  return {
+    count,
+    columns,
+    rows,
+    availableWidth,
+    cellW,
+    cellH,
+    centerY: dims.h * 0.12,
+    maxRadius: Math.max(1.4, Math.min(cellW, cellH) * 0.36),
+  };
+}
+
+function driverPosition(layout, index) {
+  const row = Math.floor(index / layout.columns);
+  const col = index % layout.columns;
+  const itemsInRow = Math.min(layout.columns, layout.count - row * layout.columns);
+  const centeredCol = col + (layout.columns - itemsInRow) / 2;
+  const x = -layout.availableWidth / 2 + layout.cellW / 2 + centeredCol * layout.cellW;
+  const y = layout.centerY + ((layout.rows - 1) * layout.cellH) / 2 - row * layout.cellH;
+  return { x, y };
+}
+
+function driverSummaryLabel(driverGroups, drivers) {
+  if (driverGroups.length === 1) {
+    const group = driverGroups[0];
+    return `${group.count}x ${formatNumber(group.diameterCm, 1)} cm ${shortLabel(group.name, 16)}`;
+  }
+  return `${drivers.length} active drivers / ${driverGroups.length} groups`;
+}
+
+function shortLabel(value, maxLength) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1))}.`;
+}
+
+function driverDiameterCmFromDriver(driver) {
+  const sd = Number(driver?.sdCm2);
   return diameterFromArea(sd) || 16;
 }
 
@@ -433,10 +597,17 @@ function modelSignature(state, theme) {
   const box = state.box || {};
   const passive = box.passiveRadiator || {};
   const bandpass = box.bandpass || {};
+  const driverGroups = driverGroupsForPreview(state).map((group) => ({
+    id: group.id,
+    name: group.name,
+    count: group.count,
+    sdCm2: group.driver?.sdCm2,
+    diameterCm: group.diameterCm,
+  }));
   return JSON.stringify({
     mode: state.mode,
     volumeL: box.volumeL,
-    driverSd: state.driver?.sdCm2,
+    driverGroups,
     portShape: box.portShape,
     portDiameterCm: box.portDiameterCm,
     portWidthCm: box.portWidthCm,

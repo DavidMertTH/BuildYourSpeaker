@@ -1,4 +1,5 @@
 import { inflateRawSync } from "node:zlib";
+import { fetchUrl as fetch } from "./fetch.js";
 import { inferAngleFromName, normalizeFrequencyResponse, parseFrequencyResponseText } from "./measurements.js";
 
 const SEARCH_URL = "https://duckduckgo.com/html/";

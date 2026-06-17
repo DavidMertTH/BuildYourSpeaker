@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { fetchUrl as fetch } from "./fetch.js";
 
 const SEARCH_URL = "https://duckduckgo.com/html/";
 const PARTS_EXPRESS_ITEMS_URL = "https://www.parts-express.com/api/cacheable/items";

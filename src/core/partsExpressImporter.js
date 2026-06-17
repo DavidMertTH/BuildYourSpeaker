@@ -1,4 +1,5 @@
 import { scrapeDriverPage } from "./driverScraper.js";
+import { fetchUrl as fetch } from "./fetch.js";
 
 const SITEMAP_URL = "https://www.parts-express.com/sitemap_pages.xml";
 const REQUEST_DELAY_MS = 180;

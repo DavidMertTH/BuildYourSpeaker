@@ -1,5 +1,5 @@
 export const LAYOUT_STORAGE_KEY = "audiosim.layout.v5";
-export const LAYOUT_PANEL_VERSION = 4;
+export const LAYOUT_PANEL_VERSION = 5;
 export const PROJECT_STORAGE_KEY = "audiosim.project.v1";
 export const DRIVER_LIBRARY_STORAGE_KEY = "audiosim.driverLibrary.v1";
 export const PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY = "audiosim.passiveRadiatorLibrary.v1";
@@ -25,7 +25,7 @@ export const PLOT_IDS = [
   "groupDelayPlot",
 ];
 export const POLAR_PLOT_IDS = ["horizontalPolarPlot"];
-export const PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
+export const PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel", "crossoverSchematicPanel"];
 export const AXIS_KEYS = ["xMin", "xMax", "yMin", "yMax"];
 export const GOLDEN_COMPONENT_TYPE = "plotPanel";
 export const LOG_Y_PLOTS = new Set(["impedancePlot", "excursionPlot", "portPlot", "prExcursionPlot"]);
@@ -58,6 +58,23 @@ export const CROSSOVER_SLIDER_MAX_HZ = 20000;
 export const CROSSOVER_SLIDER_STEPS = 1000;
 export const CROSSOVER_FAMILIES = ["linkwitz-riley", "butterworth"];
 export const CROSSOVER_ORDERS = [2, 4];
+export const CROSSOVER_DESIGN_TYPES = ["two-way", "three-way", "sub-sat"];
+export const CROSSOVER_DESIGN_DEFAULTS = {
+  "two-way": { frequencyHz: 2500, family: "linkwitz-riley", order: 4 },
+  "three-way": { lowFrequencyHz: 350, highFrequencyHz: 2500, family: "linkwitz-riley", order: 4 },
+  "sub-sat": { frequencyHz: 80, family: "linkwitz-riley", order: 4 },
+};
+export const CROSSOVER_DESIGN_BANDS = {
+  "two-way": ["low", "high"],
+  "three-way": ["low", "mid", "high"],
+  "sub-sat": ["sub", "sat"],
+};
+export const CROSSOVER_CIRCUIT_COMPONENT_TYPES = ["resistor", "capacitor", "inductor"];
+export const CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS = {
+  resistor: { value: 4.7, min: 0.1, max: 47, step: 0.1, unit: "ohm", label: "R" },
+  capacitor: { value: 10, min: 0.1, max: 220, step: 0.1, unit: "uF", label: "C" },
+  inductor: { value: 0.68, min: 0.01, max: 10, step: 0.01, unit: "mH", label: "L" },
+};
 export const SIGNAL_FILTER_TYPES = ["parametric", "low-shelf", "high-shelf", "linkwitz-transform", "subsonic"];
 export const SIGNAL_FILTER_TARGET_GROUP = "group";
 export const SIGNAL_FILTER_DEFAULTS = {

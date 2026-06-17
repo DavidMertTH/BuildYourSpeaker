@@ -4,10 +4,12 @@ import { PANEL_LABELS } from "./tooltips.js";
 
 const GOLDEN_LAYOUT_DIMENSIONS = {
   borderWidth: 0,
-  borderGrabWidth: 8,
-  headerHeight: 24,
-  defaultMinItemWidth: "180px",
-  defaultMinItemHeight: "150px",
+  borderGrabWidth: 18,
+  headerHeight: 18,
+  defaultMinItemWidth: "40px",
+  defaultMinItemHeight: "36px",
+  dragProxyWidth: 120,
+  dragProxyHeight: 80,
 };
 
 export function makeGoldenLayoutTabsClosable(config) {
@@ -70,6 +72,9 @@ function pruneLayoutItem(item) {
 export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
   const uniquePanelIds = [...new Set(panelIds)].filter((panelId) => PANEL_IDS.includes(panelId));
   const visiblePanelIds = uniquePanelIds.length ? uniquePanelIds : [PANEL_IDS[0]];
+  if (isRecordingLayout(visiblePanelIds)) return buildRecordingGoldenLayoutConfig();
+  if (isCrossoverLayout(visiblePanelIds)) return buildCrossoverGoldenLayoutConfig();
+
   const columnCount = visiblePanelIds.length <= 1 ? 1 : visiblePanelIds.length <= 4 ? 2 : 3;
   const columns = Array.from({ length: columnCount }, () => []);
   visiblePanelIds.forEach((panelId, index) => {
@@ -88,6 +93,97 @@ export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
 
   return {
     root,
+    settings: {
+      reorderEnabled: true,
+      constrainDragToContainer: true,
+      popoutWholeStack: false,
+    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
+    header: {
+      show: "top",
+      close: "hide",
+      maximise: "maximise",
+      minimise: "minimise",
+      popout: "popout",
+      tabDropdown: "tabs",
+    },
+  };
+}
+
+function isRecordingLayout(panelIds) {
+  const recordingPanelIds = ["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"];
+  return panelIds.length === recordingPanelIds.length && recordingPanelIds.every((panelId) => panelIds.includes(panelId));
+}
+
+function isCrossoverLayout(panelIds) {
+  const crossoverPanelIds = ["crossoverSchematicPanel", "splPlot", "phasePlot", "impedancePlot"];
+  return panelIds.length === crossoverPanelIds.length && crossoverPanelIds.every((panelId) => panelIds.includes(panelId));
+}
+
+function buildRecordingGoldenLayoutConfig() {
+  return {
+    root: {
+      type: "row",
+      content: [
+        componentStackConfig("recordingPanel", 62),
+        {
+          type: "column",
+          size: "38%",
+          content: [
+            {
+              type: "row",
+              size: "50%",
+              content: [
+                componentStackConfig("onAxisResponsePlot", 50),
+                componentStackConfig("offAxisResponsePlot", 50),
+              ],
+            },
+            {
+              type: "row",
+              size: "50%",
+              content: [
+                componentStackConfig("horizontalPolarPlot", 50),
+                componentStackConfig("splPlot", 50),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    settings: {
+      reorderEnabled: true,
+      constrainDragToContainer: true,
+      popoutWholeStack: false,
+    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
+    header: {
+      show: "top",
+      close: "hide",
+      maximise: "maximise",
+      minimise: "minimise",
+      popout: "popout",
+      tabDropdown: "tabs",
+    },
+  };
+}
+
+function buildCrossoverGoldenLayoutConfig() {
+  return {
+    root: {
+      type: "column",
+      content: [
+        componentStackConfig("crossoverSchematicPanel", 64),
+        {
+          type: "row",
+          size: "36%",
+          content: [
+            componentStackConfig("splPlot", 34),
+            componentStackConfig("phasePlot", 33),
+            componentStackConfig("impedancePlot", 33),
+          ],
+        },
+      ],
+    },
     settings: {
       reorderEnabled: true,
       constrainDragToContainer: true,

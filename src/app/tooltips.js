@@ -112,11 +112,12 @@ export const MODE_TOOLTIPS = {
   passive: "Use a passive radiator instead of a port.",
 };
 export const PRESET_TOOLTIPS = {
-  overview: "Show the general overview layout.",
-  tuning: "Focus the layout on tuning-related graphs.",
-  limits: "Focus the layout on excursion and port velocity limits.",
-  model: "Focus the layout on model and phase views.",
-  recording: "Focus the layout on recording and response views.",
+  overview: "Balanced workspace with core response, box, impedance, and limit graphs.",
+  tuning: "Tune the enclosure using SPL, impedance, port velocity, delay, and box preview.",
+  limits: "Check excursion, port velocity, passive radiator travel, and SPL headroom.",
+  model: "Inspect the physical model, polar view, phase, delay, and impedance.",
+  recording: "Compare imported or staged measurements against the simulated SPL.",
+  crossover: "Design the crossover schematic while watching SPL, phase, and impedance.",
 };
 export const PANEL_TOOLTIPS = {
   splPlot: "Show or hide the SPL graph.",
@@ -131,6 +132,7 @@ export const PANEL_TOOLTIPS = {
   horizontalPolarPlot: "Show or hide the horizontal polar directivity graph.",
   boxPreview: "Show or hide the box preview.",
   recordingPanel: "Show or hide the recording workbench.",
+  crossoverSchematicPanel: "Show or hide the crossover schematic editor.",
 };
 export const THEME_TOOLTIPS = {
   dark: "Use the dark interface theme.",
@@ -162,6 +164,8 @@ export const PLOT_PANEL_TOOLTIPS = {
     "Box preview shows the estimated cabinet proportions for the active config. Use it as a quick buildability check, not as a final woodworking drawing.",
   recordingPanel:
     "Recording combines level, microphone and signal settings with a graph of captured or imported measurements.",
+  crossoverSchematicPanel:
+    "Crossover schematic lets you place R, C and L components and wire them between the selected group's source, ground and driver endpoints.",
 };
 export const PANEL_LABELS = {
   splPlot: "SPL",
@@ -176,6 +180,7 @@ export const PANEL_LABELS = {
   horizontalPolarPlot: "H polar",
   boxPreview: "Box",
   recordingPanel: "Recording",
+  crossoverSchematicPanel: "Crossover",
 };
 export const RANGE_TOOLTIPS = {
   "box.volumeL": "Adjust the active config volume quickly.",

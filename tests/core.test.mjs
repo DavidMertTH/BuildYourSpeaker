@@ -20,8 +20,12 @@ import { simulateBandpass } from "../src/core/bandpassBox.js";
 import { normalizeEnclosureOptions, validateEnclosureOptions } from "../src/core/enclosure.js";
 import { filterChainResponse, highPassResponse, linkwitzTransformResponse, lowPassResponse, parametricEqResponse, shelvingEqResponse, subsonicResponse } from "../src/core/filters.js";
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
+import { buildGoldenLayoutConfig } from "../src/app/goldenLayoutConfig.js";
+import { crossoverCircuitComponentPortId, crossoverCircuitDesignNodeId, hasActiveCrossoverDesign, normalizeCrossoverCircuit, normalizeGroupCrossover } from "../src/app/crossoverModel.js";
+import { crossoverCircuitResponses } from "../src/app/crossoverCircuitSolver.js";
 import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, maxLinearSpl, recommendedLowFrequencyLimit } from "../src/core/realism.js";
 import { extractDriverData, extractPassiveRadiatorData, findDatasheetPdfLinks, searchDrivers, searchPassiveRadiators } from "../src/core/driverScraper.js";
+import { fetchUrl } from "../src/core/fetch.js";
 import { extractFrequencyResponseLinks, extractZipTextEntries, parseEmbeddedFrequencyResponse, partsExpressFrequencyResponseCandidatesFromItem } from "../src/core/frequencyResponseScraper.js";
 import { maxBuildableVolumeLiters, normalizeInventory } from "../src/core/planner/componentInventory.js";
 import { planDesigns } from "../src/core/planner/designPlanner.js";
@@ -30,6 +34,20 @@ import { knownPassiveRadiators, sampleProject } from "../src/state.js";
 
 const driver = normalizeDriver(sampleProject.driver);
 const frequencies = logFrequencyVector(10, 200, 260);
+
+test("recording preset gives the recording panel the main workspace", () => {
+  const config = buildGoldenLayoutConfig(["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"]);
+
+  assert.equal(config.root.type, "row");
+  assert.equal(config.root.content[0].size, "62%");
+  assert.equal(config.root.content[0].content[0].componentState.panelId, "recordingPanel");
+  assert.equal(config.root.content[1].size, "38%");
+
+  const sidePanelIds = config.root.content[1].content.flatMap((row) =>
+    row.content.map((stack) => stack.content[0].componentState.panelId),
+  );
+  assert.deepEqual(sidePanelIds, ["onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"]);
+});
 
 test("Qts is derived from Qms and Qes", () => {
   const expected = (sampleProject.driver.qms * sampleProject.driver.qes) / (sampleProject.driver.qms + sampleProject.driver.qes);
@@ -49,6 +67,27 @@ test("missing Mms and Bl can be derived from consistent driver parameters", () =
   const completed = deriveDriverParameters(partial);
   assert.ok(Math.abs(completed.mmsG - analysis.derived.mmsG) / analysis.derived.mmsG < 0.01);
   assert.ok(Math.abs(completed.bl - analysis.derived.bl) / analysis.derived.bl < 0.01);
+});
+
+test("fetchUrl falls back when global fetch is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ ok: true, path: request.url }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    globalThis.fetch = undefined;
+    const { port } = server.address();
+    const response = await fetchUrl(`http://127.0.0.1:${port}/scrape-test`);
+    assert.equal(response.ok, true);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, path: "/scrape-test" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("driver analysis reports inconsistent Bl", () => {
@@ -195,6 +234,107 @@ test("crossover filter chain combines low-pass and high-pass responses", () => {
 
   assert.ok(chain > 0.99);
   assert.ok(blocked < 0.1);
+});
+
+test("group crossover designs normalize as schematic routing toggles", () => {
+  const crossover = normalizeGroupCrossover({
+    designs: [{
+      type: "three-way",
+      lowFrequencyHz: 400,
+      highFrequencyHz: 2500,
+      assignments: [
+        { band: "low", designId: "woofer" },
+        { band: "mid", designId: "midrange" },
+        { band: "high", designId: "tweeter" },
+      ],
+    }],
+  });
+
+  assert.equal(crossover.designs.length, 1);
+  assert.equal(crossover.designs[0].enabled, true);
+  assert.equal("frequencyHz" in crossover.designs[0], false);
+  assert.equal("order" in crossover.designs[0], false);
+  assert.equal("assignments" in crossover.designs[0], false);
+});
+
+test("active crossover designs gate schematic circuit routing", () => {
+  assert.equal(hasActiveCrossoverDesign({}), false);
+  assert.equal(hasActiveCrossoverDesign({ designs: [{ enabled: false }] }), false);
+  assert.equal(hasActiveCrossoverDesign({ designs: [{ enabled: true }] }), true);
+});
+
+test("single-member crossover designs can activate schematic routing without a predefined split", () => {
+  const design = normalizeGroupCrossover({
+    designs: [{
+      type: "two-way",
+      frequencyHz: 1200,
+      assignments: [
+        { band: "low", designId: "woofer" },
+        { band: "high", designId: "woofer" },
+      ],
+    }],
+  }).designs[0];
+
+  assert.equal(hasActiveCrossoverDesign({ designs: [design] }), true);
+});
+
+test("crossover circuit normalizes components and valid wires", () => {
+  const circuit = normalizeCrossoverCircuit({
+    components: [
+      { id: "r1", type: "resistor", value: 5.6, x: 120, y: 80 },
+      { id: "bad-type", type: "spark-gap", value: 9999 },
+    ],
+    nodes: [
+      { id: "fixed:positive", x: -42, y: 84 },
+      { id: crossoverCircuitDesignNodeId("woofer"), x: 640, y: 112 },
+      { id: "junction:j1", x: 320, y: 96 },
+      { id: "component:r1:a", x: 1, y: 2 },
+    ],
+    wires: [
+      { from: "fixed:positive", to: crossoverCircuitComponentPortId("r1", "a") },
+      { from: crossoverCircuitComponentPortId("r1", "b"), to: crossoverCircuitDesignNodeId("woofer") },
+      { from: "junction:j1", to: "fixed:ground" },
+      { from: "missing", to: "fixed:ground" },
+    ],
+  });
+
+  assert.equal(circuit.components.length, 2);
+  assert.equal(circuit.components[1].type, "resistor");
+  assert.equal(circuit.wires.length, 3);
+  assert.equal(circuit.wires[1].to, "design:woofer:positive");
+  assert.deepEqual(circuit.nodes.map((node) => node.id), ["fixed:positive", "design:woofer:positive", "junction:j1"]);
+  assert.equal(circuit.nodes[0].x, -42);
+});
+
+test("crossover circuit routes voltage through speaker plus and minus poles", () => {
+  const responses = crossoverCircuitResponses({
+    wires: [
+      { from: "fixed:positive", to: crossoverCircuitDesignNodeId("woofer", "positive") },
+      { from: "fixed:ground", to: crossoverCircuitDesignNodeId("woofer", "negative") },
+    ],
+  }, [100, 1000], [{ designId: "woofer", impedance: [8, 8] }]);
+
+  const woofer = responses.get("woofer");
+  assert.ok(woofer);
+  assert.ok(Math.abs(woofer.voltage[0].abs() - 1) < 1e-9);
+  assert.ok(Math.abs(woofer.voltage[1].abs() - 1) < 1e-9);
+  assert.ok(Math.abs(woofer.inputImpedance[0] - 8) < 1e-9);
+});
+
+test("crossover circuit components shape the routed speaker voltage", () => {
+  const responses = crossoverCircuitResponses({
+    components: [{ id: "c1", type: "capacitor", value: 10, x: 120, y: 80 }],
+    wires: [
+      { from: "fixed:positive", to: crossoverCircuitComponentPortId("c1", "a") },
+      { from: crossoverCircuitComponentPortId("c1", "b"), to: crossoverCircuitDesignNodeId("tweeter", "positive") },
+      { from: "fixed:ground", to: crossoverCircuitDesignNodeId("tweeter", "negative") },
+    ],
+  }, [100, 10000], [{ designId: "tweeter", impedance: [8, 8] }]);
+
+  const tweeter = responses.get("tweeter");
+  assert.ok(tweeter.voltage[0].abs() < tweeter.voltage[1].abs());
+  assert.ok(tweeter.voltage[0].abs() < 0.1);
+  assert.ok(tweeter.voltage[1].abs() > 0.9);
 });
 
 test("parametric EQ applies requested gain near center frequency", () => {

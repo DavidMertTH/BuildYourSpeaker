@@ -1,0 +1,1115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cabio Design Demos</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --page: #101010;
+        --text: #e8e8e4;
+        --muted: rgba(232, 232, 228, 0.62);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+          var(--page);
+        background-size: 48px 48px;
+        color: var(--text);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .page {
+        display: grid;
+        gap: 24px;
+        width: min(1560px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 48px;
+      }
+
+      .intro {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+        padding: 0 2px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(28px, 4vw, 52px);
+        line-height: 0.95;
+        letter-spacing: -0.02em;
+      }
+
+      .intro p,
+      .demo-copy p {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .intro-badge {
+        padding: 10px 13px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .demo {
+        display: grid;
+        gap: 12px;
+      }
+
+      .demo-copy {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
+        gap: 16px;
+        align-items: end;
+      }
+
+      .demo-copy h2 {
+        font-size: 22px;
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+      }
+
+      .demo-copy .meta {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+        text-align: right;
+      }
+
+      .mock {
+        min-height: 660px;
+        overflow: hidden;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-bg);
+        box-shadow: 0 26px 80px rgba(0, 0, 0, 0.34);
+      }
+
+      .plot {
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .plot svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .plot-grid {
+        position: absolute;
+        inset: 0;
+        opacity: 0.58;
+        background:
+          linear-gradient(var(--grid) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+        background-size: 54px 44px;
+      }
+
+      .line-a,
+      .line-b,
+      .line-c {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3;
+      }
+
+      .line-a {
+        stroke: var(--a);
+      }
+
+      .line-b {
+        stroke: var(--b);
+      }
+
+      .line-c {
+        stroke: var(--c);
+      }
+
+      .chip,
+      .nav button,
+      .tool-button,
+      .config {
+        white-space: nowrap;
+      }
+
+      .mono {
+        font-family: ui-monospace, "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+      }
+
+      /* Demo 1 */
+      .benchline {
+        --mock-bg: #111210;
+        --mock-panel: #171816;
+        --mock-raised: #1d1f1c;
+        --mock-line: rgba(238, 238, 229, 0.16);
+        --text-local: #eeeee5;
+        --muted-local: rgba(238, 238, 229, 0.56);
+        --grid: rgba(238, 238, 229, 0.055);
+        --a: #eeeee5;
+        --b: #7fb8aa;
+        --c: #d3a55e;
+        display: grid;
+        grid-template-columns: 330px minmax(0, 1fr);
+        color: var(--text-local);
+      }
+
+      .benchline .side {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 16px;
+        padding: 18px;
+        border-right: 1px solid var(--mock-line);
+        background: rgba(255, 255, 255, 0.018);
+      }
+
+      .benchline .brand strong {
+        display: block;
+        font-size: 32px;
+        line-height: 0.9;
+      }
+
+      .benchline .brand span,
+      .benchline label,
+      .benchline .small {
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .benchline .nav {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        border-bottom: 1px solid var(--mock-line);
+      }
+
+      .benchline .nav button {
+        min-height: 34px;
+        padding: 0;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        color: var(--muted-local);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .benchline .nav .active {
+        border-bottom-color: var(--text-local);
+        color: var(--text-local);
+      }
+
+      .benchline .fields {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .benchline .field {
+        display: grid;
+        grid-template-columns: 1fr 120px;
+        gap: 12px;
+        align-items: center;
+        min-height: 36px;
+        border-bottom: 1px solid rgba(238, 238, 229, 0.08);
+      }
+
+      .benchline .input {
+        padding: 7px 8px;
+        border: 1px solid var(--mock-line);
+        background: #0e0f0d;
+        color: var(--text-local);
+        text-align: right;
+      }
+
+      .benchline .workspace {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-width: 0;
+      }
+
+      .benchline .top {
+        display: flex;
+        gap: 16px;
+        align-items: end;
+        min-height: 64px;
+        padding: 14px 18px 8px;
+        border-bottom: 1px solid var(--mock-line);
+      }
+
+      .benchline .presets {
+        display: flex;
+        gap: 14px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .benchline .preset {
+        min-width: 94px;
+        padding: 4px 0 7px;
+        border-bottom: 2px solid transparent;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .benchline .preset.active {
+        border-bottom-color: var(--text-local);
+        color: var(--text-local);
+      }
+
+      .benchline .preset span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted-local);
+        font-size: 10px;
+      }
+
+      .benchline .tool-button {
+        margin-left: auto;
+        padding: 8px 10px;
+        border: 1px solid var(--mock-line);
+        background: transparent;
+        color: var(--text-local);
+        font-size: 12px;
+      }
+
+      .benchline .plot-wrap {
+        display: grid;
+        grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.9fr);
+        gap: 1px;
+        min-height: 0;
+        background: var(--mock-line);
+      }
+
+      .benchline .plot,
+      .benchline .analysis {
+        background: var(--mock-bg);
+      }
+
+      .benchline .plot {
+        min-height: 500px;
+      }
+
+      .benchline .plot-title {
+        position: absolute;
+        left: 18px;
+        top: 16px;
+        z-index: 2;
+        display: grid;
+        gap: 4px;
+      }
+
+      .benchline .plot-title strong {
+        font-size: 15px;
+      }
+
+      .benchline .analysis {
+        display: grid;
+        grid-template-rows: repeat(3, 1fr);
+        gap: 1px;
+      }
+
+      .benchline .mini {
+        position: relative;
+        padding: 14px;
+        background: var(--mock-panel);
+      }
+
+      .benchline .mini strong {
+        position: relative;
+        z-index: 2;
+        font-size: 12px;
+      }
+
+      .benchline .configs {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 18px;
+        border-top: 1px solid var(--mock-line);
+      }
+
+      .benchline .config {
+        padding: 6px 10px;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-panel);
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .benchline .config.active {
+        color: var(--text-local);
+        box-shadow: inset 0 -2px 0 var(--text-local);
+      }
+
+      /* Demo 2 */
+      .atelier {
+        --mock-bg: #f6f7f2;
+        --mock-panel: #ffffff;
+        --mock-raised: #eef1ed;
+        --mock-line: rgba(32, 36, 34, 0.18);
+        --text-local: #202422;
+        --muted-local: rgba(32, 36, 34, 0.58);
+        --grid: rgba(32, 36, 34, 0.075);
+        --a: #24312d;
+        --b: #3f8777;
+        --c: #ba7c2a;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        color: var(--text-local);
+      }
+
+      .atelier .main {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-width: 0;
+      }
+
+      .atelier .top {
+        display: grid;
+        grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--mock-line);
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .atelier .brand strong {
+        display: block;
+        font-size: 24px;
+        line-height: 1;
+      }
+
+      .atelier .brand span,
+      .atelier .muted {
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .atelier .nav {
+        display: inline-flex;
+        justify-self: center;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-raised);
+      }
+
+      .atelier .nav button {
+        min-height: 32px;
+        padding: 0 13px;
+        border: 0;
+        background: transparent;
+        color: var(--muted-local);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .atelier .nav .active {
+        background: var(--text-local);
+        color: #fff;
+      }
+
+      .atelier .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .atelier .tool-button {
+        min-height: 34px;
+        padding: 0 12px;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-panel);
+        color: var(--text-local);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .atelier .stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+        gap: 14px;
+        min-height: 0;
+        padding: 18px;
+      }
+
+      .atelier .hero-plot,
+      .atelier .record-panel,
+      .atelier .card {
+        border: 1px solid var(--mock-line);
+        background: var(--mock-panel);
+      }
+
+      .atelier .hero-plot {
+        position: relative;
+        min-height: 486px;
+      }
+
+      .atelier .plot-title {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        top: 16px;
+        z-index: 2;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+
+      .atelier .plot-title strong {
+        font-size: 18px;
+      }
+
+      .atelier .side-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .atelier .record-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-height: 286px;
+      }
+
+      .atelier .panel-head {
+        display: flex;
+        justify-content: space-between;
+        padding: 14px;
+        border-bottom: 1px solid var(--mock-line);
+      }
+
+      .atelier .meter {
+        align-self: end;
+        height: 112px;
+        margin: 14px;
+        background:
+          linear-gradient(90deg, rgba(63, 135, 119, 0.2), transparent),
+          linear-gradient(var(--grid) 1px, transparent 1px);
+        background-size: auto, 100% 18px;
+        border-left: 3px solid var(--b);
+      }
+
+      .atelier .record-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 14px;
+      }
+
+      .atelier .record-actions button {
+        min-height: 36px;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-raised);
+        color: var(--text-local);
+        font-weight: 750;
+      }
+
+      .atelier .card {
+        display: grid;
+        gap: 9px;
+        padding: 14px;
+      }
+
+      .atelier .stat-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(32, 36, 34, 0.11);
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .atelier .stat-row strong {
+        color: var(--text-local);
+      }
+
+      .atelier .bottom {
+        display: flex;
+        gap: 10px;
+        padding: 12px 18px;
+        border-top: 1px solid var(--mock-line);
+      }
+
+      .atelier .config {
+        padding: 9px 11px;
+        border: 1px solid var(--mock-line);
+        background: var(--mock-panel);
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .atelier .config.active {
+        color: var(--text-local);
+        box-shadow: inset 3px 0 0 var(--b);
+      }
+
+      .atelier .inspector {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        border-left: 1px solid var(--mock-line);
+        background: #edece5;
+      }
+
+      .atelier .inspector-head {
+        padding: 18px;
+        border-bottom: 1px solid var(--mock-line);
+      }
+
+      .atelier .inspector-body {
+        display: grid;
+        gap: 11px;
+        align-content: start;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .atelier label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .atelier .input {
+        display: flex;
+        justify-content: space-between;
+        min-height: 36px;
+        padding: 9px 10px;
+        border: 1px solid var(--mock-line);
+        background: #fbfbf8;
+        color: var(--text-local);
+      }
+
+      /* Demo 3 */
+      .matrix {
+        --mock-bg: #08090a;
+        --mock-panel: #101214;
+        --mock-raised: #171a1d;
+        --mock-line: rgba(210, 222, 219, 0.15);
+        --text-local: #d9e3df;
+        --muted-local: rgba(217, 227, 223, 0.55);
+        --grid: rgba(217, 227, 223, 0.05);
+        --a: #d9e3df;
+        --b: #6bd0bf;
+        --c: #c2d66b;
+        display: grid;
+        grid-template-columns: 76px 330px minmax(0, 1fr);
+        color: var(--text-local);
+      }
+
+      .matrix .rail {
+        display: grid;
+        grid-template-rows: auto repeat(4, 1fr) auto;
+        gap: 8px;
+        padding: 12px;
+        border-right: 1px solid var(--mock-line);
+        background: #0c0e0f;
+      }
+
+      .matrix .mark {
+        display: grid;
+        place-items: center;
+        height: 46px;
+        border: 1px solid var(--mock-line);
+        color: var(--text-local);
+        font-weight: 900;
+      }
+
+      .matrix .rail button {
+        display: grid;
+        place-items: center;
+        min-height: 54px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted-local);
+        font-size: 11px;
+        font-weight: 800;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+      }
+
+      .matrix .rail .active {
+        border-color: var(--mock-line);
+        background: linear-gradient(180deg, rgba(107, 208, 191, 0.16), rgba(194, 214, 107, 0.07));
+        color: var(--text-local);
+      }
+
+      .matrix .control {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 14px;
+        padding: 16px;
+        border-right: 1px solid var(--mock-line);
+        background: var(--mock-panel);
+      }
+
+      .matrix .control h2 {
+        font-size: 25px;
+      }
+
+      .matrix .seg {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--mock-line);
+      }
+
+      .matrix .seg button {
+        min-height: 32px;
+        border: 0;
+        border-right: 1px solid var(--mock-line);
+        background: transparent;
+        color: var(--muted-local);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .matrix .seg button:last-child {
+        border-right: 0;
+      }
+
+      .matrix .seg .active {
+        background: #d9e3df;
+        color: #08090a;
+      }
+
+      .matrix .field-list {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+
+      .matrix .field {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        min-height: 34px;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .matrix .value {
+        min-width: 88px;
+        padding: 6px 8px;
+        border: 1px solid var(--mock-line);
+        background: #090a0b;
+        color: var(--text-local);
+        text-align: right;
+      }
+
+      .matrix .search {
+        min-height: 38px;
+        padding: 9px 10px;
+        border: 1px solid var(--mock-line);
+        background: #090a0b;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .matrix .workspace {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-width: 0;
+      }
+
+      .matrix .top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 16px;
+        align-items: center;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--mock-line);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .matrix .presets {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(84px, 1fr));
+        gap: 1px;
+        background: var(--mock-line);
+      }
+
+      .matrix .preset {
+        padding: 10px;
+        background: #0c0e0f;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .matrix .preset.active {
+        color: var(--text-local);
+        background:
+          linear-gradient(90deg, rgba(107, 208, 191, 0.14), transparent 70%),
+          #121518;
+      }
+
+      .matrix .readouts {
+        display: flex;
+        gap: 8px;
+      }
+
+      .matrix .readout {
+        padding: 9px 10px;
+        border: 1px solid var(--mock-line);
+        color: var(--muted-local);
+        font-size: 11px;
+      }
+
+      .matrix .readout strong {
+        color: var(--text-local);
+      }
+
+      .matrix .plots {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.9fr);
+        grid-template-rows: minmax(0, 1fr);
+        min-height: 0;
+        gap: 1px;
+        background: var(--mock-line);
+      }
+
+      .matrix .main-plot,
+      .matrix .stack {
+        background: var(--mock-bg);
+      }
+
+      .matrix .main-plot {
+        position: relative;
+      }
+
+      .matrix .plot-title {
+        position: absolute;
+        left: 16px;
+        top: 14px;
+        z-index: 2;
+      }
+
+      .matrix .plot-title strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .matrix .plot-title span {
+        color: var(--muted-local);
+        font-size: 11px;
+      }
+
+      .matrix .stack {
+        display: grid;
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+        gap: 1px;
+        background: var(--mock-line);
+      }
+
+      .matrix .mini {
+        position: relative;
+        padding: 12px;
+        background: var(--mock-panel);
+      }
+
+      .matrix .mini strong {
+        position: relative;
+        z-index: 2;
+        font-size: 12px;
+      }
+
+      .matrix .configs {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(120px, 1fr));
+        gap: 1px;
+        padding: 1px;
+        background: var(--mock-line);
+      }
+
+      .matrix .config {
+        padding: 10px;
+        background: #0c0e0f;
+        color: var(--muted-local);
+        font-size: 12px;
+      }
+
+      .matrix .config.active {
+        color: var(--text-local);
+        background: #161a1d;
+      }
+
+      @media (max-width: 980px) {
+        .intro,
+        .demo-copy {
+          grid-template-columns: 1fr;
+        }
+
+        .intro-badge,
+        .demo-copy .meta {
+          text-align: left;
+        }
+
+        .mock {
+          min-height: auto;
+        }
+
+        .benchline,
+        .atelier,
+        .matrix {
+          grid-template-columns: 1fr;
+        }
+
+        .matrix .rail {
+          grid-template-columns: repeat(5, 1fr);
+          grid-template-rows: auto;
+        }
+
+        .matrix .rail button {
+          writing-mode: initial;
+        }
+
+        .benchline .plot-wrap,
+        .atelier .stage,
+        .matrix .plots {
+          grid-template-columns: 1fr;
+        }
+
+        .atelier .inspector {
+          border-left: 0;
+          border-top: 1px solid var(--mock-line);
+        }
+
+        .matrix .presets,
+        .matrix .configs {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <div>
+          <h1>Cabio design directions</h1>
+          <p>Three standalone UI proposals for the app shell, graph workspace, controls, config bar, and recording/crossover surfaces.</p>
+        </div>
+        <div class="intro-badge">Exploration only</div>
+      </header>
+
+      <section class="demo">
+        <div class="demo-copy">
+          <div>
+            <h2>1. Benchline</h2>
+            <p>Dark, quiet, technical. Thin rails, clear measurement focus, little decoration. Best if Cabio should feel like precise lab software.</p>
+          </div>
+          <p class="meta">Strength: very focused, low visual noise. Risk: can feel a little austere.</p>
+        </div>
+        <div class="mock benchline">
+          <aside class="side">
+            <div class="brand"><span>Echo Head</span><strong>Cabio</strong></div>
+            <nav class="nav">
+              <button class="active">Driver</button>
+              <button>Box</button>
+              <button>Filter</button>
+              <button>Rec</button>
+            </nav>
+            <div class="fields">
+              <div class="field"><label>Known driver</label><div class="input mono">RSS315HF-4</div></div>
+              <div class="field"><label>Volume</label><div class="input mono">48.0 L</div></div>
+              <div class="field"><label>Target Fb</label><div class="input mono">34.0 Hz</div></div>
+              <div class="field"><label>Port dia.</label><div class="input mono">8.0 cm</div></div>
+              <div class="field"><label>Power</label><div class="input mono">10 W</div></div>
+              <div class="field"><label>High-pass</label><div class="input mono">Off</div></div>
+            </div>
+            <div class="small mono">Qts 0.39 / Vas 72 L / Xmax 6 mm</div>
+          </aside>
+          <section class="workspace">
+            <header class="top">
+              <div class="presets">
+                <div class="preset active">Overview<span>Core 6</span></div>
+                <div class="preset">Tuning<span>Port + delay</span></div>
+                <div class="preset">Limits<span>Headroom</span></div>
+                <div class="preset">Recording<span>Measured</span></div>
+              </div>
+              <button class="tool-button">Graphs</button>
+            </header>
+            <div class="plot-wrap">
+              <div class="plot">
+                <div class="plot-grid"></div>
+                <div class="plot-title"><strong>SPL response</strong><span class="small mono">20 Hz - 20 kHz</span></div>
+                <svg viewBox="0 0 900 520" aria-hidden="true">
+                  <path class="line-b" d="M20 390 C120 340 160 190 260 178 C360 166 420 228 520 210 C640 188 720 148 880 158" />
+                  <path class="line-a" d="M20 410 C130 374 180 246 270 232 C360 218 442 266 540 252 C650 236 730 198 880 204" />
+                  <path class="line-c" d="M20 440 C130 430 190 350 280 318 C390 276 500 312 600 284 C710 252 780 250 880 270" />
+                </svg>
+              </div>
+              <div class="analysis">
+                <div class="mini"><strong>Impedance</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-b" d="M8 116 C60 120 72 32 96 38 C128 46 116 118 170 120 C230 124 260 90 330 104" /></svg></div>
+                <div class="mini"><strong>Excursion</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-c" d="M8 124 C70 36 112 58 150 118 C210 126 260 112 330 96" /></svg></div>
+                <div class="mini"><strong>Group delay</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-a" d="M8 102 C78 60 128 68 170 92 C230 116 278 94 330 80" /></svg></div>
+              </div>
+            </div>
+            <footer class="configs">
+              <div class="config active">Reference vented</div>
+              <div class="config">Sealed 42 L</div>
+              <div class="config">PR prototype</div>
+              <div class="config">No group</div>
+            </footer>
+          </section>
+        </div>
+      </section>
+
+      <section class="demo">
+        <div class="demo-copy">
+          <div>
+            <h2>2. Atelier</h2>
+            <p>Light, spacious, product-design feeling. The graph remains central, while measurement and setup read like an inspector panel.</p>
+          </div>
+          <p class="meta">Strength: approachable and polished. Risk: less dense for power users.</p>
+        </div>
+        <div class="mock atelier">
+          <section class="main">
+            <header class="top">
+              <div class="brand"><span>Echo Head</span><strong>Cabio</strong></div>
+              <nav class="nav"><button class="active">Overview</button><button>Tuning</button><button>Limits</button><button>Recording</button></nav>
+              <div class="actions"><button class="tool-button">Graphs</button><button class="tool-button">Export</button></div>
+            </header>
+            <div class="stage">
+              <div class="hero-plot plot">
+                <div class="plot-grid"></div>
+                <div class="plot-title"><strong>Reference response</strong><span class="muted mono">48 L vented / 34 Hz</span></div>
+                <svg viewBox="0 0 760 490" aria-hidden="true">
+                  <path class="line-b" d="M22 370 C100 338 150 214 244 190 C352 162 410 238 506 210 C604 182 668 148 738 158" />
+                  <path class="line-a" d="M22 392 C112 366 164 260 258 238 C362 214 428 274 530 248 C618 226 684 202 738 204" />
+                  <path class="line-c" d="M22 430 C120 414 178 356 270 326 C370 292 468 306 564 278 C638 256 696 254 738 266" />
+                </svg>
+              </div>
+              <div class="side-stack">
+                <section class="record-panel">
+                  <div class="panel-head"><strong>Recording</strong><span class="muted mono">75 dB</span></div>
+                  <div class="meter"></div>
+                  <div class="record-actions"><button>Record</button><button>Average</button></div>
+                </section>
+                <section class="card">
+                  <div class="stat-row"><span>F3</span><strong>31.8 Hz</strong></div>
+                  <div class="stat-row"><span>Peak velocity</span><strong>17.2 m/s</strong></div>
+                  <div class="stat-row"><span>Max SPL</span><strong>103.4 dB</strong></div>
+                </section>
+              </div>
+            </div>
+            <footer class="bottom">
+              <div class="config active">Reference vented</div>
+              <div class="config">Compact sealed</div>
+              <div class="config">Passive radiator</div>
+            </footer>
+          </section>
+          <aside class="inspector">
+            <div class="inspector-head"><strong>Box setup</strong><p class="muted">Driver, enclosure, and tuning in one quiet inspector.</p></div>
+            <div class="inspector-body">
+              <label>Driver<div class="input"><span>Dayton RSS315HF</span><strong>4 Ohm</strong></div></label>
+              <label>Alignment<div class="input"><span>Vented</span><strong>34 Hz</strong></div></label>
+              <label>Volume<div class="input"><span>Internal</span><strong>48.0 L</strong></div></label>
+              <label>Port<div class="input"><span>Round</span><strong>8 x 21 cm</strong></div></label>
+              <label>Power<div class="input"><span>Input</span><strong>10 W</strong></div></label>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="demo">
+        <div class="demo-copy">
+          <div>
+            <h2>3. Matrix Console</h2>
+            <p>Dense, modular, console-like. Strongest for advanced users who want all major state visible without scrolling or visual softness.</p>
+          </div>
+          <p class="meta">Strength: compact and distinctive. Risk: can feel more intense.</p>
+        </div>
+        <div class="mock matrix">
+          <nav class="rail">
+            <div class="mark">C</div>
+            <button class="active">Driver</button>
+            <button>Box</button>
+            <button>Filter</button>
+            <button>Measure</button>
+            <button>JSON</button>
+          </nav>
+          <aside class="control">
+            <div><h2>Cabio</h2><p class="mono" style="color: var(--muted-local); font-size: 12px;">project/reference-12</p></div>
+            <div class="seg"><button class="active">Sealed</button><button>Vented</button><button>PR</button><button>Band</button></div>
+            <div class="field-list">
+              <div class="search">Search driver or paste datasheet URL</div>
+              <div class="field"><span>Volume</span><div class="value mono">48.0 L</div></div>
+              <div class="field"><span>Tuning</span><div class="value mono">34.0 Hz</div></div>
+              <div class="field"><span>Port length</span><div class="value mono">21.2 cm</div></div>
+              <div class="field"><span>Excursion limit</span><div class="value mono">6.0 mm</div></div>
+              <div class="field"><span>Signal</span><div class="value mono">Sweep</div></div>
+              <div class="field"><span>Average</span><div class="value mono">4x</div></div>
+            </div>
+            <div class="search mono">Warnings: none</div>
+          </aside>
+          <section class="workspace">
+            <header class="top">
+              <div class="presets">
+                <div class="preset active">Overview</div>
+                <div class="preset">Tuning</div>
+                <div class="preset">Limits</div>
+                <div class="preset">Model</div>
+                <div class="preset">Recording</div>
+                <div class="preset">Network</div>
+              </div>
+              <div class="readouts"><div class="readout">F3 <strong>31.8</strong></div><div class="readout">SPL <strong>103.4</strong></div></div>
+            </header>
+            <div class="plots">
+              <div class="main-plot plot">
+                <div class="plot-grid"></div>
+                <div class="plot-title"><strong>SPL / measured overlay</strong><span class="mono">log frequency</span></div>
+                <svg viewBox="0 0 820 520" aria-hidden="true">
+                  <path class="line-b" d="M22 382 C104 328 156 198 250 184 C352 168 418 232 516 214 C630 192 720 146 798 156" />
+                  <path class="line-a" d="M22 412 C112 366 178 250 272 236 C386 216 450 270 548 252 C632 238 704 206 798 208" />
+                  <path class="line-c" d="M22 444 C120 422 184 358 276 320 C390 274 502 318 612 284 C700 258 752 252 798 270" />
+                </svg>
+              </div>
+              <div class="stack">
+                <div class="mini"><strong>Impedance</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-b" d="M8 118 C60 122 74 34 98 40 C132 48 120 118 174 120 C232 124 264 88 330 104" /></svg></div>
+                <div class="mini"><strong>Cone excursion</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-c" d="M8 126 C64 38 112 60 152 116 C210 126 262 112 330 94" /></svg></div>
+                <div class="mini"><strong>Recording level</strong><div class="plot-grid"></div><svg viewBox="0 0 340 150"><path class="line-a" d="M8 92 C58 86 72 70 116 74 C174 80 198 54 246 58 C286 64 304 86 330 78" /></svg></div>
+              </div>
+            </div>
+            <footer class="configs">
+              <div class="config active">Reference vented</div>
+              <div class="config">Sealed baseline</div>
+              <div class="config">PR variant</div>
+              <div class="config">DSP target</div>
+              <div class="config">No group</div>
+            </footer>
+          </section>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
