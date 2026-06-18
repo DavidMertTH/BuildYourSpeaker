@@ -3407,20 +3407,15 @@ canvas {
   padding: 0;
   border: 2px solid var(--accent);
   border-radius: 999px;
-  background: transparent;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 1.2px),
+      currentColor calc(50% - 1.2px),
+      currentColor calc(50% + 1.2px),
+      transparent calc(50% + 1.2px)
+    );
   box-shadow: none;
-}
-
-.crossover-component-port::after {
-  content: "";
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  top: 50%;
-  height: 2.4px;
-  background: currentColor;
-  transform: translateY(-50%);
-  pointer-events: none;
 }
 
 .port-left {
