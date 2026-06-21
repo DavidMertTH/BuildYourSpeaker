@@ -18,8 +18,8 @@ const NEW_CROSSOVER_FOR_GROUP_OPTION = "__new_crossover_for_group__";
 const CROSSOVER_SCHEMATIC_PRESETS = {
   "lowpass-1": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 286, y: 23 },
+      input: { x: 24, y: 26 },
+      output: { x: 250, y: 26 },
     },
     components: [
       { key: "series", type: "inductor", value: 0.68, x: 72, y: 0 },
@@ -31,8 +31,8 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "highpass-1": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 286, y: 23 },
+      input: { x: 24, y: 26 },
+      output: { x: 250, y: 26 },
     },
     components: [
       { key: "series", type: "capacitor", value: 10, x: 72, y: 0 },
@@ -44,13 +44,13 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "lowpass-2": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 286, y: 23 },
-      return: { x: 300, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 250, y: 26 },
+      return: { x: 450, y: 176 },
     },
     components: [
       { key: "series", type: "inductor", value: 0.68, x: 72, y: 0 },
-      { key: "shunt", type: "capacitor", value: 10, x: 116, y: 104 },
+      { key: "shunt", type: "capacitor", value: 10, x: 274, y: 150 },
     ],
     wires: [
       ["input", "series.a"],
@@ -61,14 +61,14 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "lowpass-3": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 420, y: 23 },
-      return: { x: 300, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 510, y: 26 },
+      return: { x: 390, y: 176 },
     },
     components: [
       { key: "seriesA", type: "inductor", value: 0.56, x: 72, y: 0 },
-      { key: "shunt", type: "capacitor", value: 10, x: 182, y: 104 },
-      { key: "seriesB", type: "inductor", value: 0.33, x: 232, y: 0 },
+      { key: "shunt", type: "capacitor", value: 10, x: 204, y: 150 },
+      { key: "seriesB", type: "inductor", value: 0.33, x: 330, y: 0 },
     ],
     wires: [
       ["input", "seriesA.a"],
@@ -80,13 +80,13 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "highpass-2": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 286, y: 23 },
-      return: { x: 300, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 250, y: 26 },
+      return: { x: 450, y: 176 },
     },
     components: [
       { key: "series", type: "capacitor", value: 10, x: 72, y: 0 },
-      { key: "shunt", type: "inductor", value: 0.68, x: 116, y: 104 },
+      { key: "shunt", type: "inductor", value: 0.68, x: 274, y: 150 },
     ],
     wires: [
       ["input", "series.a"],
@@ -97,14 +97,14 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "highpass-3": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 420, y: 23 },
-      return: { x: 300, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 510, y: 26 },
+      return: { x: 390, y: 176 },
     },
     components: [
       { key: "seriesA", type: "capacitor", value: 8.2, x: 72, y: 0 },
-      { key: "shunt", type: "inductor", value: 0.47, x: 182, y: 104 },
-      { key: "seriesB", type: "capacitor", value: 4.7, x: 232, y: 0 },
+      { key: "shunt", type: "inductor", value: 0.47, x: 204, y: 150 },
+      { key: "seriesB", type: "capacitor", value: 4.7, x: 330, y: 0 },
     ],
     wires: [
       ["input", "seriesA.a"],
@@ -116,13 +116,13 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   lpad: {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 286, y: 23 },
-      return: { x: 300, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 250, y: 26 },
+      return: { x: 450, y: 176 },
     },
     components: [
       { key: "series", type: "resistor", value: 2.2, x: 72, y: 0 },
-      { key: "shunt", type: "resistor", value: 8.2, x: 116, y: 104 },
+      { key: "shunt", type: "resistor", value: 8.2, x: 274, y: 150 },
     ],
     wires: [
       ["input", "series.a"],
@@ -133,13 +133,13 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   zobel: {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 360, y: 23 },
-      return: { x: 360, y: 127 },
+      input: { x: 24, y: 26 },
+      output: { x: 550, y: 26 },
+      return: { x: 550, y: 176 },
     },
     components: [
-      { key: "resistor", type: "resistor", value: 6.8, x: 104, y: 104 },
-      { key: "capacitor", type: "capacitor", value: 10, x: 230, y: 104 },
+      { key: "resistor", type: "resistor", value: 6.8, x: 120, y: 150 },
+      { key: "capacitor", type: "capacitor", value: 10, x: 330, y: 150 },
     ],
     wires: [
       ["input", "output"],
@@ -150,14 +150,14 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   notch: {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 440, y: 23 },
-      return: { x: 440, y: 151 },
+      input: { x: 24, y: 26 },
+      output: { x: 680, y: 26 },
+      return: { x: 680, y: 186 },
     },
     components: [
-      { key: "resistor", type: "resistor", value: 6.8, x: 92, y: 128 },
-      { key: "capacitor", type: "capacitor", value: 6.8, x: 218, y: 128 },
-      { key: "inductor", type: "inductor", value: 0.33, x: 344, y: 128 },
+      { key: "resistor", type: "resistor", value: 6.8, x: 86, y: 160 },
+      { key: "capacitor", type: "capacitor", value: 6.8, x: 282, y: 160 },
+      { key: "inductor", type: "inductor", value: 0.33, x: 478, y: 160 },
     ],
     wires: [
       ["input", "output"],
@@ -169,12 +169,12 @@ const CROSSOVER_SCHEMATIC_PRESETS = {
   },
   "baffle-step": {
     nodes: {
-      input: { x: 24, y: 23 },
-      output: { x: 330, y: 23 },
+      input: { x: 24, y: 26 },
+      output: { x: 270, y: 26 },
     },
     components: [
       { key: "inductor", type: "inductor", value: 1.0, x: 78, y: 0 },
-      { key: "bypass", type: "resistor", value: 6.8, x: 78, y: 74 },
+      { key: "bypass", type: "resistor", value: 6.8, x: 78, y: 150 },
     ],
     wires: [
       ["input", "inductor.a"],
@@ -1094,7 +1094,7 @@ export function createCrossoverSchematicController(deps) {
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const circuit = nextGroup.crossover.circuit;
-    const origin = schematicInsertionOrigin(circuit.components.length);
+    const origin = schematicInsertionOrigin(circuit);
     const nodes = {};
     Object.entries(preset.nodes).forEach(([key, point]) => {
       const id = `junction:${createCrossoverCircuitJunctionId()}`;
@@ -1138,14 +1138,23 @@ export function createCrossoverSchematicController(deps) {
     return crossoverCircuitComponentPortId(componentId, port);
   }
 
-  function schematicInsertionOrigin(componentCount = 0) {
+  function schematicInsertionOrigin(circuit = null) {
+    const components = circuit?.components || [];
+    if (components.length) {
+      const maxX = Math.max(...components.map((component) => Number(component.x) || 0));
+      const minY = Math.min(...components.map((component) => Number(component.y) || 0));
+      return {
+        x: maxX + 220,
+        y: Math.max(70, minY),
+      };
+    }
     const boardRect = crossoverSchematicBoard?.getBoundingClientRect();
     if (!boardRect) {
-      return { x: 230 + (componentCount % 4) * 138, y: 88 + Math.floor(componentCount / 4) * 118 };
+      return { x: 230, y: 88 };
     }
     return {
-      x: Math.max(80, (boardRect.width / 2 - cameraX) / cameraScale - 180 + (componentCount % 3) * 24),
-      y: Math.max(70, (boardRect.height / 2 - cameraY) / cameraScale - 80 + (componentCount % 4) * 24),
+      x: Math.max(80, (boardRect.width / 2 - cameraX) / cameraScale - 180),
+      y: Math.max(70, (boardRect.height / 2 - cameraY) / cameraScale - 80),
     };
   }
 
