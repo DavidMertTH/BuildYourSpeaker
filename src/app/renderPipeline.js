@@ -48,6 +48,7 @@ export function createRenderPipeline(deps) {
     recommendedLowFrequencyLimit,
     recordingSettings,
     renderCrossoverSchematic,
+    renderDriverSummaryPanel,
     renderDriverHealthPanel,
     renderMeasurementControls,
     roundTo,
@@ -90,18 +91,20 @@ export function createRenderPipeline(deps) {
     const memberSimulations = allDesignSimulations.filter((simulation) => shouldShowDesignMember(simulation.design));
     const groupSimulations = buildConfigGroupSimulations(allDesignSimulations);
     const designSimulations = [...memberSimulations, ...groupSimulations];
-    const activeSimulation =
-      allDesignSimulations.find((simulation) => simulation.design.id === activeDesign.id) || finalizeDesignSimulation(simulateDesignRaw(activeDesign, designColorIndex(activeDesign.id)));
+    const activeSimulation = activeDesign
+      ? allDesignSimulations.find((simulation) => simulation.design.id === activeDesign.id) || finalizeDesignSimulation(simulateDesignRaw(activeDesign, designColorIndex(activeDesign.id)))
+      : finalizeDesignSimulation(simulateDesignRaw(currentProjectDraftDesign(), 0));
     const warnings = [...validateDriver(activeSimulation.driver), ...activeSimulation.warnings];
   
     const animatePlots = Boolean(options.animatePlots);
     updatePlotFitLayout();
     renderMetrics(activeSimulation.driver, activeSimulation, warnings);
-    renderPlots(designSimulations.length ? designSimulations : [activeSimulation], activeSimulation, { animate: animatePlots });
+    renderPlots(designSimulations, activeSimulation, { animate: animatePlots });
     drawBoxPreview(document.querySelector("#boxPreview"), state);
     projectJson.value = JSON.stringify(state, null, 2);
     hydrateDerivedFields();
     hydrateRangeFields();
+    renderDriverSummaryPanel();
     renderDriverHealthPanel();
     hydrateRecordingControls();
     renderMeasurementControls();
@@ -116,9 +119,24 @@ export function createRenderPipeline(deps) {
   
   function applyActiveConfigAccent(design) {
     const root = document.documentElement;
-    const color = designColorForDesign(design);
+    const color = design ? designColorForDesign(design) : designColor(0);
     root.style.setProperty("--accent", color);
     root.style.setProperty("--accent-text", readableTextColor(color));
+  }
+
+  function currentProjectDraftDesign() {
+    return {
+      id: "__draft__",
+      name: "Current settings",
+      groupId: state.configGroups[0]?.id || UNGROUPED_CONFIG_GROUP_ID,
+      mode: state.mode,
+      visible: false,
+      graphVisible: false,
+      driver: cloneProject(state.driver),
+      driverGroups: cloneProject(state.driverGroups || []),
+      activeDriverGroupId: state.activeDriverGroupId,
+      box: cloneProject(state.box),
+    };
   }
   
   function shouldShowDesignMember(design) {
@@ -550,6 +568,7 @@ export function createRenderPipeline(deps) {
       xMax,
       yMin: onAxisResponseRange[0],
       yMax: onAxisResponseRange[1],
+      emptyMessage: "No on-axis measurement imported yet.",
       series: onAxisResponseSeries,
     }), plotOptions);
   
@@ -560,6 +579,7 @@ export function createRenderPipeline(deps) {
       xMax,
       yMin: offAxisResponseRange[0],
       yMax: offAxisResponseRange[1],
+      emptyMessage: "No off-axis measurement imported yet.",
       series: offAxisResponseSeries,
     }), plotOptions);
     updateOffAxisResponseLegend(offAxisResponseSeries);
@@ -596,7 +616,8 @@ export function createRenderPipeline(deps) {
       yMax: portRange.yMax,
       yScale: portRange.yScale,
       annotations: portLimitAnnotations,
-      series: portSeries.length ? portSeries : [{ name: activeSimulation.design.name, x: frequencies, values: frequencies.map(() => 0), color: colors.dim, width: 1 }],
+      emptyMessage: "Port velocity is only available for vented or bandpass boxes.",
+      series: portSeries,
     }), plotOptions);
   
     drawPlot(document.querySelector("#prExcursionPlot"), applyPlotView("prExcursionPlot", {
@@ -608,7 +629,8 @@ export function createRenderPipeline(deps) {
       yMax: prExcursionRange.yMax,
       yScale: prExcursionRange.yScale,
       annotations: passiveRadiatorLimitAnnotations,
-      series: prExcursionSeries.length ? prExcursionSeries : [{ name: activeSimulation.design.name, x: frequencies, values: frequencies.map(() => 0), color: colors.dim, width: 1 }],
+      emptyMessage: "PR excursion is only available for passive radiator boxes.",
+      series: prExcursionSeries,
     }), plotOptions);
   
     drawPlot(document.querySelector("#phasePlot"), applyPlotView("phasePlot", {
@@ -637,6 +659,7 @@ export function createRenderPipeline(deps) {
       title: "Horizontal polar",
       minDb: -30,
       maxDb: 0,
+      emptyMessage: "Need at least two horizontal angles in one measurement group.",
       series: horizontalPolarSeries,
     });
   
@@ -649,6 +672,7 @@ export function createRenderPipeline(deps) {
       xMax,
       yMin: recordingRange[0],
       yMax: recordingRange[1],
+      emptyMessage: "No recording data yet.",
       series: recordingSeries,
     }, plotOptions);
   

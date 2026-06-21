@@ -25,7 +25,7 @@ export function normalizeProjectState(project, options = {}) {
   const fallbackDriverGroups = cloneProject(nextState.driverGroups);
   const fallbackActiveDriverGroupId = nextState.activeDriverGroupId;
 
-  if (!Array.isArray(nextState.designs) || nextState.designs.length === 0) {
+  if (!Array.isArray(nextState.designs)) {
     nextState.designs = [
       {
         id: nextState.activeDesignId || createDesignIdFallback(),
@@ -40,6 +40,8 @@ export function normalizeProjectState(project, options = {}) {
         box: fallbackBox,
       },
     ];
+  } else if (nextState.designs.length === 0) {
+    nextState.activeDesignId = "";
   } else {
     nextState.designs = nextState.designs.map((design, index) => {
       const mode = design.mode || fallbackMode;
@@ -72,7 +74,7 @@ export function normalizeProjectState(project, options = {}) {
     });
   }
 
-  if (!nextState.designs.some((design) => design.id === nextState.activeDesignId)) {
+  if (nextState.designs.length && !nextState.designs.some((design) => design.id === nextState.activeDesignId)) {
     nextState.activeDesignId = nextState.designs[0].id;
   }
   const fallbackMeasurementTarget = nextState.activeDesignId ? `design:${nextState.activeDesignId}` : `configGroup:${defaultConfigGroupId}`;
@@ -175,6 +177,7 @@ export function getActiveDesign(project) {
 
 export function applyActiveDesignToProject(project) {
   const design = getActiveDesign(project);
+  if (!design) return project;
   project.mode = design.mode;
   project.box = completeBox(design.box);
   project.driver = completeDriverParameters(sampleProject.driver, design.driver || project.driver || sampleProject.driver);
@@ -223,6 +226,7 @@ export function syncBoxDriverArrayFromActiveGroup(project) {
 
 export function syncActiveDesignFromProject(project, options = {}) {
   const design = getActiveDesign(project);
+  if (!design) return project;
   const previousAutoName = options.designNameFromBox?.(design.mode, design.box);
   const previousLegacyName = options.legacyDesignNameFromBox?.(design.mode, design.box);
   const previousDriverName = options.designNameFromDriver?.(options.designDriverForName?.(design));

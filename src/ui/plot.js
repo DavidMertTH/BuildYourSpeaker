@@ -98,6 +98,7 @@ function renderPlot(canvas, state) {
 
   drawAnnotationBands(ctx, config, theme, { margin, width, height, xScale, yScale });
 
+  const hasData = hasRenderableSeries(config);
   for (const series of config.series) {
     if (!series.values || series.values.length === 0) continue;
     ctx.globalAlpha = series.opacity ?? 1;
@@ -115,6 +116,7 @@ function renderPlot(canvas, state) {
   ctx.globalAlpha = 1;
 
   drawAnnotationLines(ctx, config, theme, { margin, width, height, rect, xScale, yScale });
+  if (!hasData) drawEmptyState(ctx, config, theme, rect);
 
   ctx.fillStyle = theme.muted;
   ctx.font = "10px system-ui";
@@ -141,7 +143,7 @@ function renderPlot(canvas, state) {
   ctx.textBaseline = "alphabetic";
 
   state.metrics = { margin, width, height, rect, xMin, xMax, yMin, yMax, yMode, xScale, yScale };
-  if (state.hover) drawHover(ctx, config, theme, state.metrics, state.hover);
+  if (hasData && state.hover) drawHover(ctx, config, theme, state.metrics, state.hover);
 }
 
 function getPlotState(canvas) {
@@ -642,6 +644,45 @@ function drawHover(ctx, config, theme, metrics, hover) {
     ctx.fillText(`${series.name}: ${formatValue(value)} ${config.yLabel}`, boxX + 26, rowY - 3);
   });
   ctx.restore();
+}
+
+function hasRenderableSeries(config) {
+  return (config.series || []).some((series) => {
+    const count = Math.min(series.x?.length || 0, series.values?.length || 0);
+    for (let index = 0; index < count; index += 1) {
+      if (Number.isFinite(series.x[index]) && Number.isFinite(series.values[index])) return true;
+    }
+    return false;
+  });
+}
+
+function drawEmptyState(ctx, config, theme, rect) {
+  const message = config.emptyMessage || "No data available for this graph.";
+  ctx.save();
+  ctx.fillStyle = theme.muted;
+  ctx.font = rect.width < 360 ? "11px system-ui" : "12px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  wrapText(ctx, message, rect.width / 2, rect.height / 2, Math.max(90, rect.width - 32), rect.width < 360 ? 13 : 15);
+  ctx.restore();
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth || !current) {
+      current = next;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  });
+  if (current) lines.push(current);
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => ctx.fillText(line, x, startY + index * lineHeight));
 }
 
 function interpolateSeriesValue(series, frequency) {

@@ -35,6 +35,7 @@ import {
   LAYOUT_PANEL_VERSION,
   LIBRARY_CONTROLS_STORAGE_KEY,
   PANEL_IDS,
+  POLAR_PLOT_IDS,
   PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY,
   PASSIVE_RADIATOR_RESULT_FIELDS,
   PLOT_IDS,
@@ -59,7 +60,6 @@ import {
   PANEL_LABELS,
   PANEL_TOOLTIPS,
   PLOT_PANEL_TOOLTIPS,
-  PRESET_TOOLTIPS,
   RANGE_TOOLTIPS,
   SIDEBAR_TOOLTIPS,
   THEME_TOOLTIPS,
@@ -152,11 +152,23 @@ let state = readSavedProjectState();
 let historyIndex = 0;
 let draggedItem = null;
 let manualDrag = null;
-let activePreset = "overview";
+let activePreset = "driver";
 let applyingLayout = false;
 let resizePersistenceReady = false;
 let resizeTimer = null;
 const frequencies = logFrequencyVector(FREQUENCY_MIN_HZ, FREQUENCY_MAX_HZ, 640);
+const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview"];
+const BOX_MODE_PRESETS = {
+  sealed: "boxSealed",
+  vented: "boxVented",
+  passive: "boxPassive",
+  bandpass: "boxBandpass",
+};
+const WORK_MODE_PRESETS = {
+  driver: "driver",
+  crossover: "filter",
+  measurement: "measurement",
+};
 const FREQUENCY_RESPONSE_RESULT_FIELDS = [
   { key: "pointCount", label: "Points", unit: "" },
   { key: "frequencyMinHz", label: "From", unit: "Hz" },
@@ -173,7 +185,6 @@ const {
   themeButtons,
   sidebarTabs,
   sidebarPanels,
-  presetButtons,
   panelToggles,
   plotPanels,
   pillTabGroups,
@@ -181,12 +192,20 @@ const {
   importExportButton,
   importExportDialog,
   closeImportExportDialog,
+  fileSaveButton,
+  fileOpenButton,
+  exportButton,
+  importInput,
   importJsonButton,
   projectDialogStatus,
   driverSearchInput,
   driverSearchButton,
   driverSearchStatus,
   driverSearchResults,
+  driverSummaryPanel,
+  driverUsageSummary,
+  driverValidationDetails,
+  driverValidationStatus,
   driverHealthPanel,
   driverSelect,
   driverLibraryFilter,
@@ -265,6 +284,8 @@ let goldenLayoutSaveTimer = null;
 let goldenLayoutRenderTimer = null;
 let loadingGoldenLayout = false;
 let goldenLayoutLoadToken = 0;
+let programmaticGoldenLayoutPreset = "";
+let programmaticGoldenLayoutUntil = 0;
 let desktopGoldenLayoutConfig = null;
 let stagedRecordingResponse = null;
 const plotViewController = createPlotViewController({
@@ -303,6 +324,7 @@ const searchWorkflows = createSearchWorkflows({
   plannerStatus,
   renderDriverSearchResults,
   renderPassiveRadiatorSearchResults,
+  searchKnownDriverResults,
   setTooltip,
   slugify,
   syncActiveDesignFromProject,
@@ -441,7 +463,8 @@ const renderPipeline = createRenderPipeline({
   readableTextColor,
   recommendedLowFrequencyLimit,
   recordingSettings,
-  renderDriverHealthPanel,
+  renderDriverSummaryPanel: (...args) => renderDriverSummaryPanel(...args),
+  renderDriverHealthPanel: (...args) => renderDriverHealthPanel(...args),
   renderCrossoverSchematic,
   renderMeasurementControls: (...args) => renderMeasurementControls(...args),
   roundTo,
@@ -654,9 +677,6 @@ function initializeTooltips() {
   themeButtons.forEach((button) => {
     setTooltip(button, THEME_TOOLTIPS[button.dataset.themeChoice]);
   });
-  presetButtons.forEach((button) => {
-    setTooltip(button, PRESET_TOOLTIPS[button.dataset.layoutPreset]);
-  });
   panelToggles.forEach((button) => {
     setTooltip(button, PANEL_TOOLTIPS[button.dataset.panelToggle]);
   });
@@ -689,13 +709,20 @@ function setTooltip(element, text) {
 }
 
 function initializePlotControls() {
-  PLOT_IDS.forEach((plotId) => {
+  GRAPH_PANEL_IDS.forEach((plotId) => {
     const canvas = document.querySelector(`#${plotId}`);
     const panel = canvas?.closest(".plot-panel");
-    if (!canvas || !panel || [...panel.children].some((child) => child.classList?.contains("plot-toolbar"))) return;
+    if (!canvas || !panel) return;
 
-    panel.append(createPlotToolbar(plotId, "plot-overlay-toolbar"));
+    if (!PLOT_IDS.includes(plotId) && ![...panel.children].some((child) => child.classList?.contains("plot-panel-switcher"))) {
+      panel.append(createGraphPanelSwitcher(plotId));
+    }
 
+    if (PLOT_IDS.includes(plotId) && ![...panel.children].some((child) => child.classList?.contains("plot-toolbar"))) {
+      panel.append(createPlotToolbar(plotId, "plot-overlay-toolbar"));
+    }
+
+    if (!PLOT_IDS.includes(plotId)) return;
     canvas.addEventListener("wheel", (event) => {
       if (isMobileLayout()) return;
       event.preventDefault();
@@ -780,6 +807,7 @@ function bindGoldenPlotPanel(container, componentState = {}) {
   panel.style.gridRow = "";
   panel.setAttribute("draggable", "false");
   container.element.append(panel);
+  syncGraphPanelSwitcherValue(panel);
   container.stateRequestEvent = () => ({ panelId });
   container.on("resize", queueGoldenLayoutRender);
   container.on("show", queueGoldenLayoutRender);
@@ -813,7 +841,14 @@ function handleGoldenLayoutTabMiddleClick(event) {
 }
 
 function handleGoldenLayoutStateChanged() {
-  if (loadingGoldenLayout) return;
+  if (loadingGoldenLayout || (programmaticGoldenLayoutPreset && Date.now() < programmaticGoldenLayoutUntil)) {
+    if (programmaticGoldenLayoutPreset) {
+      activePreset = programmaticGoldenLayoutPreset;
+      updatePresetButtonState();
+    }
+    return;
+  }
+  programmaticGoldenLayoutPreset = "";
   if (isGoldenLayoutMaximized()) {
     queueGoldenLayoutRender();
     return;
@@ -877,6 +912,10 @@ function loadGoldenLayoutConfig(config, options = {}) {
   const loadToken = goldenLayoutLoadToken + 1;
   goldenLayoutLoadToken = loadToken;
   loadingGoldenLayout = true;
+  if (options.activePresetName) {
+    programmaticGoldenLayoutPreset = options.activePresetName;
+    programmaticGoldenLayoutUntil = Date.now() + 1200;
+  }
   try {
     const closableConfig = makeGoldenLayoutTabsClosable(config);
     if (goldenLayout.rootItem) goldenLayout.clear();
@@ -895,7 +934,16 @@ function loadGoldenLayoutConfig(config, options = {}) {
     console.error("Golden Layout load failed.", error);
   } finally {
     window.setTimeout(() => {
-      if (goldenLayoutLoadToken === loadToken) loadingGoldenLayout = false;
+      if (goldenLayoutLoadToken !== loadToken) return;
+      loadingGoldenLayout = false;
+      if (options.activePresetName) {
+        activePreset = options.activePresetName;
+        updatePresetButtonState();
+        window.setTimeout(() => {
+          if (goldenLayoutLoadToken !== loadToken) return;
+          programmaticGoldenLayoutPreset = "";
+        }, 900);
+      }
     }, 300);
   }
 }
@@ -908,6 +956,7 @@ function currentGoldenPanelIds() {
 function syncPanelVisibilityFromGoldenLayout() {
   const visible = new Set(currentGoldenPanelIds());
   plotPanels.forEach((panel) => panel.classList.toggle("is-hidden", !visible.has(panel.dataset.panel)));
+  syncGraphPanelSwitcherValues();
 }
 
 function startPlotResize(panelId, direction, event) {
@@ -986,12 +1035,17 @@ function createPlotToolbar(plotId, placementClass = "") {
   toolbar.addEventListener("click", (event) => event.stopPropagation());
   toolbar.addEventListener("dblclick", (event) => event.stopPropagation());
   toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
+  toolbar.addEventListener("mouseleave", () => {
+    toolbar.querySelectorAll(".plot-axis-menu").forEach((details) => {
+      details.open = false;
+    });
+  });
 
   const pill = document.createElement("button");
   pill.type = "button";
   pill.className = "plot-toolbar-pill";
-  pill.textContent = "Axes";
-  setTooltip(pill, "Show graph zoom and axis controls.");
+  pill.textContent = "Plot";
+  setTooltip(pill, "Show graph, zoom, and axis controls.");
 
   const menu = document.createElement("div");
   menu.className = "plot-toolbar-menu";
@@ -1032,7 +1086,7 @@ function createPlotToolbar(plotId, placementClass = "") {
     axes.open = true;
   });
   axes.addEventListener("mouseleave", () => {
-    if (!axes.matches(":focus-within")) axes.open = false;
+    axes.open = false;
   });
   axes.addEventListener("focusin", () => {
     axes.open = true;
@@ -1048,9 +1102,134 @@ function createPlotToolbar(plotId, placementClass = "") {
     summary.focus();
   });
 
-  menu.append(zoomRow, reset, axes);
+  const graphRow = document.createElement("div");
+  graphRow.className = "plot-graph-axis-row";
+  graphRow.append(createGraphPanelSelect(plotId), axes);
+
+  menu.append(zoomRow, reset, graphRow);
   toolbar.append(pill, menu);
   return toolbar;
+}
+
+function createGraphPanelSwitcher(panelId) {
+  const switcher = document.createElement("div");
+  switcher.className = "plot-panel-switcher";
+  switcher.dataset.plotPanelSwitcher = panelId;
+  switcher.addEventListener("click", (event) => event.stopPropagation());
+  switcher.addEventListener("dblclick", (event) => event.stopPropagation());
+  switcher.addEventListener("mousedown", (event) => event.stopPropagation());
+  switcher.append(createGraphPanelSelect(panelId));
+  return switcher;
+}
+
+function createGraphPanelSelect(panelId) {
+  const select = document.createElement("select");
+  select.className = "plot-panel-select";
+  select.dataset.plotPanelSelect = panelId;
+  select.ariaLabel = "Graph shown in this panel";
+  setTooltip(select, "Change the graph shown in this panel.");
+  GRAPH_PANEL_IDS.forEach((graphPanelId) => {
+    const option = document.createElement("option");
+    option.value = graphPanelId;
+    option.textContent = PANEL_LABELS[graphPanelId] || graphPanelId;
+    select.append(option);
+  });
+  select.value = panelId;
+  select.addEventListener("change", () => replaceGraphPanel(panelId, select.value));
+  return select;
+}
+
+function replaceGraphPanel(currentPanelId, nextPanelId) {
+  if (currentPanelId === nextPanelId || !GRAPH_PANEL_IDS.includes(nextPanelId)) return;
+
+  if (isMobileLayout()) {
+    const previousMobilePanel = mobileActivePanel;
+    mobileActivePanel = nextPanelId;
+    adoptPlotState(plotCanvasForPanel(mobileActivePanel), plotCanvasForPanel(previousMobilePanel));
+    applyMobilePanelVisibility();
+    updatePanelToggleState();
+    render({ animatePlots: true });
+    return;
+  }
+
+  if (goldenLayout) {
+    const nextConfig = cloneProject(goldenLayout.saveLayout());
+    const changed = replaceGraphPanelInLayout(nextConfig.root, currentPanelId, nextPanelId);
+    if (!changed) return;
+    activePreset = "custom";
+    loadGoldenLayoutConfig(goldenLayoutConfigFromResolved(nextConfig) || nextConfig);
+    return;
+  }
+
+  replaceGraphPanelInStaticLayout(currentPanelId, nextPanelId);
+}
+
+function replaceGraphPanelInLayout(root, currentPanelId, nextPanelId) {
+  let hasCurrent = false;
+  let hasNext = false;
+  const visit = (item) => {
+    if (!item) return;
+    if (item.type === "component" && item.componentType === GOLDEN_COMPONENT_TYPE) {
+      const panelId = item.componentState?.panelId;
+      hasCurrent ||= panelId === currentPanelId;
+      hasNext ||= panelId === nextPanelId;
+    }
+    item.content?.forEach(visit);
+  };
+  visit(root);
+  if (!hasCurrent) return false;
+
+  const apply = (item) => {
+    if (!item) return;
+    if (item.type === "component" && item.componentType === GOLDEN_COMPONENT_TYPE) {
+      const panelId = item.componentState?.panelId;
+      const replacementId = panelId === currentPanelId ? nextPanelId : hasNext && panelId === nextPanelId ? currentPanelId : panelId;
+      if (replacementId !== panelId) {
+        item.componentState = { ...(item.componentState || {}), panelId: replacementId };
+        item.title = PANEL_LABELS[replacementId] || replacementId;
+      }
+    }
+    item.content?.forEach(apply);
+  };
+  apply(root);
+  return true;
+}
+
+function replaceGraphPanelInStaticLayout(currentPanelId, nextPanelId) {
+  const currentPanel = document.querySelector(`[data-panel="${currentPanelId}"]`);
+  const nextPanel = document.querySelector(`[data-panel="${nextPanelId}"]`);
+  const parent = currentPanel?.parentElement;
+  if (!currentPanel || !nextPanel || !parent || nextPanel.parentElement !== parent) return;
+
+  const targetWasHidden = nextPanel.classList.contains("is-hidden");
+  const currentMarker = document.createComment("current-graph-panel");
+  const nextMarker = document.createComment("next-graph-panel");
+  parent.insertBefore(currentMarker, currentPanel);
+  parent.insertBefore(nextMarker, nextPanel);
+  parent.insertBefore(nextPanel, currentMarker);
+  parent.insertBefore(currentPanel, nextMarker);
+  currentMarker.remove();
+  nextMarker.remove();
+
+  nextPanel.classList.remove("is-hidden");
+  currentPanel.classList.toggle("is-hidden", targetWasHidden);
+  syncGraphPanelSwitcherValues();
+  activePreset = "custom";
+  updatePlotFitLayout();
+  updatePanelToggleState();
+  updatePresetButtonState();
+  saveLayout();
+  render({ animatePlots: true });
+}
+
+function syncGraphPanelSwitcherValues() {
+  plotPanels.forEach(syncGraphPanelSwitcherValue);
+}
+
+function syncGraphPanelSwitcherValue(panel) {
+  const select = panel?.querySelector(".plot-panel-select");
+  if (!select || !panel?.dataset?.panel) return;
+  select.value = panel.dataset.panel;
 }
 
 function currentPlotPanelSize(panel) {
@@ -1131,6 +1310,7 @@ function setActiveSidebarPanel(panelId) {
     panel.classList.toggle("active", panel.dataset.sidebarPanel === panelId);
   });
   updatePillIndicators();
+  applyWorkModeView(panelId);
 }
 
 function initializeThemeControls() {
@@ -1224,6 +1404,28 @@ function setLibraryFilterSwitchState(control, enabled) {
 
 function isLibraryFilterSwitchEnabled(control) {
   return control?.getAttribute("aria-checked") === "true";
+}
+
+function isSwitchActivationKey(event) {
+  return event.key === "Enter" || event.key === " ";
+}
+
+function toggleDriverLibraryFilters() {
+  const enabled = !isLibraryFilterSwitchEnabled(driverLibraryFilterEnabled);
+  setLibraryFilterSwitchState(driverLibraryFilterEnabled, enabled);
+  libraryControlPrefs.driverFilterEnabled = enabled;
+  saveLibraryControlPrefs();
+  updateLibraryFilterControlState("driver");
+  renderDriverSelect();
+}
+
+function togglePassiveRadiatorLibraryFilters() {
+  const enabled = !isLibraryFilterSwitchEnabled(passiveRadiatorLibraryFilterEnabled);
+  setLibraryFilterSwitchState(passiveRadiatorLibraryFilterEnabled, enabled);
+  libraryControlPrefs.passiveRadiatorFilterEnabled = enabled;
+  saveLibraryControlPrefs();
+  updateLibraryFilterControlState("passiveRadiator");
+  renderPassiveRadiatorSelect();
 }
 
 function updateLibraryFilterControlState(kind) {
@@ -1328,6 +1530,7 @@ function bindEvents() {
       if (nextState.mode === "bandpass") updateBandpassPortLengths(nextState);
       syncActiveDesignFromProject(nextState);
       commitState(nextState, { animatePlots: true });
+      if (activeSidebarPanelId() === "planning") applyWorkModeView("planning");
     });
   });
 
@@ -1359,12 +1562,13 @@ function bindEvents() {
   driverLibraryFilterEnabled?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const enabled = !isLibraryFilterSwitchEnabled(driverLibraryFilterEnabled);
-    setLibraryFilterSwitchState(driverLibraryFilterEnabled, enabled);
-    libraryControlPrefs.driverFilterEnabled = enabled;
-    saveLibraryControlPrefs();
-    updateLibraryFilterControlState("driver");
-    renderDriverSelect();
+    toggleDriverLibraryFilters();
+  });
+  driverLibraryFilterEnabled?.addEventListener("keydown", (event) => {
+    if (!isSwitchActivationKey(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleDriverLibraryFilters();
   });
   driverLibraryBrand?.addEventListener("change", () => {
     libraryControlPrefs.driverBrand = driverLibraryBrand.value;
@@ -1393,12 +1597,13 @@ function bindEvents() {
   passiveRadiatorLibraryFilterEnabled?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const enabled = !isLibraryFilterSwitchEnabled(passiveRadiatorLibraryFilterEnabled);
-    setLibraryFilterSwitchState(passiveRadiatorLibraryFilterEnabled, enabled);
-    libraryControlPrefs.passiveRadiatorFilterEnabled = enabled;
-    saveLibraryControlPrefs();
-    updateLibraryFilterControlState("passiveRadiator");
-    renderPassiveRadiatorSelect();
+    togglePassiveRadiatorLibraryFilters();
+  });
+  passiveRadiatorLibraryFilterEnabled?.addEventListener("keydown", (event) => {
+    if (!isSwitchActivationKey(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    togglePassiveRadiatorLibraryFilters();
   });
   passiveRadiatorLibraryBrand?.addEventListener("change", () => {
     libraryControlPrefs.passiveRadiatorBrand = passiveRadiatorLibraryBrand.value;
@@ -1433,32 +1638,27 @@ function bindEvents() {
     }
   });
 
-  importExportButton.addEventListener("click", () => {
-    projectJson.value = JSON.stringify(state, null, 2);
-    projectDialogStatus.textContent = "";
-    importExportDialog.showModal();
+  importExportButton.addEventListener("click", openImportExportDialog);
+  fileOpenButton?.addEventListener("click", () => {
+    fileOpenButton.closest("details")?.removeAttribute("open");
+    openImportExportDialog();
+  });
+  fileSaveButton?.addEventListener("click", () => {
+    fileSaveButton.closest("details")?.removeAttribute("open");
+    exportProjectJson();
   });
 
   closeImportExportDialog.addEventListener("click", () => {
     importExportDialog.close();
   });
 
-  document.querySelector("#exportButton").addEventListener("click", () => {
-    const text = JSON.stringify(state, null, 2);
-    projectJson.value = text;
-    const blob = new Blob([text], { type: "application/json" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "audiosim-project.json";
-    link.click();
-    URL.revokeObjectURL(link.href);
-  });
+  exportButton?.addEventListener("click", exportProjectJson);
 
   importJsonButton.addEventListener("click", () => {
     importProjectJson(projectJson.value);
   });
 
-  document.querySelector("#importInput").addEventListener("change", async (event) => {
+  importInput?.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     importProjectJson(await file.text());
@@ -2131,15 +2331,14 @@ function deleteActiveDesign() {
 }
 
 function deleteDesign(designId) {
-  if (state.designs.length <= 1) return;
   const nextState = cloneProject(state);
   const deletedActive = nextState.activeDesignId === designId;
   nextState.designs = nextState.designs.filter((design) => design.id !== designId);
   if (nextState.designs.length === state.designs.length) return;
   if (deletedActive || !nextState.designs.some((design) => design.id === nextState.activeDesignId)) {
-    nextState.activeDesignId = nextState.designs[0].id;
+    nextState.activeDesignId = nextState.designs[0]?.id || "";
   }
-  applyActiveDesignToProject(nextState);
+  if (nextState.activeDesignId) applyActiveDesignToProject(nextState);
   commitState(nextState, { hydrate: true });
 }
 
@@ -2610,8 +2809,27 @@ function renameActiveDesign(rawName) {
     return;
   }
   const nextState = cloneProject(state);
-  getActiveDesign(nextState).name = name;
+  const activeDesign = getActiveDesign(nextState);
+  if (!activeDesign) return;
+  activeDesign.name = name;
   commitState(nextState);
+}
+
+function openImportExportDialog() {
+  projectJson.value = JSON.stringify(state, null, 2);
+  projectDialogStatus.textContent = "";
+  importExportDialog.showModal();
+}
+
+function exportProjectJson() {
+  const text = JSON.stringify(state, null, 2);
+  projectJson.value = text;
+  const blob = new Blob([text], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "audiosim-project.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function importProjectJson(text) {
@@ -2990,6 +3208,39 @@ async function searchDriverSpecs() {
   return searchWorkflows.searchDriverSpecs();
 }
 
+function searchKnownDriverResults(query) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery || isHttpUrl(normalizedQuery)) return [];
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  return driverLibrary
+    .map((entry) => {
+      const haystack = [
+        entry.name,
+        entry.source,
+        libraryBrand(entry, "driver"),
+        nominalDiameterLabel(entry),
+      ].filter(Boolean).join(" ").toLowerCase();
+      const score = tokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0);
+      if (!score) return null;
+      return {
+        title: entry.name,
+        url: "Known driver library",
+        driver: entry.driver,
+        matched: ["known driver", `${score}/${tokens.length} name tokens`],
+        libraryEntryId: entry.id,
+        score,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: "base" }))
+    .slice(0, 8);
+}
+
+function nominalDiameterLabel(entry) {
+  const diameter = Number(entry?.diameterIn ?? entry?.diameter ?? entry?.nominalDiameterIn);
+  return Number.isFinite(diameter) && diameter > 0 ? `${diameter} in` : "";
+}
+
 function isDriverMeasurementGroup(group) {
   return String(group?.kind || "") === "driver";
 }
@@ -3066,6 +3317,15 @@ function planEnclosureDesigns() {
 }
 
 function applyDriverCandidate(result) {
+  if (result?.libraryEntryId) {
+    const entry = driverLibrary.find((item) => item.id === result.libraryEntryId);
+    if (entry) {
+      applyKnownDriver(entry);
+      driverSearchResults.replaceChildren();
+      driverSearchStatus.textContent = `${entry.name} applied from Known driver.`;
+      return;
+    }
+  }
   searchWorkflows.applyDriverCandidate(result);
 }
 
@@ -3259,10 +3519,6 @@ function uniquePassiveRadiatorId(id) {
 }
 
 function bindPanelControls() {
-  presetButtons.forEach((button) => {
-    button.addEventListener("click", () => applyPreset(button.dataset.layoutPreset));
-  });
-
   panelToggles.forEach((toggle) => {
     toggle.addEventListener("change", () => {
       if (isMobileLayout()) {
@@ -3312,14 +3568,14 @@ function initializeMobileLayoutControls() {
     } else {
       initializeGoldenLayout();
       if (goldenLayout && desktopGoldenLayoutConfig) {
-        loadGoldenLayoutConfig(goldenLayoutConfigFromResolved(desktopGoldenLayoutConfig) || buildGoldenLayoutConfig(PANEL_PRESETS.overview.visible), {
+        loadGoldenLayoutConfig(goldenLayoutConfigFromResolved(desktopGoldenLayoutConfig) || buildGoldenLayoutConfig(PANEL_PRESETS.driver.visible), {
           persist: false,
         });
         desktopGoldenLayoutConfig = null;
       } else if (goldenLayout) {
         restoreLayout();
       } else {
-        applyPreset(activePreset === "custom" ? "overview" : activePreset);
+        applyPreset(activePreset === "custom" ? "driver" : activePreset);
         return;
       }
     }
@@ -3583,11 +3839,36 @@ function saveLayout() {
   writeSavedLayout(layout);
 }
 
+function normalizePresetName(name) {
+  if (name === "custom") return "custom";
+  if (name && PANEL_PRESETS[name]) return name;
+  if (name === "crossover") return "filter";
+  if (name === "recording") return "measurement";
+  return "driver";
+}
+
+function boxPresetForMode(mode = state.mode) {
+  return BOX_MODE_PRESETS[mode] || BOX_MODE_PRESETS.vented;
+}
+
+function presetForWorkMode(workMode) {
+  if (workMode === "planning") return boxPresetForMode();
+  return WORK_MODE_PRESETS[workMode] || WORK_MODE_PRESETS.driver;
+}
+
+function activeSidebarPanelId() {
+  return sidebarTabs.find((button) => button.classList.contains("active"))?.dataset.sidebarTab || "driver";
+}
+
+function applyWorkModeView(workMode = activeSidebarPanelId()) {
+  applyPreset(presetForWorkMode(workMode));
+}
+
 function restoreLayout() {
   if (isGoldenLayoutPopoutWindow()) return;
   const layout = readSavedLayout();
   if (goldenLayout) {
-    activePreset = layout?.activePreset || "overview";
+    activePreset = normalizePresetName(layout?.activePreset);
     const savedConfig = goldenLayoutConfigFromResolved(layout?.golden);
     let validSavedConfig = savedConfig && panelIdsFromLayoutConfig(savedConfig).length > 0 ? savedConfig : null;
     let shouldPersist = !validSavedConfig;
@@ -3599,7 +3880,7 @@ function restoreLayout() {
       shouldPersist = true;
       if (activePreset !== "custom") validSavedConfig = null;
     }
-    if (!validSavedConfig && !PANEL_PRESETS[activePreset]) activePreset = "overview";
+    if (!validSavedConfig && !PANEL_PRESETS[activePreset]) activePreset = "driver";
     loadGoldenLayoutConfig(validSavedConfig || buildGoldenLayoutConfig(PANEL_PRESETS[activePreset].visible), {
       persist: shouldPersist,
     });
@@ -3608,7 +3889,7 @@ function restoreLayout() {
 
   if (!layout) return;
   if (layout.activePreset && layout.activePreset !== "custom") {
-    applyPreset(layout.activePreset);
+    applyPreset(normalizePresetName(layout.activePreset));
     return;
   }
 
@@ -3624,7 +3905,7 @@ function restoreLayout() {
     }
   }
 
-  activePreset = layout.activePreset || "overview";
+  activePreset = layout.activePreset || "driver";
   if (layout.panels) {
     plotPanels.forEach((panel) => {
       const panelLayout = layout.panels[panel.dataset.panel];
@@ -3646,11 +3927,12 @@ function restoreLayout() {
 
 function applyPreset(name) {
   if (isMobileLayout()) return;
-  const preset = PANEL_PRESETS[name];
+  const presetName = normalizePresetName(name);
+  const preset = PANEL_PRESETS[presetName];
   if (!preset) return;
   if (goldenLayout) {
-    activePreset = name;
-    loadGoldenLayoutConfig(buildGoldenLayoutConfig(preset.visible));
+    activePreset = presetName;
+    loadGoldenLayoutConfig(buildGoldenLayoutConfig(preset.visible), { activePresetName: presetName });
     updatePresetButtonState();
     return;
   }
@@ -3676,7 +3958,7 @@ function applyPreset(name) {
   updatePlotFitLayout();
   applyingLayout = false;
 
-  activePreset = name;
+  activePreset = presetName;
   updatePanelToggleState();
   updatePresetButtonState();
   saveLayout();
@@ -3700,9 +3982,6 @@ function updatePanelToggleState() {
 }
 
 function updatePresetButtonState() {
-  presetButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.layoutPreset === activePreset);
-  });
 }
 
 function initializeHistory() {
@@ -3733,6 +4012,7 @@ function hydrateFields() {
   });
   hydrateRangeFields();
   hydrateDesignControls();
+  renderDriverSummaryPanel();
   renderDriverHealthPanel();
   selectMatchingDriver();
   selectMatchingPassiveRadiator();
@@ -3774,6 +4054,86 @@ function hydrateDerivedFields() {
   });
 }
 
+function renderDriverSummaryPanel() {
+  if (!driverSummaryPanel) return;
+  const analysis = analyzeDriverParameters(state.driver);
+  const match = matchingDriverEntry();
+  const hasErrors = analysis.issues.some((issue) => issue.severity === "error");
+  const hasWarnings = analysis.issues.some((issue) => issue.severity === "warning");
+  const isLibraryDriver = Boolean(match);
+  const driverName = match?.name || "Custom driver";
+  const driverSource = driverSummarySourceLabel(match);
+  const completedDriver = completeDriverParameters(sampleProject.driver, state.driver);
+  const qts = positiveDriverValue(analysis.derived.qts) || positiveDriverValue(completedDriver.qts);
+  const specs = [
+    { label: "Re", value: positiveDriverValue(state.driver.re), unit: "ohm", decimals: 2 },
+    { label: "Fs", value: positiveDriverValue(state.driver.fs), unit: "Hz", decimals: 1 },
+    { label: "Qts", value: qts, unit: "", decimals: 3 },
+    { label: "Vas", value: positiveDriverValue(state.driver.vasL), unit: "L", decimals: 1 },
+    { label: "Sd", value: positiveDriverValue(state.driver.sdCm2), unit: "cm2", decimals: 1 },
+    { label: "Xmax", value: positiveDriverValue(state.driver.xmaxMm), unit: "mm", decimals: 1 },
+  ];
+
+  driverSummaryPanel.classList.toggle("has-errors", hasErrors);
+  driverSummaryPanel.classList.toggle("has-warnings", hasWarnings && !hasErrors);
+  driverSummaryPanel.replaceChildren();
+
+  const header = document.createElement("div");
+  header.className = "driver-summary-header";
+  const title = document.createElement("div");
+  title.className = "driver-summary-title";
+  const titleText = document.createElement("strong");
+  titleText.textContent = driverName;
+  const sourceText = document.createElement("span");
+  sourceText.textContent = driverSource;
+  title.append(titleText, sourceText);
+  const status = document.createElement("span");
+  status.className = "driver-summary-status";
+  status.textContent = hasErrors ? "Missing data" : hasWarnings ? "Review" : isLibraryDriver ? "Library" : "Manual";
+  header.append(title, status);
+
+  const specGrid = document.createElement("div");
+  specGrid.className = "driver-summary-specs";
+  specs.forEach((spec) => {
+    const item = document.createElement("div");
+    item.className = "driver-summary-spec";
+    const label = document.createElement("span");
+    label.textContent = spec.label;
+    const value = document.createElement("strong");
+    value.textContent = formatDriverSummaryValue(spec.value, spec.unit, spec.decimals);
+    item.append(label, value);
+    specGrid.append(item);
+  });
+
+  const note = document.createElement("div");
+  note.className = "driver-summary-note";
+  note.textContent = driverHealthSummary(analysis);
+  driverSummaryPanel.append(header, specGrid, note);
+
+  if (driverUsageSummary) driverUsageSummary.textContent = driverUsageText();
+}
+
+function formatDriverSummaryValue(value, unit, decimals = 1) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  const formatted = number.toFixed(decimals).replace(/\.?0+$/, "");
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function driverSummarySourceLabel(match) {
+  if (!match) return "Manual parameters";
+  return "Known driver library";
+}
+
+function driverUsageText() {
+  const count = Math.max(1, Math.min(16, Math.round(Number(state.box?.driverCount) || 1)));
+  const wiring = state.box?.driverWiring === "series" ? "series" : "parallel";
+  const re = positiveDriverValue(state.driver?.re);
+  if (!re) return `${count}x ${wiring}`;
+  const effective = wiring === "series" ? re * count : re / count;
+  return `${count}x ${wiring} / ${formatDriverSummaryValue(effective, "ohm", 2)}`;
+}
+
 function renderDriverHealthPanel() {
   if (!driverHealthPanel) return;
   const analysis = analyzeDriverParameters(state.driver);
@@ -3781,6 +4141,7 @@ function renderDriverHealthPanel() {
 
   const hasErrors = analysis.issues.some((issue) => issue.severity === "error");
   const hasWarnings = analysis.issues.some((issue) => issue.severity === "warning");
+  updateDriverValidationStatus(hasErrors, hasWarnings);
   driverHealthPanel.classList.toggle("has-errors", hasErrors);
   driverHealthPanel.classList.toggle("has-warnings", hasWarnings && !hasErrors);
   driverHealthPanel.replaceChildren();
@@ -3830,6 +4191,16 @@ function renderDriverHealthPanel() {
       list.append(item);
     });
     driverHealthPanel.append(list);
+  }
+}
+
+function updateDriverValidationStatus(hasErrors, hasWarnings) {
+  if (!driverValidationDetails) return;
+  driverValidationDetails.classList.toggle("has-errors", hasErrors);
+  driverValidationDetails.classList.toggle("has-warnings", hasWarnings && !hasErrors);
+  driverValidationDetails.classList.toggle("is-ok", !hasErrors && !hasWarnings);
+  if (driverValidationStatus) {
+    driverValidationStatus.textContent = hasErrors ? "Missing data" : hasWarnings ? "Review" : "OK";
   }
 }
 

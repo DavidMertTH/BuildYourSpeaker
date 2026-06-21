@@ -349,6 +349,7 @@ export function createPlotViewController({
     setPlotAxisValue,
     startPlotPan,
     updatePlotControlValues,
+    zoomPlot,
   };
 }
 

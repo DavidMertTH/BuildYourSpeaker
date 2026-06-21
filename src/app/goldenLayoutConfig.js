@@ -72,6 +72,7 @@ function pruneLayoutItem(item) {
 export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
   const uniquePanelIds = [...new Set(panelIds)].filter((panelId) => PANEL_IDS.includes(panelId));
   const visiblePanelIds = uniquePanelIds.length ? uniquePanelIds : [PANEL_IDS[0]];
+  if (isDriverLayout(visiblePanelIds)) return buildDriverGoldenLayoutConfig();
   if (isRecordingLayout(visiblePanelIds)) return buildRecordingGoldenLayoutConfig();
   if (isCrossoverLayout(visiblePanelIds)) return buildCrossoverGoldenLayoutConfig();
 
@@ -110,6 +111,11 @@ export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
   };
 }
 
+function isDriverLayout(panelIds) {
+  const driverPanelIds = ["splPlot", "onAxisResponsePlot", "offAxisResponsePlot"];
+  return panelIds.length === driverPanelIds.length && driverPanelIds.every((panelId) => panelIds.includes(panelId));
+}
+
 function isRecordingLayout(panelIds) {
   const recordingPanelIds = ["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"];
   return panelIds.length === recordingPanelIds.length && recordingPanelIds.every((panelId) => panelIds.includes(panelId));
@@ -118,6 +124,39 @@ function isRecordingLayout(panelIds) {
 function isCrossoverLayout(panelIds) {
   const crossoverPanelIds = ["crossoverSchematicPanel", "splPlot", "phasePlot", "impedancePlot"];
   return panelIds.length === crossoverPanelIds.length && crossoverPanelIds.every((panelId) => panelIds.includes(panelId));
+}
+
+function buildDriverGoldenLayoutConfig() {
+  return {
+    root: {
+      type: "row",
+      content: [
+        componentStackConfig("splPlot", 66),
+        {
+          type: "column",
+          size: "34%",
+          content: [
+            componentStackConfig("onAxisResponsePlot", 50),
+            componentStackConfig("offAxisResponsePlot", 50),
+          ],
+        },
+      ],
+    },
+    settings: {
+      reorderEnabled: true,
+      constrainDragToContainer: true,
+      popoutWholeStack: false,
+    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
+    header: {
+      show: "top",
+      close: "hide",
+      maximise: "maximise",
+      minimise: "minimise",
+      popout: "popout",
+      tabDropdown: "tabs",
+    },
+  };
 }
 
 function buildRecordingGoldenLayoutConfig() {

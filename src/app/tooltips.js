@@ -111,14 +111,6 @@ export const MODE_TOOLTIPS = {
   vented: "Use a ported box tuned by volume, port diameter, and port length.",
   passive: "Use a passive radiator instead of a port.",
 };
-export const PRESET_TOOLTIPS = {
-  overview: "Balanced workspace with core response, box, impedance, and limit graphs.",
-  tuning: "Tune the enclosure using SPL, impedance, port velocity, delay, and box preview.",
-  limits: "Check excursion, port velocity, passive radiator travel, and SPL headroom.",
-  model: "Inspect the physical model, polar view, phase, delay, and impedance.",
-  recording: "Compare imported or staged measurements against the simulated SPL.",
-  crossover: "Design the crossover schematic while watching SPL, phase, and impedance.",
-};
 export const PANEL_TOOLTIPS = {
   splPlot: "Show or hide the SPL graph.",
   onAxisResponsePlot: "Show or hide imported on-axis measurements.",

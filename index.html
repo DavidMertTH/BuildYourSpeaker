@@ -22,11 +22,20 @@
         </nav>
 
         <section class="panel sidebar-panel active" data-sidebar-panel="driver">
-          <label class="driver-select-row">
-            <span>Known driver</span>
-            <div class="library-controls">
+          <section class="driver-workflow-section driver-finder-section" aria-labelledby="driverFinderTitle">
+            <div class="driver-section-header">
+              <span id="driverFinderTitle">Find driver</span>
+            </div>
+            <div class="driver-search">
+              <input id="driverSearchInput" type="search" placeholder="Search driver or paste datasheet URL" />
+              <button id="driverSearchButton" type="button">Search</button>
+            </div>
+            <label class="driver-library-label" for="driverSelect">Known driver</label>
+            <input id="driverLibraryFilter" class="driver-known-search" type="search" placeholder="Filter known drivers by name" />
+            <div class="driver-library-row">
+              <select id="driverSelect"></select>
               <details class="library-filter-menu">
-                <summary><span>Filters</span><button id="driverLibraryFilterEnabled" class="library-filter-toggle" type="button" role="switch" aria-checked="false" aria-label="Enable driver preset filters"></button></summary>
+                <summary><span>Filters</span><span id="driverLibraryFilterEnabled" class="library-filter-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Enable driver preset filters"></span></summary>
                 <div class="library-filter-menu-body">
                   <select id="driverLibraryBrand" aria-label="Filter driver presets by brand"></select>
                   <select id="driverLibraryDiameter" aria-label="Filter driver presets by diameter">
@@ -45,45 +54,50 @@
                 </div>
               </details>
             </div>
-            <select id="driverSelect"></select>
-          </label>
-          <div class="driver-search">
-            <input id="driverSearchInput" type="search" placeholder="Search model or paste datasheet URL" />
-            <button id="driverSearchButton" type="button">Search</button>
-          </div>
-          <div id="driverSearchStatus" class="search-status"></div>
-          <div id="driverSearchResults" class="search-results"></div>
-          <div class="driver-setup-panel">
-            <label class="driver-setup-field">
-              <span>Count</span>
-              <input data-field="box.driverCount" type="number" min="1" max="16" step="1" />
-            </label>
-            <label class="driver-setup-field">
-              <span>Wiring</span>
-              <select data-field="box.driverWiring">
-                <option value="parallel">Parallel</option>
-                <option value="series">Series</option>
-              </select>
-            </label>
-          </div>
-          <section id="driverHealthPanel" class="driver-health-panel" aria-live="polite"></section>
-          <details class="collapsible-fields">
-            <summary>Driver parameters</summary>
-            <div class="field-grid">
-              <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
-              <label class="field-card"><span class="field-top"><span>Le</span></span><input data-field="driver.leMh" data-unit-type="inductance" type="number" step="0.01" /></label>
-              <label class="field-card"><span class="field-top"><span>Fs</span></span><input data-field="driver.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
-              <label class="field-card"><span class="field-top"><span>Usable from</span></span><input data-field="driver.minFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
-              <label class="field-card"><span class="field-top"><span>Usable to</span></span><input data-field="driver.maxFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
-              <label class="field-card"><span class="field-top"><span>Qms</span></span><input data-field="driver.qms" type="number" step="0.01" /></label>
-              <label class="field-card"><span class="field-top"><span>Qes</span></span><input data-field="driver.qes" type="number" step="0.01" /></label>
-              <label class="field-card"><span class="field-top"><span>Vas</span></span><input data-field="driver.vasL" data-unit-type="volume" type="number" step="0.1" /></label>
-              <label class="field-card"><span class="field-top"><span>Sd</span></span><input data-field="driver.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
-              <label class="field-card"><span class="field-top"><span>Xmax</span></span><input data-field="driver.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
-              <label class="field-card"><span class="field-top"><span>Mms</span></span><input data-field="driver.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
-              <label class="field-card"><span class="field-top"><span>Bl Tm</span></span><input data-field="driver.bl" type="number" step="0.01" /></label>
-            </div>
+            <div id="driverSearchStatus" class="search-status"></div>
+            <div id="driverSearchResults" class="search-results"></div>
+          </section>
+
+          <section id="driverSummaryPanel" class="driver-summary-panel" aria-live="polite"></section>
+
+          <details id="driverValidationDetails" class="driver-workflow-section driver-validation-section">
+            <summary class="driver-validation-summary">
+              <span class="driver-validation-light" id="driverValidationLight" aria-hidden="true"></span>
+              <span id="driverValidationTitle">Validation</span>
+              <strong id="driverValidationStatus">OK</strong>
+            </summary>
+            <section id="driverHealthPanel" class="driver-health-panel" aria-live="polite"></section>
           </details>
+
+          <div class="driver-parameter-groups">
+            <details class="collapsible-fields" open>
+              <summary>Core T/S</summary>
+              <div class="field-grid">
+                <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
+                <label class="field-card"><span class="field-top"><span>Fs</span></span><input data-field="driver.fs" data-unit-type="frequency" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Qms</span></span><input data-field="driver.qms" type="number" step="0.01" /></label>
+                <label class="field-card"><span class="field-top"><span>Qes</span></span><input data-field="driver.qes" type="number" step="0.01" /></label>
+                <label class="field-card"><span class="field-top"><span>Vas</span></span><input data-field="driver.vasL" data-unit-type="volume" type="number" step="0.1" /></label>
+              </div>
+            </details>
+            <details class="collapsible-fields">
+              <summary>Motor &amp; mechanical</summary>
+              <div class="field-grid">
+                <label class="field-card"><span class="field-top"><span>Le</span></span><input data-field="driver.leMh" data-unit-type="inductance" type="number" step="0.01" /></label>
+                <label class="field-card"><span class="field-top"><span>Sd</span></span><input data-field="driver.sdCm2" data-unit-type="area" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Xmax</span></span><input data-field="driver.xmaxMm" data-unit-type="length" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Mms</span></span><input data-field="driver.mmsG" data-unit-type="mass" type="number" step="0.1" /></label>
+                <label class="field-card"><span class="field-top"><span>Bl Tm</span></span><input data-field="driver.bl" type="number" step="0.01" /></label>
+              </div>
+            </details>
+            <details class="collapsible-fields">
+              <summary>Frequency range</summary>
+              <div class="field-grid">
+                <label class="field-card"><span class="field-top"><span>Usable from</span></span><input data-field="driver.minFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
+                <label class="field-card"><span class="field-top"><span>Usable to</span></span><input data-field="driver.maxFrequencyHz" data-unit-type="frequency" type="number" step="1" /></label>
+              </div>
+            </details>
+          </div>
         </section>
 
         <section class="panel sidebar-panel" data-sidebar-panel="planning">
@@ -93,11 +107,30 @@
             <button class="mode-button" data-mode="passive" type="button">P-Radiator</button>
             <button class="mode-button" data-mode="bandpass" type="button">Bandpass</button>
           </div>
+          <section class="driver-workflow-section box-usage-section" aria-labelledby="boxUsageTitle">
+            <div class="driver-section-header">
+              <span id="boxUsageTitle">Driver usage</span>
+              <strong id="driverUsageSummary" class="driver-usage-summary"></strong>
+            </div>
+            <div class="driver-setup-panel">
+              <label class="driver-setup-field">
+                <span>Count</span>
+                <input data-field="box.driverCount" type="number" min="1" max="16" step="1" />
+              </label>
+              <label class="driver-setup-field">
+                <span>Wiring</span>
+                <select data-field="box.driverWiring">
+                  <option value="parallel">Parallel</option>
+                  <option value="series">Series</option>
+                </select>
+              </label>
+            </div>
+          </section>
           <label class="passive-only driver-select-row">
             <span>P-Radiator</span>
             <div class="library-controls">
               <details class="library-filter-menu">
-                <summary><span>Filters</span><button id="passiveRadiatorLibraryFilterEnabled" class="library-filter-toggle" type="button" role="switch" aria-checked="false" aria-label="Enable P-Radiator preset filters"></button></summary>
+                <summary><span>Filters</span><span id="passiveRadiatorLibraryFilterEnabled" class="library-filter-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Enable P-Radiator preset filters"></span></summary>
                 <div class="library-filter-menu-body">
                   <select id="passiveRadiatorLibraryBrand" aria-label="Filter P-Radiator presets by brand"></select>
                   <select id="passiveRadiatorLibraryDiameter" aria-label="Filter P-Radiator presets by diameter">
@@ -293,6 +326,64 @@
 
         <div class="sidebar-footer">
           <button id="importExportButton" type="button">Import / Export</button>
+          <div class="legal-footer-stack">
+            <details class="imprint-footer">
+              <summary>Impressum</summary>
+              <address>
+                <strong>David Mertens</strong><br />
+                Olpener Strasse 101<br />
+                51107 Koeln<br />
+                Deutschland<br />
+                <a href="mailto:davidmertenskontakt@gmail.com">davidmertenskontakt@gmail.com</a>
+              </address>
+            </details>
+            <details class="privacy-footer">
+              <summary>Datenschutz</summary>
+              <div class="legal-footer-text">
+                <p>
+                  Stand: 21. Juni 2026. Verantwortlich fuer diese Website ist David
+                  Mertens, Olpener Strasse 101, 51107 Koeln, Deutschland,
+                  <a href="mailto:davidmertenskontakt@gmail.com">davidmertenskontakt@gmail.com</a>.
+                </p>
+                <p>
+                  Beim Aufruf der Website verarbeitet der Hosting-Anbieter Render Services,
+                  Inc. technische Zugriffsdaten, z. B. IP-Adresse, Datum und Uhrzeit,
+                  aufgerufene Dateien, Referrer, Browser- und Betriebssysteminformationen.
+                  Diese Verarbeitung dient der Auslieferung, Stabilitaet und Sicherheit der
+                  Website. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO.
+                </p>
+                <p>
+                  Render verarbeitet Daten auch in den USA. Fuer diese Verarbeitung werden nach
+                  Angaben von Render ein Data Processing Addendum, geeignete Garantien und
+                  Unterauftragsverarbeiter eingesetzt:
+                  <a href="https://render.com/dpa" target="_blank" rel="noopener noreferrer">render.com/dpa</a>,
+                  <a href="https://render.com/privacy" target="_blank" rel="noopener noreferrer">render.com/privacy</a>.
+                </p>
+                <p>
+                  Die App speichert Projekte, Einstellungen, Layouts und die 3D-Ansicht lokal
+                  im Browser des jeweiligen Geraets. Diese Daten werden nicht automatisch an
+                  den Server uebertragen und koennen ueber Browserdaten/Website-Daten geloescht
+                  werden. Importierte Mess- und Projektdateien werden im Browser verarbeitet.
+                </p>
+                <p>
+                  Bei der Driver-, Passive-Radiator- und Frequenzgang-Suche werden Suchbegriffe
+                  an den Server uebertragen. Der Server fragt dafuer externe Quellen wie
+                  DuckDuckGo, Parts Express und Loudspeaker Database ab. Bitte keine
+                  vertraulichen oder personenbezogenen Inhalte in Suchfelder eingeben.
+                </p>
+                <p>
+                  Diese Website verwendet derzeit keine Analyse-Cookies, kein Tracking, keine
+                  Werbung, keine Nutzerkonten und keinen Newsletter. Kontaktanfragen per E-Mail
+                  werden zur Bearbeitung der Anfrage verarbeitet.
+                </p>
+                <p>
+                  Betroffene Personen haben nach Massgabe der DSGVO Rechte auf Auskunft,
+                  Berichtigung, Loeschung, Einschraenkung, Datenuebertragbarkeit und Widerspruch
+                  sowie ein Beschwerderecht bei einer Datenschutzaufsichtsbehoerde.
+                </p>
+              </div>
+            </details>
+          </div>
         </div>
       </aside>
 
@@ -316,14 +407,14 @@
 
       <section class="workspace">
         <header class="app-toolbar">
-          <div class="toolbar-group preset-toolbar" aria-label="Workspace presets">
-            <button class="preset-button active" data-layout-preset="overview" type="button"><span class="preset-label">Overview</span><span class="preset-meta">Core 6</span></button>
-            <button class="preset-button" data-layout-preset="tuning" type="button"><span class="preset-label">Tuning</span><span class="preset-meta">Port + delay</span></button>
-            <button class="preset-button" data-layout-preset="limits" type="button"><span class="preset-label">Limits</span><span class="preset-meta">Headroom</span></button>
-            <button class="preset-button" data-layout-preset="model" type="button"><span class="preset-label">Model</span><span class="preset-meta">Shape + phase</span></button>
-            <button class="preset-button" data-layout-preset="recording" type="button"><span class="preset-label">Recording</span><span class="preset-meta">Measured</span></button>
-            <button class="preset-button" data-layout-preset="crossover" type="button"><span class="preset-label">Crossover</span><span class="preset-meta">Network</span></button>
-          </div>
+          <details class="toolbar-group panel-menu file-menu" aria-label="File actions">
+            <summary>File</summary>
+            <div class="panel-menu-list file-menu-list">
+              <button id="fileSaveButton" type="button">Save</button>
+              <button id="fileOpenButton" type="button">Open</button>
+              <button id="filePdfExportButton" type="button" disabled title="PDF export will be designed next.">Export as PDF</button>
+            </div>
+          </details>
           <details class="toolbar-group panel-menu" aria-label="Panel visibility">
             <summary>Graphs</summary>
             <div class="panel-menu-list">

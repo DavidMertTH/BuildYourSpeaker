@@ -10,24 +10,32 @@ export function createSearchWorkflows(deps) {
 
     deps.driverSearchButton.disabled = true;
     const directUrl = isHttpUrl(query);
-    deps.driverSearchStatus.textContent = directUrl ? "Reading datasheet and response sources..." : "Searching web for T/S parameters and frequency responses...";
+    const knownDriverResults = directUrl ? [] : deps.searchKnownDriverResults?.(query) || [];
+    deps.driverSearchStatus.textContent = directUrl ? "Reading datasheet and response sources..." : "Searching known drivers and the web...";
     deps.driverSearchResults.replaceChildren();
+    if (knownDriverResults.length) {
+      deps.renderDriverSearchResults(knownDriverResults, [], query);
+    }
 
     try {
       const driverPayload = await fetchSearchJson(`/api/driver-search?q=${encodeURIComponent(query)}`);
-      const driverResults = driverPayload.results || [];
+      const webDriverResults = driverPayload.results || [];
+      const driverResults = [...knownDriverResults, ...webDriverResults];
       const frequencyResults = driverPayload.frequencyResponses || [];
 
       deps.renderDriverSearchResults(driverResults, frequencyResults, query);
 
       const statusParts = [];
-      if (driverResults.length) {
+      if (knownDriverResults.length) {
+        statusParts.push(`${knownDriverResults.length} known driver match${knownDriverResults.length === 1 ? "" : "es"} found.`);
+      }
+      if (webDriverResults.length) {
         statusParts.push(driverPayload.imageOnlyPdf
           ? `PDF has no selectable text. Values found from "${driverPayload.fallbackQuery || "an alternate source"}"; verify before applying.`
           : driverPayload.directUrl
             ? "Datasheet parsed. Verify the values before applying."
-            : `${driverResults.length} driver candidate${driverResults.length === 1 ? "" : "s"} found. Verify before applying.`);
-      } else {
+            : `${webDriverResults.length} web driver candidate${webDriverResults.length === 1 ? "" : "s"} found. Verify before applying.`);
+      } else if (!knownDriverResults.length) {
         statusParts.push(driverPayload.directUrl
           ? "No usable T/S parameter set found at this URL."
           : "No usable T/S parameter set found.");
@@ -39,7 +47,12 @@ export function createSearchWorkflows(deps) {
       if (driverPayload.frequencyResponseError) statusParts.push(`Response search failed: ${driverPayload.frequencyResponseError}.`);
       deps.driverSearchStatus.textContent = statusParts.join(" ");
     } catch (error) {
-      deps.driverSearchStatus.textContent = error.message || "Search failed.";
+      if (knownDriverResults.length) {
+        deps.renderDriverSearchResults(knownDriverResults, [], query);
+        deps.driverSearchStatus.textContent = `${knownDriverResults.length} known driver match${knownDriverResults.length === 1 ? "" : "es"} found. Web search failed: ${error.message || "Search failed."}`;
+      } else {
+        deps.driverSearchStatus.textContent = error.message || "Search failed.";
+      }
     } finally {
       deps.driverSearchButton.disabled = false;
     }

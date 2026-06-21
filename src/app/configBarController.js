@@ -327,9 +327,8 @@ export function createConfigBarController(deps) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Delete";
-    remove.disabled = state.designs.length <= 1;
     remove.className = "danger";
-    setTooltip(remove, state.designs.length <= 1 ? "Keep at least one config." : "Delete this config.");
+    setTooltip(remove, "Delete this config.");
     remove.addEventListener("click", () => {
       deleteDesign(design.id);
       menu.classList.remove("open");
