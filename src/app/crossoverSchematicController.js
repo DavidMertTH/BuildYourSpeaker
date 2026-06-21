@@ -1,3 +1,5 @@
+import { UNGROUPED_CROSSOVER_GROUP_ID, UNGROUPED_CONFIG_GROUP_ID } from "./constants.js";
+
 const CROSSOVER_PRESET_TOOLTIPS = {
   "lowpass-2": "Insert a 2nd order low-pass block with series inductor and shunt capacitor.",
   "lowpass-3": "Insert a 3rd order low-pass block with two series inductors and a shunt capacitor.",
@@ -10,6 +12,8 @@ const CROSSOVER_PRESET_TOOLTIPS = {
   notch: "Insert a shunt RLC notch / trap block.",
   "baffle-step": "Insert a simple baffle-step compensation block with a bypass resistor around an inductor.",
 };
+
+const NEW_CROSSOVER_FOR_GROUP_OPTION = "__new_crossover_for_group__";
 
 const CROSSOVER_SCHEMATIC_PRESETS = {
   "lowpass-1": {
@@ -189,6 +193,7 @@ export function createCrossoverSchematicController(deps) {
     createCrossoverCircuitJunctionId,
     createCrossoverCircuitWireId,
     CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS,
+    addCrossoverDesign = () => "",
     crossoverAddCapacitorButton,
     crossoverAddInductorButton,
     crossoverAddResistorButton,
@@ -258,6 +263,16 @@ export function createCrossoverSchematicController(deps) {
       });
     });
     crossoverSchematicFilterSelect?.addEventListener("change", () => {
+      if (crossoverSchematicFilterSelect.value === NEW_CROSSOVER_FOR_GROUP_OPTION) {
+        const groupId = activeCrossoverGroup()?.id || "";
+        const newDesignId = addCrossoverDesign();
+        if (newDesignId) {
+          selectedCrossoverDesignId = newDesignId;
+          setSelectedCrossoverDesignId(groupId, selectedCrossoverDesignId);
+        }
+        crossoverSchematicFilterSelect.value = selectedCrossoverDesignId || "";
+        return;
+      }
       selectedCrossoverDesignId = crossoverSchematicFilterSelect.value || "";
       setSelectedCrossoverDesignId(activeCrossoverGroup()?.id || "", selectedCrossoverDesignId);
       selectedNodeId = "";
@@ -433,13 +448,16 @@ export function createCrossoverSchematicController(deps) {
     }
     if (crossoverSchematicFilterSelect) {
       const previousValue = crossoverSchematicFilterSelect.value;
-      const nextSelectSignature = designs
-        .map((design, index) => `${design.id}:${crossoverFilterOptionLabel(design, index)}`)
-        .join("|");
+      const nextSelectSignature = [
+        "placeholder:Select crossover",
+        ...designs.map((design, index) => `${design.id}:${crossoverFilterOptionLabel(design, index)}`),
+        `action:${NEW_CROSSOVER_FOR_GROUP_OPTION}`,
+      ].join("|");
       if (nextSelectSignature !== lastSelectSignature) {
         crossoverSchematicFilterSelect.replaceChildren(
-          new Option("No crossover selected", ""),
+          new Option("Select crossover", ""),
           ...designs.map((design, index) => new Option(crossoverFilterOptionLabel(design, index), design.id)),
+          new Option("New Crossover for this Group", NEW_CROSSOVER_FOR_GROUP_OPTION),
         );
         lastSelectSignature = nextSelectSignature;
       }
@@ -1053,7 +1071,7 @@ export function createCrossoverSchematicController(deps) {
     if (!group || !selectedCrossoverDesignId) return;
     const defaults = CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[type] || CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS.resistor;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const count = nextGroup.crossover.circuit.components.length;
@@ -1072,7 +1090,7 @@ export function createCrossoverSchematicController(deps) {
     const preset = CROSSOVER_SCHEMATIC_PRESETS[presetId];
     if (!group || !selectedCrossoverDesignId || !preset) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const circuit = nextGroup.crossover.circuit;
@@ -1135,7 +1153,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     appendUniqueWire(nextGroup.crossover.circuit, from, to);
@@ -1156,7 +1174,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const junctionId = `junction:${createCrossoverCircuitJunctionId()}`;
@@ -1176,7 +1194,7 @@ export function createCrossoverSchematicController(deps) {
     const canvasPoint = boardPointFromClient(event.clientX, event.clientY);
     if (!canvasPoint) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const wire = nextGroup.crossover.circuit.wires.find((item) => item.id === wireId);
@@ -1207,7 +1225,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     nextGroup.crossover.circuit.wires = nextGroup.crossover.circuit.wires.filter((wire) => wire.id !== wireId);
@@ -1220,7 +1238,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const connectedWires = nextGroup.crossover.circuit.wires.filter((wire) => wire.from === nodeId || wire.to === nodeId);
@@ -1247,7 +1265,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     nextGroup.crossover.circuit.components = nextGroup.crossover.circuit.components.filter((component) => component.id !== componentId);
@@ -1372,7 +1390,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const component = nextGroup.crossover.circuit.components.find((item) => item.id === componentId);
@@ -1386,9 +1404,7 @@ export function createCrossoverSchematicController(deps) {
     if (event.button !== 0) return;
     if (event.target.closest(".crossover-component-port, .crossover-component-controls, .crossover-component-delete")) return;
     if (!crossoverSchematicBoard) return;
-    const components = state.configGroups
-      .find((group) => group.id === activeCrossoverGroup()?.id)
-      ?.crossover?.circuit?.components || [];
+    const components = activeCrossoverGroup()?.crossover?.circuit?.components || [];
     const component = components.find((item) => item.id === componentId);
     if (!component) return;
     event.preventDefault();
@@ -1647,7 +1663,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const nodes = nextGroup.crossover.circuit.nodes;
@@ -1666,7 +1682,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     nextGroup.crossover.circuit.components.forEach((component) => {
@@ -1683,7 +1699,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     const circuit = nextGroup.crossover.circuit;
@@ -1708,7 +1724,7 @@ export function createCrossoverSchematicController(deps) {
     const group = activeCrossoverGroup();
     if (!group) return;
     const nextState = cloneProject(state);
-    const nextGroup = nextState.configGroups.find((item) => item.id === group.id);
+    const nextGroup = mutableCrossoverGroup(nextState, group);
     if (!nextGroup) return;
     nextGroup.crossover = normalizeGroupCrossover(nextGroup.crossover);
     setCircuitNodePosition(nextGroup.crossover.circuit.nodes, plusId, x, y);
@@ -2112,14 +2128,50 @@ export function createCrossoverSchematicController(deps) {
 
   function activeCrossoverGroup() {
     const activeDesign = getActiveDesign();
-    const fallbackGroupId = activeDesign?.groupId || state.configGroups[0]?.id || "";
+    const fallbackGroupId = activeDesign?.groupId || (activeDesign ? UNGROUPED_CROSSOVER_GROUP_ID : state.configGroups[0]?.id || UNGROUPED_CROSSOVER_GROUP_ID);
     const activeGroupId = getActiveCrossoverGroupId() || fallbackGroupId;
-    return state.configGroups.find((group) => group.id === activeGroupId) || state.configGroups[0];
+    return crossoverGroups().find((group) => group.id === activeGroupId)
+      || crossoverGroups().find((group) => group.id === fallbackGroupId)
+      || state.configGroups[0]
+      || ungroupedCrossoverGroup();
   }
 
   function crossoverGroupMembers(group = activeCrossoverGroup()) {
     if (!group) return [];
-    return state.designs.filter((design) => design.groupId === group.id);
+    const memberGroupId = group.id === UNGROUPED_CROSSOVER_GROUP_ID ? UNGROUPED_CONFIG_GROUP_ID : group.id;
+    return state.designs.filter((design) => (design.groupId || UNGROUPED_CONFIG_GROUP_ID) === memberGroupId);
+  }
+
+  function crossoverGroups() {
+    return [
+      ...state.configGroups,
+      ungroupedCrossoverGroup(),
+    ];
+  }
+
+  function ungroupedCrossoverGroup() {
+    return {
+      id: UNGROUPED_CROSSOVER_GROUP_ID,
+      name: "No group",
+      crossover: normalizeGroupCrossover(state.ungroupedCrossover),
+    };
+  }
+
+  function mutableCrossoverGroup(project, group = activeCrossoverGroup()) {
+    if (!group) return null;
+    if (group.id === UNGROUPED_CROSSOVER_GROUP_ID) {
+      project.ungroupedCrossover = normalizeGroupCrossover(project.ungroupedCrossover);
+      return {
+        id: UNGROUPED_CROSSOVER_GROUP_ID,
+        get crossover() {
+          return project.ungroupedCrossover;
+        },
+        set crossover(value) {
+          project.ungroupedCrossover = value;
+        },
+      };
+    }
+    return project.configGroups.find((item) => item.id === group.id) || null;
   }
 
   function cssEscape(value) {

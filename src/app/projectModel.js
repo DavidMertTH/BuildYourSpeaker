@@ -14,6 +14,7 @@ export function normalizeProjectState(project, options = {}) {
   nextState.inventory = normalizeInventory(nextState.inventory || sampleProject.inventory);
   nextState.measurements = normalizeMeasurements(nextState.measurements);
   nextState.configGroups = normalizeConfigGroups(nextState.configGroups);
+  nextState.ungroupedCrossover = normalizeGroupCrossover(nextState.ungroupedCrossover);
   const defaultConfigGroupId = nextState.configGroups[0]?.id || UNGROUPED_CONFIG_GROUP_ID;
   nextState.driverGroups = normalizeDriverGroups(nextState, fallbackBox);
   if (!nextState.driverGroups.some((group) => group.id === nextState.activeDriverGroupId)) {

@@ -70,7 +70,7 @@
           </details>
 
           <div class="driver-parameter-groups">
-            <details class="collapsible-fields" open>
+            <details class="collapsible-fields">
               <summary>Core T/S</summary>
               <div class="field-grid">
                 <label class="field-card"><span class="field-top"><span>Re</span></span><input data-field="driver.re" data-unit-type="resistance" type="number" step="0.01" /></label>
@@ -408,15 +408,15 @@
       <section class="workspace">
         <header class="app-toolbar">
           <details class="toolbar-group panel-menu file-menu" aria-label="File actions">
-            <summary>File</summary>
+            <summary><span class="panel-menu-summary-label">File</span></summary>
             <div class="panel-menu-list file-menu-list">
               <button id="fileSaveButton" type="button">Save</button>
               <button id="fileOpenButton" type="button">Open</button>
               <button id="filePdfExportButton" type="button" disabled title="PDF export will be designed next.">Export as PDF</button>
             </div>
           </details>
-          <details class="toolbar-group panel-menu" aria-label="Panel visibility">
-            <summary>Graphs</summary>
+          <details class="toolbar-group panel-menu graph-menu" aria-label="Panel visibility">
+            <summary><span class="panel-menu-summary-label">Graphs</span></summary>
             <div class="panel-menu-list">
               <label><input class="panel-toggle" data-panel-toggle="splPlot" type="checkbox" checked /> SPL</label>
               <label><input class="panel-toggle" data-panel-toggle="onAxisResponsePlot" type="checkbox" checked /> On-axis</label>
@@ -517,7 +517,7 @@
             <div class="crossover-schematic-workbench">
               <div id="crossoverSchematicBoard" class="crossover-schematic-board"></div>
               <div class="crossover-schematic-toolbar" aria-label="Crossover schematic tools">
-                <select id="crossoverSchematicFilterSelect" class="crossover-schematic-filter-select" aria-label="Crossover filter"></select>
+                <select id="crossoverSchematicFilterSelect" class="crossover-schematic-filter-select" aria-label="Select crossover"></select>
                 <button id="crossoverAddResistorButton" class="crossover-symbol-button" type="button" aria-label="Add resistor">
                   <svg viewBox="0 0 40 24" aria-hidden="true">
                     <path d="M2 12 H8 L11 5 L17 19 L23 5 L29 19 L32 12 H38" />
@@ -609,13 +609,13 @@
             <div id="configBarList" class="config-bar-list"></div>
           </div>
           <div class="config-actions">
-            <button id="newConfigButton" class="config-new-button" type="button"><span class="desktop-label">New</span><span class="mobile-label">+</span></button>
-            <button id="newConfigGroupButton" type="button"><span class="desktop-label">Group</span><span class="mobile-label">G</span></button>
+            <button id="newConfigButton" class="config-new-button" type="button"><span class="desktop-label">+ Config</span><span class="mobile-label">+ Config</span></button>
+            <button id="newConfigGroupButton" type="button"><span class="desktop-label">+ Group</span><span class="mobile-label">+ Group</span></button>
             <details id="configAddMenu" class="config-add-menu config-more-menu">
               <summary aria-label="Add config or group">+</summary>
               <div class="config-more-list">
-                <button id="mobileNewConfigButton" type="button">Config</button>
-                <button id="mobileNewConfigGroupButton" type="button">Group</button>
+                <button id="mobileNewConfigButton" type="button">+ Config</button>
+                <button id="mobileNewConfigGroupButton" type="button">+ Group</button>
               </div>
             </details>
           </div>

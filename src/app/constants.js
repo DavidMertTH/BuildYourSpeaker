@@ -12,6 +12,7 @@ export const PROJECT_SYNC_CHANNEL = "audiosim.project.sync.v1";
 export const FREQUENCY_MIN_HZ = 10;
 export const FREQUENCY_MAX_HZ = 20000;
 export const UNGROUPED_CONFIG_GROUP_ID = "";
+export const UNGROUPED_CROSSOVER_GROUP_ID = "__ungrouped__";
 export const UNGROUPED_MEASUREMENT_GROUP_ID = "";
 export const PLOT_IDS = [
   "splPlot",

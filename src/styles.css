@@ -2225,10 +2225,18 @@ textarea:focus {
   content: "";
   width: 7px;
   height: 7px;
+  flex: 0 0 auto;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: translateY(-2px) rotate(45deg);
   transition: transform 140ms ease;
+}
+
+.panel-menu-summary-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-menu[open] summary {
@@ -2270,25 +2278,33 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 28px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 5px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 720;
   text-align: left;
   white-space: nowrap;
 }
 
 .panel-menu-list label:hover,
 .panel-menu-list button:hover:not(:disabled) {
-  background: var(--surface-faint);
+  border-color: color-mix(in srgb, var(--line-soft) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.panel-menu-list label:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 66%, var(--line-soft));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
 }
 
 .panel-menu-list button:disabled {
-  color: var(--muted);
+  color: var(--dim);
   cursor: not-allowed;
   opacity: 0.62;
 }
@@ -3011,6 +3027,8 @@ canvas {
 }
 
 .crossover-schematic-toolbar {
+  position: relative;
+  z-index: 20;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -3020,6 +3038,11 @@ canvas {
   border-top: 1px solid var(--line-soft);
   background: var(--chrome-2);
   scrollbar-width: thin;
+}
+
+.crossover-schematic-toolbar:has(.crossover-preset-menu[open]) {
+  overflow: visible;
+  z-index: 1200;
 }
 
 .crossover-schematic-filter-select {
@@ -3071,7 +3094,12 @@ canvas {
 
 .crossover-preset-menu {
   position: relative;
+  z-index: 1;
   flex: 0 0 auto;
+}
+
+.crossover-preset-menu[open] {
+  z-index: 1200;
 }
 
 .crossover-preset-menu summary {
@@ -3120,10 +3148,10 @@ canvas {
 }
 
 .crossover-preset-list {
-  position: fixed;
-  right: 14px;
-  bottom: 46px;
-  z-index: 1000;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 1200;
   display: grid;
   grid-template-columns: 1fr;
   gap: 5px;
@@ -4234,6 +4262,10 @@ canvas {
   min-width: 0;
 }
 
+.config-name-runner {
+  display: none;
+}
+
 .config-chip input.config-name {
   width: 100%;
 }
@@ -4974,6 +5006,27 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     backdrop-filter: blur(8px);
   }
 
+  .graph-menu summary {
+    justify-content: space-between;
+    width: min(184px, calc(100vw - 24px));
+    min-width: 118px;
+    max-width: calc(100vw - 24px);
+    min-height: 32px;
+    padding: 0 12px;
+    gap: 8px;
+    border: 1px solid color-mix(in srgb, var(--line-soft) 78%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--accent) 42%, var(--line-soft));
+    background: color-mix(in srgb, var(--bar-bg) 88%, transparent);
+    color: var(--text);
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  .graph-menu[open] summary {
+    border-color: color-mix(in srgb, var(--accent) 62%, var(--line-soft));
+    background: color-mix(in srgb, var(--accent) 14%, var(--bar-bg));
+  }
+
   .panel-menu-list {
     z-index: 280;
     width: min(228px, calc(100vw - 16px));
@@ -4983,15 +5036,52 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     padding: 2px;
   }
 
-  .panel-menu-list label {
-    min-height: 26px;
-    padding: 0 6px;
-    gap: 6px;
+  .graph-menu .panel-menu-list {
+    width: min(264px, calc(100vw - 16px));
+    max-height: min(68vh, 428px);
+    gap: 2px;
+    padding: 6px;
+    border-color: color-mix(in srgb, var(--line-soft) 86%, transparent);
+    background: color-mix(in srgb, var(--bar-bg) 94%, transparent);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+    overflow: auto;
+  }
+
+  .panel-menu-list label,
+  .panel-menu-list button {
+    min-height: 34px;
+    padding: 0 10px;
+    gap: 10px;
+  }
+
+  .graph-menu .panel-menu-list label {
+    min-height: 34px;
+    padding: 0 10px;
+    gap: 10px;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .graph-menu .panel-menu-list label:hover {
+    border-color: color-mix(in srgb, var(--line-soft) 70%, transparent);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text);
   }
 
   .panel-menu-list label:has(input:checked) {
-    background: var(--accent);
-    color: var(--accent-text);
+    border-color: color-mix(in srgb, var(--accent) 66%, var(--line-soft));
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--text);
+  }
+
+  .graph-menu .panel-menu-list label:has(input:checked) {
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--line-soft));
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--text);
   }
 
   .panel-menu-list input {
@@ -5003,12 +5093,25 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     background: transparent;
   }
 
+  .graph-menu .panel-menu-list input {
+    width: 15px;
+    height: 15px;
+    border-color: color-mix(in srgb, currentColor 70%, transparent);
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--bar-bg) 90%, transparent);
+  }
+
   .panel-menu-list input:checked::before {
     content: "";
     width: 6px;
     height: 6px;
     border-radius: 999px;
     background: currentColor;
+  }
+
+  .graph-menu .panel-menu-list input:checked::before {
+    width: 7px;
+    height: 7px;
+    background: var(--accent);
   }
 
   .summary-strip {
@@ -5112,8 +5215,8 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
   .config-chip {
     grid-template-columns: auto auto minmax(0, 1fr) auto auto;
     width: auto;
-    min-width: 112px;
-    max-width: 142px;
+    min-width: 156px;
+    max-width: min(260px, 70vw);
     min-height: 26px;
     gap: 4px;
     padding: 0 5px;
@@ -5143,16 +5246,29 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     white-space: nowrap;
   }
 
-  .config-chip::after {
-    content: attr(data-short-name);
+  .config-name-runner {
+    display: block;
     order: 3;
     align-self: center;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
+    mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
     white-space: nowrap;
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .config-name-runner-text {
+    display: inline-block;
+    min-width: max-content;
+    padding-left: 0;
+    animation: config-name-runner 9s linear infinite;
+  }
+
+  .config-chip:hover .config-name-runner-text,
+  .config-chip.active .config-name-runner-text {
+    animation-duration: 7s;
   }
 
   .config-visibility-toggle {
@@ -5254,6 +5370,24 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     justify-content: flex-start;
     width: 100%;
     min-height: 30px;
+  }
+
+  @keyframes config-name-runner {
+    0%,
+    18% {
+      transform: translateX(0);
+    }
+
+    82%,
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .config-name-runner-text {
+      animation: none;
+    }
   }
 
   @keyframes config-menu-fade-in {

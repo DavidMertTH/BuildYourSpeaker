@@ -149,7 +149,7 @@ function renderPlot(canvas, state) {
 function getPlotState(canvas) {
   let state = plotStates.get(canvas);
   if (!state) {
-    state = { canvas, config: null, displayConfig: null, renderedConfig: null, transition: null, hover: null, metrics: null, edgeCacheKey: "", edgeCache: null };
+    state = { canvas, config: null, displayConfig: null, renderedConfig: null, transition: null, hover: null, hoverPointerId: null, metrics: null, edgeCacheKey: "", edgeCache: null };
     plotStates.set(canvas, state);
     bindHover(canvas, state);
   }
@@ -159,55 +159,94 @@ function getPlotState(canvas) {
 function bindHover(canvas, state) {
   canvas.addEventListener("pointerdown", (event) => {
     const drag = draggableAnnotationAtEvent(canvas, state, event);
-    if (!drag) return;
+    if (drag) {
+      event.preventDefault();
+      event.stopPropagation();
+      state.drag = drag;
+      canvas.setPointerCapture?.(event.pointerId);
+      canvas.classList.add("is-dragging-annotation");
+      updateAnnotationDrag(canvas, state, event, false);
+      return;
+    }
+
+    if (!requiresPressedHover(event)) return;
     event.preventDefault();
-    event.stopPropagation();
-    state.drag = drag;
+    state.hoverPointerId = event.pointerId;
     canvas.setPointerCapture?.(event.pointerId);
-    canvas.classList.add("is-dragging-annotation");
-    updateAnnotationDrag(canvas, state, event, false);
+    updateHoverFromEvent(canvas, state, event);
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    const bounds = canvas.getBoundingClientRect();
-    const x = event.clientX - bounds.left;
-    const y = event.clientY - bounds.top;
     if (state.drag) {
       event.preventDefault();
       event.stopPropagation();
       updateAnnotationDrag(canvas, state, event, false);
       return;
     }
-    state.hover = { x, y };
+    if (requiresPressedHover(event) && state.hoverPointerId !== event.pointerId) {
+      updateAnnotationCursor(canvas, state, event);
+      return;
+    }
+    updateHoverFromEvent(canvas, state, event);
     updateAnnotationCursor(canvas, state, event);
-    if (state.displayConfig || state.config) renderPlot(canvas, state);
   });
 
   canvas.addEventListener("pointerup", (event) => {
-    if (!state.drag) return;
-    event.preventDefault();
-    event.stopPropagation();
-    updateAnnotationDrag(canvas, state, event, true);
-    state.drag = null;
-    canvas.releasePointerCapture?.(event.pointerId);
-    canvas.classList.remove("is-dragging-annotation");
+    if (state.drag) {
+      event.preventDefault();
+      event.stopPropagation();
+      updateAnnotationDrag(canvas, state, event, true);
+      state.drag = null;
+      canvas.releasePointerCapture?.(event.pointerId);
+      canvas.classList.remove("is-dragging-annotation");
+      updateAnnotationCursor(canvas, state, event);
+      return;
+    }
+    if (state.hoverPointerId === event.pointerId) {
+      state.hoverPointerId = null;
+      state.hover = null;
+      canvas.releasePointerCapture?.(event.pointerId);
+      if (state.displayConfig || state.config) renderPlot(canvas, state);
+    }
     updateAnnotationCursor(canvas, state, event);
   });
 
   canvas.addEventListener("pointercancel", (event) => {
-    if (!state.drag) return;
-    state.drag = null;
-    canvas.releasePointerCapture?.(event.pointerId);
-    canvas.classList.remove("is-dragging-annotation");
+    if (state.drag) {
+      state.drag = null;
+      canvas.releasePointerCapture?.(event.pointerId);
+      canvas.classList.remove("is-dragging-annotation");
+    }
+    if (state.hoverPointerId === event.pointerId) {
+      state.hoverPointerId = null;
+      state.hover = null;
+      canvas.releasePointerCapture?.(event.pointerId);
+      if (state.displayConfig || state.config) renderPlot(canvas, state);
+    }
     updateAnnotationCursor(canvas, state, event);
   });
 
   canvas.addEventListener("mouseleave", (event) => {
     if (state.drag) return;
+    state.hoverPointerId = null;
     state.hover = null;
     updateAnnotationCursor(canvas, state, event);
     if (state.displayConfig || state.config) renderPlot(canvas, state);
   });
+}
+
+function updateHoverFromEvent(canvas, state, event) {
+  const bounds = canvas.getBoundingClientRect();
+  state.hover = {
+    x: event.clientX - bounds.left,
+    y: event.clientY - bounds.top,
+  };
+  if (state.displayConfig || state.config) renderPlot(canvas, state);
+}
+
+function requiresPressedHover(event) {
+  if (event.pointerType === "touch" || event.pointerType === "pen") return true;
+  return typeof window !== "undefined" && window.matchMedia?.("(max-width: 560px)")?.matches;
 }
 
 function draggableAnnotationAtEvent(canvas, state, event) {

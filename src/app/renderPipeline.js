@@ -1,3 +1,5 @@
+import { UNGROUPED_CROSSOVER_GROUP_ID } from "./constants.js";
+
 export function createRenderPipeline(deps) {
   const {
     applyMobilePanelVisibility,
@@ -159,6 +161,49 @@ export function createRenderPipeline(deps) {
   function configGroupForDesign(design) {
     return state.configGroups.find((group) => group.id === design.groupId) || state.configGroups[0];
   }
+
+  function crossoverGroups() {
+    return [
+      ...state.configGroups,
+      ungroupedCrossoverGroup(),
+    ];
+  }
+
+  function ungroupedCrossoverGroup() {
+    return {
+      id: UNGROUPED_CROSSOVER_GROUP_ID,
+      name: "No group",
+      showCombined: true,
+      crossover: normalizeGroupCrossover(state.ungroupedCrossover),
+      isUngrouped: true,
+    };
+  }
+
+  function crossoverGroupForDesign(design) {
+    if (!design.groupId) return ungroupedCrossoverGroup();
+    return state.configGroups.find((group) => group.id === design.groupId);
+  }
+
+  function crossoverGroupMemberId(group) {
+    return group?.isUngrouped || group?.id === UNGROUPED_CROSSOVER_GROUP_ID
+      ? UNGROUPED_CONFIG_GROUP_ID
+      : group?.id || UNGROUPED_CONFIG_GROUP_ID;
+  }
+
+  function mutableCrossoverGroup(project, groupId) {
+    if (groupId === UNGROUPED_CROSSOVER_GROUP_ID) {
+      project.ungroupedCrossover = normalizeGroupCrossover(project.ungroupedCrossover);
+      return {
+        get crossover() {
+          return project.ungroupedCrossover;
+        },
+        set crossover(value) {
+          project.ungroupedCrossover = value;
+        },
+      };
+    }
+    return project.configGroups.find((item) => item.id === groupId);
+  }
   
   function buildConfigGroupSimulations(simulations) {
     return state.configGroups
@@ -250,7 +295,7 @@ export function createRenderPipeline(deps) {
   }
   
   function crossoverFiltersForDesign(design) {
-    const group = state.configGroups.find((item) => item.id === design.groupId);
+    const group = crossoverGroupForDesign(design);
     const transitions = group?.crossover?.transitions || [];
     const signalFilters = group?.crossover?.signalFilters || [];
     const filters = [];
@@ -341,7 +386,7 @@ export function createRenderPipeline(deps) {
     const circuitResponsesByGroup = crossoverCircuitResponsesByGroup(simulations);
     return simulations.map((simulation) => {
       const activeWithFilters = applyCrossoverToSimulation(simulation.active, crossoverFiltersForDesign(simulation.design));
-      const circuitResponse = circuitResponsesByGroup.get(simulation.design.groupId)?.get(simulation.design.id);
+      const circuitResponse = circuitResponsesByGroup.get(crossoverGroupForDesign(simulation.design)?.id)?.get(simulation.design.id);
       const active = circuitResponse
         ? applyCircuitResponseToSimulation(activeWithFilters, circuitResponse)
         : activeWithFilters;
@@ -355,9 +400,10 @@ export function createRenderPipeline(deps) {
 
   function crossoverCircuitResponsesByGroup(simulations) {
     const byGroup = new Map();
-    state.configGroups.forEach((group) => {
+    crossoverGroups().forEach((group) => {
       if (!hasActiveCrossoverDesign(group.crossover)) return;
-      const members = simulations.filter((simulation) => simulation.design.groupId === group.id);
+      const memberGroupId = crossoverGroupMemberId(group);
+      const members = simulations.filter((simulation) => (simulation.design.groupId || UNGROUPED_CONFIG_GROUP_ID) === memberGroupId);
       if (!members.length) return;
       const responses = crossoverCircuitResponses(group.crossover?.circuit, frequencies, members.map((simulation) => ({
         designId: simulation.design.id,
@@ -770,7 +816,9 @@ export function createRenderPipeline(deps) {
     }
     if (target.startsWith("configGroup:")) {
       const groupId = target.slice("configGroup:".length);
-      const group = state.configGroups.find((item) => item.id === groupId);
+      const group = groupId
+        ? state.configGroups.find((item) => item.id === groupId)
+        : ungroupedCrossoverGroup();
       return groupLevelSignalFilters(group);
     }
     return [];
@@ -916,7 +964,7 @@ export function createRenderPipeline(deps) {
   
   function updateDraggedFilterFrequency(drag, frequencyHz, options = {}) {
     const nextState = cloneProject(state);
-    const group = nextState.configGroups.find((item) => item.id === drag.groupId);
+    const group = mutableCrossoverGroup(nextState, drag.groupId);
     if (!group) return;
     group.crossover = normalizeGroupCrossover(group.crossover);
   
@@ -970,7 +1018,7 @@ export function createRenderPipeline(deps) {
   function crossoverAnnotationsForPlot(simulations, plotKind) {
     const simulationsByDesignId = new Map(simulations.map((simulation) => [simulation.design.id, simulation]));
     const annotations = [];
-    state.configGroups.forEach((group, groupIndex) => {
+    crossoverGroups().forEach((group, groupIndex) => {
       const groupColor = designColor(configGroupCombinedColorIndex(groupIndex));
       (group.crossover?.transitions || []).forEach((transition) => {
         if (transition.enabled === false) return;
@@ -1008,7 +1056,8 @@ export function createRenderPipeline(deps) {
       (group.crossover?.signalFilters || []).forEach((filter) => {
         if (filter.enabled === false) return;
         if (filter.showAnnotation === false) return;
-        const targetSimulations = simulations.filter((simulation) => simulation.design.groupId === group.id && signalFilterAppliesToDesign(filter, simulation.design));
+        const memberGroupId = crossoverGroupMemberId(group);
+        const targetSimulations = simulations.filter((simulation) => (simulation.design.groupId || UNGROUPED_CONFIG_GROUP_ID) === memberGroupId && signalFilterAppliesToDesign(filter, simulation.design));
         if (!targetSimulations.length) return;
         const annotation = signalFilterAnnotation(filter, targetSimulations, groupColor);
         if (annotation) annotations.push(annotation);
@@ -1036,7 +1085,7 @@ export function createRenderPipeline(deps) {
       draggable: true,
       drag: {
         type: "signalFilter",
-        groupId: simulations[0]?.design?.groupId || "",
+        groupId: crossoverGroupForDesign(simulations[0]?.design || {})?.id || "",
         id: filter.id,
         field: filter.type === "linkwitz-transform" ? "targetFrequencyHz" : "frequencyHz",
       },

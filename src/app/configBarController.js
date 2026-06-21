@@ -165,7 +165,10 @@ export function createConfigBarController(deps) {
     chip.classList.toggle("active", design.id === state.activeDesignId);
     chip.classList.toggle("muted", design.visible === false);
     chip.classList.toggle("graph-hidden", design.graphVisible === false);
-    chip.dataset.shortName = compactDesignName(design, designNameFromDriver(designDriverForName(design)));
+    const driverName = designNameFromDriver(designDriverForName(design));
+    const chipDisplayName = String(driverName || design.name || "Config").replace(/\s+/g, " ").trim();
+    chip.dataset.shortName = compactDesignName({ name: chipDisplayName }, chipDisplayName);
+    chip.dataset.fullName = chipDisplayName;
     setTooltip(chip, "Select this config for editing.");
     chip.addEventListener("click", (event) => {
       if (chip.dataset.justDragged === "true") {
@@ -221,7 +224,16 @@ export function createConfigBarController(deps) {
   
     const menu = createConfigChipMenu(design, index);
   
-    chip.append(checkbox, visibility, swatch, name, menu);
+    const nameRunner = document.createElement("span");
+    nameRunner.className = "config-name-runner";
+    nameRunner.ariaHidden = "true";
+    nameRunner.title = chipDisplayName;
+    const runnerText = document.createElement("span");
+    runnerText.className = "config-name-runner-text";
+    runnerText.textContent = `${chipDisplayName} \u00a0\u00a0 ${chipDisplayName}`;
+    nameRunner.append(runnerText);
+  
+    chip.append(checkbox, visibility, swatch, name, nameRunner, menu);
     return chip;
   }
   

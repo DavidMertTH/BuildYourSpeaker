@@ -48,6 +48,7 @@ import {
   SUBSONIC_PRESETS,
   THEME_CHOICES,
   THEME_STORAGE_KEY,
+  UNGROUPED_CROSSOVER_GROUP_ID,
   UNGROUPED_CONFIG_GROUP_ID,
   UNGROUPED_MEASUREMENT_GROUP_ID,
   UNIT_PREF_STORAGE_KEY,
@@ -378,6 +379,7 @@ const crossoverController = createCrossoverController({
   SUBSONIC_PRESETS,
 });
 const {
+  addCrossoverDesign,
   addSignalFilter,
   commitCrossoverState,
   crossoverFamilyLabel,
@@ -392,6 +394,7 @@ const crossoverSchematicController = createCrossoverSchematicController({
   createCrossoverCircuitJunctionId,
   createCrossoverCircuitWireId,
   CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS,
+  addCrossoverDesign,
   crossoverAddCapacitorButton,
   crossoverAddInductorButton,
   crossoverAddResistorButton,
@@ -643,6 +646,7 @@ function registerApplicationEvents(config) {
   bindSidebarTabs();
   bindReorderableLayout();
   bindPanelControls();
+  bindToolbarMenuExclusivity();
   bindResizePersistence();
   initializeMobileLayoutControls();
 }
@@ -2193,7 +2197,7 @@ function syncActiveDesignFromProject(project) {
 function activateDesign(designId) {
   const selected = state.designs.find((design) => design.id === designId);
   if (!selected) return;
-  if (selected.groupId) setActiveCrossoverGroupId(selected.groupId);
+  setActiveCrossoverGroupId(selected.groupId || UNGROUPED_CROSSOVER_GROUP_ID);
   const nextState = cloneProject(state);
   nextState.activeDesignId = designId;
   applyActiveDesignToProject(nextState);
@@ -3551,6 +3555,18 @@ function bindPanelControls() {
   });
 }
 
+function bindToolbarMenuExclusivity() {
+  const menus = [...document.querySelectorAll(".app-toolbar .panel-menu")];
+  menus.forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      menus.forEach((otherMenu) => {
+        if (otherMenu !== menu) otherMenu.open = false;
+      });
+    });
+  });
+}
+
 function initializeMobileLayoutControls() {
   mobileMediaQuery.addEventListener("change", () => {
     syncMobileThemePreference();
@@ -3624,9 +3640,9 @@ function updateMobileToolbarOffset() {
 }
 
 function updateMobilePanelMenuLabel() {
-  const summary = document.querySelector(".panel-menu summary");
-  if (!summary) return;
-  summary.textContent = isMobileLayout() ? PANEL_LABELS[mobileActivePanel] || "Graph" : "Graphs";
+  const label = document.querySelector(".graph-menu .panel-menu-summary-label");
+  if (!label) return;
+  label.textContent = isMobileLayout() ? PANEL_LABELS[mobileActivePanel] || "Graph" : "Graphs";
 }
 
 function plotCanvasForPanel(panelId) {
