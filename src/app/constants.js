@@ -1,5 +1,5 @@
-export const LAYOUT_STORAGE_KEY = "audiosim.layout.v5";
-export const LAYOUT_PANEL_VERSION = 5;
+export const LAYOUT_STORAGE_KEY = "audiosim.layout.v9";
+export const LAYOUT_PANEL_VERSION = 9;
 export const PROJECT_STORAGE_KEY = "audiosim.project.v1";
 export const DRIVER_LIBRARY_STORAGE_KEY = "audiosim.driverLibrary.v1";
 export const PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY = "audiosim.passiveRadiatorLibrary.v1";
@@ -70,18 +70,20 @@ export const CROSSOVER_DESIGN_BANDS = {
   "three-way": ["low", "mid", "high"],
   "sub-sat": ["sub", "sat"],
 };
-export const CROSSOVER_CIRCUIT_COMPONENT_TYPES = ["resistor", "capacitor", "inductor"];
+export const CROSSOVER_CIRCUIT_COMPONENT_TYPES = ["resistor", "capacitor", "inductor", "wire-segment"];
 export const CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS = {
   resistor: { value: 4.7, min: 0.1, max: 47, step: 0.1, unit: "ohm", label: "R" },
   capacitor: { value: 10, min: 0.1, max: 220, step: 0.1, unit: "uF", label: "C" },
   inductor: { value: 0.68, min: 0.01, max: 10, step: 0.01, unit: "mH", label: "L" },
+  "wire-segment": { value: 84, min: 14, max: 5000, step: 1, unit: "px", label: "W" },
 };
-export const SIGNAL_FILTER_TYPES = ["parametric", "low-shelf", "high-shelf", "linkwitz-transform", "subsonic"];
+export const SIGNAL_FILTER_TYPES = ["gain", "parametric", "lowpass", "highpass", "linkwitz-transform", "subsonic"];
 export const SIGNAL_FILTER_TARGET_GROUP = "group";
 export const SIGNAL_FILTER_DEFAULTS = {
+  gain: { gainDb: 0 },
   parametric: { frequencyHz: 60, gainDb: 0, q: 1 },
-  "low-shelf": { frequencyHz: 80, gainDb: 0, q: 0.707 },
-  "high-shelf": { frequencyHz: 3000, gainDb: 0, q: 0.707 },
+  lowpass: { frequencyHz: 3000, order: 2, family: "butterworth" },
+  highpass: { frequencyHz: 80, order: 2, family: "butterworth" },
   "linkwitz-transform": { sourceFrequencyHz: 60, sourceQ: 0.707, targetFrequencyHz: 32, targetQ: 0.707 },
   subsonic: { preset: "rumble-20", frequencyHz: 20, order: 4, family: "butterworth" },
 };

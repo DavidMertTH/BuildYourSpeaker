@@ -532,10 +532,17 @@ export function createRenderPipeline(deps) {
         .filter((response) => Math.abs(Number(response.angleDeg) || 0) < 0.001)
         .map((response, index) => frequencyResponseSeries(response, colors, index)),
     ];
+    const offAxisReferenceResponses = measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) < 0.001);
+    const offAxisAngledResponses = measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) >= 0.001);
     const offAxisResponseSeries = [
-      ...measurementResponses
-        .filter((response) => Math.abs(Number(response.angleDeg) || 0) >= 0.001)
-        .map((response, index) => frequencyResponseSeries(response, colors, index)),
+      ...offAxisReferenceResponses.map((response, index) => ({
+        ...frequencyResponseSeries(response, colors, index),
+        width: 2.6,
+        opacity: 0.96,
+      })),
+      ...offAxisAngledResponses.map((response, index) => frequencyResponseSeries(response, colors, index + offAxisReferenceResponses.length)),
     ];
     const horizontalPolarSeries = measurementPolarSeries(measurementResponses, colors, "horizontal");
     const impedanceSeries = physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.impedance, colors));
@@ -711,7 +718,7 @@ export function createRenderPipeline(deps) {
   
     const recordingSeries = recordingPlotSeries(colors);
     const recordingRange = autoRange(recordingSeries.flatMap((series) => series.values));
-    drawPlot(document.querySelector("#recordingPlot"), {
+    drawPlot(document.querySelector("#recordingPlot"), applyPlotView("recordingPlot", {
       title: "Recording",
       yLabel: "dB SPL",
       xMin,
@@ -720,7 +727,7 @@ export function createRenderPipeline(deps) {
       yMax: recordingRange[1],
       emptyMessage: "No recording data yet.",
       series: recordingSeries,
-    }, plotOptions);
+    }), plotOptions);
   
     updatePlotControlValues();
   
@@ -772,7 +779,7 @@ export function createRenderPipeline(deps) {
   }
   
   function frequencyResponseSeries(response, colors, index = 0) {
-    const color = colors.palette[(index + 3) % colors.palette.length];
+    const color = response.color || colors.palette[(index + 3) % colors.palette.length];
     const compactName = shortMeasurementName(response);
     const angleLabel = formatMeasurementAngleCompact(response);
     const values = filteredMeasurementMagnitudeValues(response);
@@ -1103,10 +1110,10 @@ export function createRenderPipeline(deps) {
       const factor = 2 ** (1 / (2 * q));
       return { bandMinHz: frequencyHz / factor, bandMaxHz: frequencyHz * factor };
     }
-    if (filter.type === "low-shelf" || filter.type === "subsonic") {
+    if (filter.type === "lowpass" || filter.type === "subsonic") {
       return { bandMinHz: 0, bandMaxHz: frequencyHz };
     }
-    if (filter.type === "high-shelf") {
+    if (filter.type === "highpass") {
       return { bandMinHz: frequencyHz, bandMaxHz: Number.MAX_SAFE_INTEGER };
     }
     if (filter.type === "linkwitz-transform") {
@@ -1128,12 +1135,12 @@ export function createRenderPipeline(deps) {
   
   function signalFilterAnnotationDetail(filter, target, simulations) {
     const targetLabel = signalFilterTargetLabel(target, simulations);
-    if (filter.type === "parametric" || filter.type === "low-shelf" || filter.type === "high-shelf") {
+    if (filter.type === "gain" || filter.type === "parametric") {
       const gain = Number(filter.gainDb) || 0;
       const gainLabel = `${gain >= 0 ? "+" : ""}${roundTo(gain, 1)} dB`;
       return `${gainLabel} / ${targetLabel}`;
     }
-    if (filter.type === "subsonic") {
+    if (filter.type === "lowpass" || filter.type === "highpass" || filter.type === "subsonic") {
       return `${crossoverFamilyLabel(filter.family)}${filter.order || 4} / ${targetLabel}`;
     }
     if (filter.type === "linkwitz-transform") {
@@ -1145,8 +1152,9 @@ export function createRenderPipeline(deps) {
   function shortSignalFilterTypeLabel(type) {
     return {
       parametric: "PEQ",
-      "low-shelf": "Low shelf",
-      "high-shelf": "High shelf",
+      gain: "Gain",
+      lowpass: "LP",
+      highpass: "HP",
       subsonic: "Subsonic",
     }[type] || signalFilterTypeLabel(type);
   }

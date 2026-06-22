@@ -18,11 +18,13 @@ import {
 import { simulatePassiveRadiator } from "../src/core/passiveRadiatorBox.js";
 import { simulateBandpass } from "../src/core/bandpassBox.js";
 import { normalizeEnclosureOptions, validateEnclosureOptions } from "../src/core/enclosure.js";
-import { filterChainResponse, highPassResponse, linkwitzTransformResponse, lowPassResponse, parametricEqResponse, shelvingEqResponse, subsonicResponse } from "../src/core/filters.js";
+import { filterChainResponse, gainResponse, highPassResponse, linkwitzTransformResponse, lowPassResponse, parametricEqResponse, shelvingEqResponse, subsonicResponse } from "../src/core/filters.js";
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
+import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../src/core/recordingAnalysis.js";
 import { buildGoldenLayoutConfig } from "../src/app/goldenLayoutConfig.js";
 import { crossoverCircuitComponentPortId, crossoverCircuitDesignNodeId, hasActiveCrossoverDesign, normalizeCrossoverCircuit, normalizeGroupCrossover } from "../src/app/crossoverModel.js";
 import { crossoverCircuitResponses } from "../src/app/crossoverCircuitSolver.js";
+import { orthogonalWireRoutePoints, snapWirePointToGrid, wirePathD } from "../src/app/crossoverWireRouting.js";
 import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, maxLinearSpl, recommendedLowFrequencyLimit } from "../src/core/realism.js";
 import { extractDriverData, extractPassiveRadiatorData, findDatasheetPdfLinks, searchDrivers, searchPassiveRadiators } from "../src/core/driverScraper.js";
 import { fetchUrl } from "../src/core/fetch.js";
@@ -30,23 +32,68 @@ import { extractFrequencyResponseLinks, extractZipTextEntries, parseEmbeddedFreq
 import { maxBuildableVolumeLiters, normalizeInventory } from "../src/core/planner/componentInventory.js";
 import { planDesigns } from "../src/core/planner/designPlanner.js";
 import { AIR_DENSITY } from "../src/core/constants.js";
-import { knownPassiveRadiators, sampleProject } from "../src/state.js";
+import { loadKnownPassiveRadiators, sampleProject } from "../src/state.js";
 
 const driver = normalizeDriver(sampleProject.driver);
 const frequencies = logFrequencyVector(10, 200, 260);
 
 test("recording preset gives the recording panel the main workspace", () => {
-  const config = buildGoldenLayoutConfig(["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"]);
+  const config = buildGoldenLayoutConfig(["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot"]);
 
-  assert.equal(config.root.type, "row");
-  assert.equal(config.root.content[0].size, "62%");
-  assert.equal(config.root.content[0].content[0].componentState.panelId, "recordingPanel");
-  assert.equal(config.root.content[1].size, "38%");
+  assert.equal(config.root.type, "column");
+  assert.equal(config.root.content[0].type, "row");
+  assert.equal(config.root.content[0].size, "42%");
+  assert.equal(config.root.content[1].size, "58%");
+  assert.equal(config.root.content[1].content[0].componentState.panelId, "recordingPanel");
 
-  const sidePanelIds = config.root.content[1].content.flatMap((row) =>
-    row.content.map((stack) => stack.content[0].componentState.panelId),
-  );
-  assert.deepEqual(sidePanelIds, ["onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"]);
+  const topPanelIds = config.root.content[0].content.map((stack) => stack.content[0].componentState.panelId);
+  assert.deepEqual(topPanelIds, ["onAxisResponsePlot", "offAxisResponsePlot"]);
+});
+
+test("recording stimulus generator respects signal type and frequency range", () => {
+  const sweep = generateRecordingStimulus({
+    signal: "sweep",
+    sampleRate: 48000,
+    durationSec: 1,
+    levelDb: 75,
+    frequencyStartHz: 40,
+    frequencyEndHz: 12000,
+  });
+  const noise = generateRecordingStimulus({ signal: "noise", sampleRate: 48000, durationSec: 1, levelDb: 75 });
+
+  assert.equal(sweep.samples.length, 48000);
+  assert.equal(sweep.frequencyStartHz, 40);
+  assert.equal(sweep.frequencyEndHz, 12000);
+  assert.ok(sweep.samples.some((sample) => Math.abs(sample) > 0.001));
+  assert.ok(noise.samples.every(Number.isFinite));
+});
+
+test("recording response estimator recovers delayed relative response", () => {
+  const stimulus = generateRecordingStimulus({ signal: "noise", sampleRate: 24000, durationSec: 1.2, levelDb: 75 }).samples;
+  const delaySamples = 480;
+  const recording = new Float32Array(stimulus.length + delaySamples);
+  for (let index = 0; index < stimulus.length; index += 1) recording[index + delaySamples] = stimulus[index] * 2;
+
+  const points = estimateFrequencyResponse({
+    stimulus,
+    recording,
+    sampleRate: 24000,
+    frequencies: [100, 500, 1000, 5000],
+    referenceLevelDb: 75,
+  });
+
+  assert.equal(points.length, 4);
+  assert.ok(Math.abs(points[2].magnitudeDb - 75) < 0.6);
+  assert.ok(Math.max(...points.map((point) => point.magnitudeDb)) - Math.min(...points.map((point) => point.magnitudeDb)) < 2);
+});
+
+test("recording response averaging combines repeated measurements", () => {
+  const averaged = averageFrequencyResponses([
+    [{ frequencyHz: 100, magnitudeDb: 70 }, { frequencyHz: 1000, magnitudeDb: 74 }],
+    [{ frequencyHz: 100, magnitudeDb: 72 }, { frequencyHz: 1000, magnitudeDb: 76 }],
+  ]);
+
+  assert.deepEqual(averaged.map((point) => point.magnitudeDb), [71, 75]);
 });
 
 test("Qts is derived from Qms and Qes", () => {
@@ -282,6 +329,7 @@ test("crossover circuit normalizes components and valid wires", () => {
   const circuit = normalizeCrossoverCircuit({
     components: [
       { id: "r1", type: "resistor", value: 5.6, x: 120, y: 80 },
+      { id: "w1", type: "wire-segment", value: 180, orientation: "vertical", x: 200, y: 96 },
       { id: "bad-type", type: "spark-gap", value: 9999 },
     ],
     nodes: [
@@ -298,12 +346,48 @@ test("crossover circuit normalizes components and valid wires", () => {
     ],
   });
 
-  assert.equal(circuit.components.length, 2);
-  assert.equal(circuit.components[1].type, "resistor");
+  assert.equal(circuit.components.length, 3);
+  assert.equal(circuit.components[1].type, "wire-segment");
+  assert.equal(circuit.components[1].orientation, "vertical");
+  assert.equal(circuit.components[2].type, "resistor");
   assert.equal(circuit.wires.length, 3);
   assert.equal(circuit.wires[1].to, "design:woofer:positive");
   assert.deepEqual(circuit.nodes.map((node) => node.id), ["fixed:positive", "design:woofer:positive", "junction:j1"]);
   assert.equal(circuit.nodes[0].x, -42);
+});
+
+test("signal filter lowpass and highpass types shape the response", () => {
+  const lowpassBelow = filterChainResponse(100, [{ type: "lowpass", frequencyHz: 1000, order: 2, family: "butterworth" }]).abs();
+  const lowpassAbove = filterChainResponse(10000, [{ type: "lowpass", frequencyHz: 1000, order: 2, family: "butterworth" }]).abs();
+  const highpassBelow = filterChainResponse(100, [{ type: "highpass", frequencyHz: 1000, order: 2, family: "butterworth" }]).abs();
+  const highpassAbove = filterChainResponse(10000, [{ type: "highpass", frequencyHz: 1000, order: 2, family: "butterworth" }]).abs();
+
+  assert.ok(lowpassBelow > lowpassAbove);
+  assert.ok(highpassAbove > highpassBelow);
+});
+
+test("crossover circuit normalizes module groups", () => {
+  const circuit = normalizeCrossoverCircuit({
+    components: [{ id: "r1", type: "resistor", value: 5.6, x: 120, y: 80 }],
+    nodes: [{ id: "junction:j1", x: 320, y: 96 }],
+    moduleGroups: [
+      {
+        id: "module-1",
+        componentIds: ["r1", "missing", "r1"],
+        nodeIds: ["junction:j1", "component:r1:a"],
+        speakerIds: ["woofer", "woofer"],
+      },
+      { id: "too-small", componentIds: ["missing"] },
+    ],
+  });
+
+  assert.equal(circuit.moduleGroups.length, 1);
+  assert.deepEqual(circuit.moduleGroups[0], {
+    id: "module-1",
+    componentIds: ["r1"],
+    nodeIds: ["junction:j1"],
+    speakerIds: ["woofer"],
+  });
 });
 
 test("crossover circuit routes voltage through speaker plus and minus poles", () => {
@@ -319,6 +403,47 @@ test("crossover circuit routes voltage through speaker plus and minus poles", ()
   assert.ok(Math.abs(woofer.voltage[0].abs() - 1) < 1e-9);
   assert.ok(Math.abs(woofer.voltage[1].abs() - 1) < 1e-9);
   assert.ok(Math.abs(woofer.inputImpedance[0] - 8) < 1e-9);
+});
+
+test("crossover wire segments route voltage as near-ideal conductors", () => {
+  const responses = crossoverCircuitResponses({
+    components: [{ id: "w1", type: "wire-segment", value: 140, orientation: "horizontal", x: 120, y: 80 }],
+    wires: [
+      { from: "fixed:positive", to: crossoverCircuitComponentPortId("w1", "a") },
+      { from: crossoverCircuitComponentPortId("w1", "b"), to: crossoverCircuitDesignNodeId("woofer", "positive") },
+      { from: "fixed:ground", to: crossoverCircuitDesignNodeId("woofer", "negative") },
+    ],
+  }, [1000], [{ designId: "woofer", impedance: [8] }]);
+
+  const woofer = responses.get("woofer");
+  assert.ok(woofer);
+  assert.ok(Math.abs(woofer.voltage[0].abs() - 1) < 1e-6);
+});
+
+test("crossover wire routing snaps free corners to the schematic grid", () => {
+  assert.deepEqual(snapWirePointToGrid({ x: 83, y: 99 }, 28), { x: 84, y: 112 });
+});
+
+test("crossover wire routing follows the selected 90 degree posture", () => {
+  const from = { x: 10, y: 20 };
+  const to = { x: 90, y: 76 };
+
+  assert.deepEqual(orthogonalWireRoutePoints(from, to, "horizontal-first"), [
+    { x: 10, y: 20 },
+    { x: 90, y: 20 },
+    { x: 90, y: 76 },
+  ]);
+  assert.deepEqual(orthogonalWireRoutePoints(from, to, "vertical-first"), [
+    { x: 10, y: 20 },
+    { x: 10, y: 76 },
+    { x: 90, y: 76 },
+  ]);
+});
+
+test("crossover wire routing renders the preview as a single orthogonal path", () => {
+  const route = orthogonalWireRoutePoints({ x: 10, y: 20 }, { x: 90, y: 76 });
+
+  assert.equal(wirePathD(route), "M 10 20 L 90 20 L 90 76");
 });
 
 test("crossover circuit components shape the routed speaker voltage", () => {
@@ -343,6 +468,11 @@ test("parametric EQ applies requested gain near center frequency", () => {
 
   assert.ok(Math.abs(20 * Math.log10(boosted) - 6) < 0.05);
   assert.equal(bypassed.toFixed(6), "1.000000");
+});
+
+test("gain filter applies broadband level", () => {
+  assert.ok(Math.abs(20 * Math.log10(gainResponse(6).abs()) - 6) < 0.05);
+  assert.equal(gainResponse(0).abs().toFixed(6), "1.000000");
 });
 
 test("shelving EQ boosts the intended side of the shelf", () => {
@@ -990,7 +1120,8 @@ test("passive radiator scraper extracts parameters from a direct PDF datasheet U
   }
 });
 
-test("passive radiator library includes imported radiators", () => {
+test("passive radiator library includes imported radiators", async () => {
+  const knownPassiveRadiators = await loadKnownPassiveRadiators();
   assert.ok(knownPassiveRadiators.length >= 2);
   assert.ok(knownPassiveRadiators.some((entry) => entry.id.startsWith("parts-express-pr-")));
 });
@@ -1001,7 +1132,8 @@ test("sample project includes comparable enclosure designs", () => {
   assert.ok(sampleProject.designs.some((design) => design.mode === "sealed"));
 });
 
-test("passive radiator simulation returns finite response arrays", () => {
+test("passive radiator simulation returns finite response arrays", async () => {
+  const knownPassiveRadiators = await loadKnownPassiveRadiators();
   const project = structuredClone(sampleProject);
   project.mode = "passive";
   project.box.passiveRadiator = { ...knownPassiveRadiators[0].passiveRadiator, count: 1 };
@@ -1051,7 +1183,8 @@ test("6th order bandpass simulation includes rear port output", () => {
   assert.ok(Math.max(...result.rearPortVelocity) > 0);
 });
 
-test("passive radiator output sums externally without a cancellation notch above tuning", () => {
+test("passive radiator output sums externally without a cancellation notch above tuning", async () => {
+  const knownPassiveRadiators = await loadKnownPassiveRadiators();
   const project = structuredClone(sampleProject);
   project.mode = "passive";
   project.box.passiveRadiator = { ...knownPassiveRadiators[0].passiveRadiator, count: 1 };

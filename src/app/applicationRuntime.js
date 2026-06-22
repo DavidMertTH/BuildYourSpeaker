@@ -7,12 +7,12 @@ import { simulateBandpass } from "../core/bandpassBox.js";
 import { validateEnclosureOptions } from "../core/enclosure.js";
 import { filterChainResponse } from "../core/filters.js";
 import { inferAngleFromName, normalizeFrequencyResponse, normalizeFrequencyResponseCandidate, normalizeMeasurementGroups, normalizeMeasurements, normalizeRecordingSettings, parseFrequencyResponseText } from "../core/measurements.js";
+import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../core/recordingAnalysis.js";
 import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, recommendedLowFrequencyLimit } from "../core/realism.js";
-import { planDesigns } from "../core/planner/designPlanner.js";
 import { adoptPlotState, autoRange, drawPlot } from "../ui/plot.js";
 import { drawPolarPlot } from "../ui/polarPlot.js";
-import { drawBoxPreview } from "../ui/preview.js";
-import { cloneProject, knownDrivers, knownPassiveRadiators, sampleProject } from "../state.js";
+import { drawBoxPreview, resetBoxPreview, zoomBoxPreview } from "../ui/preview.js";
+import { cloneProject, knownDrivers, knownPassiveRadiators, loadKnownDrivers, loadKnownPassiveRadiators, sampleProject } from "../state.js";
 
 import {
   AXIS_KEYS,
@@ -136,6 +136,7 @@ import {
   createCrossoverCircuitComponentId,
   createCrossoverCircuitJunctionId,
   createCrossoverCircuitWireId,
+  createCrossoverModuleGroupId,
   createCrossoverDesignId,
   createCrossoverTransitionId,
   createDesignId,
@@ -147,8 +148,14 @@ import {
   uniqueDriverGroupName,
   uniqueMeasurementGroupName,
 } from "./idUtils.js";
+let builtInDriverLibrary = knownDrivers;
+let builtInPassiveRadiatorLibrary = knownPassiveRadiators;
 let driverLibrary = loadDriverLibrary();
 let passiveRadiatorLibrary = loadPassiveRadiatorLibrary();
+let driverLibraryLoadPromise = null;
+let passiveRadiatorLibraryLoadPromise = null;
+let driverLibraryLoaded = false;
+let passiveRadiatorLibraryLoaded = false;
 let state = readSavedProjectState();
 let historyIndex = 0;
 let draggedItem = null;
@@ -157,8 +164,11 @@ let activePreset = "driver";
 let applyingLayout = false;
 let resizePersistenceReady = false;
 let resizeTimer = null;
+let recordingInProgress = false;
+let recordingSpectrogramInitialized = false;
 const frequencies = logFrequencyVector(FREQUENCY_MIN_HZ, FREQUENCY_MAX_HZ, 640);
-const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview"];
+const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
+const AXIS_TOOLBAR_PLOT_IDS = [...PLOT_IDS, "recordingPlot"];
 const BOX_MODE_PRESETS = {
   sealed: "boxSealed",
   vented: "boxVented",
@@ -226,9 +236,6 @@ const {
   passiveRadiatorSearchButton,
   passiveRadiatorSearchStatus,
   passiveRadiatorSearchResults,
-  planDesignsButton,
-  plannerStatus,
-  plannerResults,
   crossoverGroupSelect,
   crossoverMemberList,
   crossoverStatus,
@@ -241,23 +248,29 @@ const {
   crossoverAddCapacitorButton,
   crossoverAddInductorButton,
   crossoverPresetButtons,
-  measurementNameInput,
-  measurementAngleInput,
   measurementPlaneSelect,
   measurementTargetSelect,
-  measurementGroupAddButton,
-  measurementGroupList,
   frequencyResponseInput,
-  measurementAddButton,
   measurementStatus,
   measurementList,
   recordingMicrophoneSelect,
+  recordingOutputSelect,
   recordingSignalSelect,
+  recordingFrequencyStartInput,
+  recordingFrequencyEndInput,
   recordingLevelInput,
   recordingDurationInput,
   recordingAveragingInput,
+  recordingSampleRateSelect,
+  recordingTestToneButton,
   recordingAddButton,
+  recordingRunNameInput,
+  recordingRunAngleInput,
+  recordingSaveRunButton,
+  recordingStatus,
   recordingLevelReadout,
+  recordingSpectrogram,
+  recordingPeakReadout,
   recordingMeterBar,
   configGroupList,
   configBarList,
@@ -289,6 +302,7 @@ let programmaticGoldenLayoutPreset = "";
 let programmaticGoldenLayoutUntil = 0;
 let desktopGoldenLayoutConfig = null;
 let stagedRecordingResponse = null;
+let currentRecordingRun = null;
 const plotViewController = createPlotViewController({
   axisKeys: AXIS_KEYS,
   autoRange,
@@ -296,7 +310,7 @@ const plotViewController = createPlotViewController({
   frequencies,
   isMobileLayout,
   parseNumericInputValue,
-  plotIds: PLOT_IDS,
+  plotIds: AXIS_TOOLBAR_PLOT_IDS,
   render: (...args) => render(...args),
 });
 const searchWorkflows = createSearchWorkflows({
@@ -320,9 +334,6 @@ const searchWorkflows = createSearchWorkflows({
   passiveRadiatorSearchInput,
   passiveRadiatorSearchResults,
   passiveRadiatorSearchStatus,
-  planDesigns,
-  plannerResults,
-  plannerStatus,
   renderDriverSearchResults,
   renderPassiveRadiatorSearchResults,
   searchKnownDriverResults,
@@ -393,11 +404,13 @@ const crossoverSchematicController = createCrossoverSchematicController({
   createCrossoverCircuitComponentId,
   createCrossoverCircuitJunctionId,
   createCrossoverCircuitWireId,
+  createCrossoverModuleGroupId,
   CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS,
   addCrossoverDesign,
   crossoverAddCapacitorButton,
   crossoverAddInductorButton,
   crossoverAddResistorButton,
+  crossoverCreateModuleGroupButton,
   crossoverPresetButtons,
   crossoverCircuitComponentPortId,
   crossoverCircuitDesignNodeId,
@@ -556,7 +569,6 @@ const { renderMeasurementControls } = createMeasurementViews({
   createTrashIcon,
   cssEscape,
   defaultMeasurementTarget,
-  deleteMeasurementGroup,
   discardStagedRecording,
   enableDecimalTextInput,
   formatFrequencyValue,
@@ -566,10 +578,8 @@ const { renderMeasurementControls } = createMeasurementViews({
   getState: () => state,
   hydrateMeasurementTargetOptions,
   hydrateMeasurementTargetSelect,
-  measurementGroupList,
   measurementList,
   measurementTargetLabel,
-  measurementValue,
   parseNumericInputValue,
   removeFrequencyResponse,
   removeFrequencyResponseCandidate,
@@ -578,8 +588,8 @@ const { renderMeasurementControls } = createMeasurementViews({
   setTooltip,
   shortMeasurementName,
   updateFrequencyResponseAngle,
-  updateMeasurementGroup,
-  updateMeasurementGroupTarget,
+  updateFrequencyResponseName,
+  updateFrequencyResponseTarget,
 });
 
 
@@ -619,6 +629,7 @@ function initializeApplication(config) {
   renderPassiveRadiatorSelect();
   renderDesignControls();
   hydrateFields();
+  hydrateRecordingDeviceOptions();
   initializeHistory();
 }
 
@@ -665,6 +676,7 @@ function initializeTooltips() {
   });
 
   rangeFields.forEach((field) => {
+    configureRangeField(field);
     const fieldPath = getRangeFieldPath(field);
     setTooltip(field, RANGE_TOOLTIPS[fieldPath] || FIELD_TOOLTIPS[fieldPath]);
   });
@@ -713,29 +725,27 @@ function setTooltip(element, text) {
 }
 
 function initializePlotControls() {
-  GRAPH_PANEL_IDS.forEach((plotId) => {
-    const canvas = document.querySelector(`#${plotId}`);
-    const panel = canvas?.closest(".plot-panel");
-    if (!canvas || !panel) return;
+  GRAPH_PANEL_IDS.forEach((panelId) => {
+    const panel = document.querySelector(`[data-panel="${panelId}"]`);
+    const canvas = plotCanvasForPanel(panelId);
+    if (!panel) return;
 
-    if (!PLOT_IDS.includes(plotId) && ![...panel.children].some((child) => child.classList?.contains("plot-panel-switcher"))) {
-      panel.append(createGraphPanelSwitcher(plotId));
-    }
+    const toolbarHost = plotToolbarHostForPanel(panelId, panel);
+    let toolbar = panel.querySelector(`.plot-toolbar[data-plot-toolbar="${panelId}"]`);
+    if (!toolbar) toolbar = createPlotToolbar(panelId, "plot-overlay-toolbar");
+    if (toolbar.parentElement !== toolbarHost) toolbarHost.append(toolbar);
 
-    if (PLOT_IDS.includes(plotId) && ![...panel.children].some((child) => child.classList?.contains("plot-toolbar"))) {
-      panel.append(createPlotToolbar(plotId, "plot-overlay-toolbar"));
-    }
-
-    if (!PLOT_IDS.includes(plotId)) return;
+    const axisPlotId = axisPlotIdForPanel(panelId);
+    if (!axisPlotId || !canvas) return;
     canvas.addEventListener("wheel", (event) => {
       if (isMobileLayout()) return;
       event.preventDefault();
       const factor = event.deltaY > 0 ? 1.18 : 0.85;
       const axis = event.shiftKey ? "y" : event.altKey || event.ctrlKey ? "x" : "both";
-      zoomPlot(plotId, factor, event, axis);
+      zoomPlot(axisPlotId, factor, event, axis);
     }, { passive: false });
 
-    canvas.addEventListener("mousedown", (event) => startPlotPan(plotId, event));
+    canvas.addEventListener("mousedown", (event) => startPlotPan(axisPlotId, event));
   });
 }
 
@@ -1032,92 +1042,60 @@ function applyPlotPanelSize(panel, size) {
   panel.style.height = `${size.heightPx}px`;
 }
 
-function createPlotToolbar(plotId, placementClass = "") {
+function createPlotToolbar(panelId, placementClass = "") {
+  const axisPlotId = axisPlotIdForPanel(panelId);
   const toolbar = document.createElement("div");
   toolbar.className = ["plot-toolbar", placementClass].filter(Boolean).join(" ");
-  toolbar.dataset.plotToolbar = plotId;
+  toolbar.dataset.plotToolbar = panelId;
   toolbar.addEventListener("click", (event) => event.stopPropagation());
   toolbar.addEventListener("dblclick", (event) => event.stopPropagation());
   toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
-  toolbar.addEventListener("mouseleave", () => {
-    toolbar.querySelectorAll(".plot-axis-menu").forEach((details) => {
-      details.open = false;
-    });
-  });
 
   const pill = document.createElement("button");
   pill.type = "button";
   pill.className = "plot-toolbar-pill";
   pill.textContent = "Plot";
-  setTooltip(pill, "Show graph, zoom, and axis controls.");
+  setTooltip(pill, "Show graph and axis controls.");
 
   const menu = document.createElement("div");
   menu.className = "plot-toolbar-menu";
 
-  const zoomOut = plotToolButton("-", "Zoom out");
-  zoomOut.addEventListener("click", () => zoomPlot(plotId, 1.28));
-
-  const zoomIn = plotToolButton("+", "Zoom in");
-  zoomIn.addEventListener("click", () => zoomPlot(plotId, 0.78));
-
-  const zoomRow = document.createElement("div");
-  zoomRow.className = "plot-zoom-row";
-  zoomRow.append(zoomIn, zoomOut);
-
   const reset = plotToolButton("Reset", "Reset zoom and manual axes");
   reset.className = "plot-tool-button plot-tool-reset";
-  reset.addEventListener("click", () => resetPlotView(plotId));
+  reset.addEventListener("click", () => resetGraphPanelView(panelId));
 
-  const axes = document.createElement("details");
-  axes.className = "plot-axis-menu";
-  const summary = document.createElement("summary");
-  summary.textContent = "Axes";
-  summary.addEventListener("click", (event) => {
-    event.preventDefault();
-  });
-  setTooltip(summary, "Set exact X and Y axis limits.");
-  const panelBody = document.createElement("div");
-  panelBody.className = "plot-axis-panel";
-  panelBody.append(
-    plotAxisModeToggle(plotId),
-    plotAxisField(plotId, "xMin", "X min"),
-    plotAxisField(plotId, "xMax", "X max"),
-    plotAxisField(plotId, "yMin", "Y min"),
-    plotAxisField(plotId, "yMax", "Y max"),
-  );
-  axes.append(summary, panelBody);
-  axes.addEventListener("mouseenter", () => {
-    axes.open = true;
-  });
-  axes.addEventListener("mouseleave", () => {
-    axes.open = false;
-  });
-  axes.addEventListener("focusin", () => {
-    axes.open = true;
-  });
-  axes.addEventListener("focusout", () => {
-    window.setTimeout(() => {
-      if (!axes.matches(":focus-within")) axes.open = false;
-    });
-  });
-  axes.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    axes.open = false;
-    summary.focus();
-  });
+  const axes = document.createElement("div");
+  axes.className = "plot-axis-panel";
+  axes.setAttribute("aria-label", "Axis controls");
+  if (axisPlotId) {
+    axes.append(
+      plotAxisModeToggle(axisPlotId),
+      plotAxisField(axisPlotId, "xMin", "X min"),
+      plotAxisField(axisPlotId, "xMax", "X max"),
+      plotAxisField(axisPlotId, "yMin", "Y min"),
+      plotAxisField(axisPlotId, "yMax", "Y max"),
+    );
+  }
 
   const graphRow = document.createElement("div");
   graphRow.className = "plot-graph-axis-row";
-  graphRow.append(createGraphPanelSelect(plotId), axes);
+  graphRow.append(createGraphPanelSelect(panelId));
 
-  menu.append(zoomRow, reset, graphRow);
+  menu.append(reset, graphRow);
+  if (axisPlotId) menu.append(axes);
   toolbar.append(pill, menu);
   return toolbar;
+}
+
+function plotToolbarHostForPanel(panelId, panel) {
+  if (panelId === "recordingPanel") return panel.querySelector(".recording-plot-stage") || panel;
+  return panel;
 }
 
 function createGraphPanelSwitcher(panelId) {
   const switcher = document.createElement("div");
   switcher.className = "plot-panel-switcher";
+  if (PLOT_IDS.includes(panelId)) switcher.classList.add("plot-panel-mobile-switcher");
   switcher.dataset.plotPanelSwitcher = panelId;
   switcher.addEventListener("click", (event) => event.stopPropagation());
   switcher.addEventListener("dblclick", (event) => event.stopPropagation());
@@ -1141,6 +1119,31 @@ function createGraphPanelSelect(panelId) {
   select.value = panelId;
   select.addEventListener("change", () => replaceGraphPanel(panelId, select.value));
   return select;
+}
+
+function axisPlotIdForPanel(panelId) {
+  if (PLOT_IDS.includes(panelId)) return panelId;
+  if (panelId === "recordingPanel") return "recordingPlot";
+  return "";
+}
+
+function zoomGraphPanel(panelId, factor) {
+  if (panelId === "boxPreview") {
+    zoomBoxPreview(document.querySelector("#boxPreview"), factor);
+    return;
+  }
+  const axisPlotId = axisPlotIdForPanel(panelId);
+  if (axisPlotId) zoomPlot(axisPlotId, factor);
+}
+
+function resetGraphPanelView(panelId) {
+  if (panelId === "boxPreview") {
+    resetBoxPreview(document.querySelector("#boxPreview"));
+    render();
+    return;
+  }
+  const axisPlotId = axisPlotIdForPanel(panelId);
+  if (axisPlotId) resetPlotView(axisPlotId);
 }
 
 function replaceGraphPanel(currentPanelId, nextPanelId) {
@@ -1344,6 +1347,7 @@ function applyThemePreference(choice) {
   const resolvedTheme = choice === "sync" ? (systemThemeQuery.matches ? "light" : "dark") : choice;
   document.documentElement.dataset.theme = resolvedTheme;
   document.documentElement.dataset.themeChoice = choice;
+  recordingSpectrogramInitialized = false;
 }
 
 function hydrateThemeButtons() {
@@ -1414,7 +1418,8 @@ function isSwitchActivationKey(event) {
   return event.key === "Enter" || event.key === " ";
 }
 
-function toggleDriverLibraryFilters() {
+async function toggleDriverLibraryFilters() {
+  await ensureDriverLibraryLoaded();
   const enabled = !isLibraryFilterSwitchEnabled(driverLibraryFilterEnabled);
   setLibraryFilterSwitchState(driverLibraryFilterEnabled, enabled);
   libraryControlPrefs.driverFilterEnabled = enabled;
@@ -1423,7 +1428,8 @@ function toggleDriverLibraryFilters() {
   renderDriverSelect();
 }
 
-function togglePassiveRadiatorLibraryFilters() {
+async function togglePassiveRadiatorLibraryFilters() {
+  await ensurePassiveRadiatorLibraryLoaded();
   const enabled = !isLibraryFilterSwitchEnabled(passiveRadiatorLibraryFilterEnabled);
   setLibraryFilterSwitchState(passiveRadiatorLibraryFilterEnabled, enabled);
   libraryControlPrefs.passiveRadiatorFilterEnabled = enabled;
@@ -1520,7 +1526,7 @@ function bindEvents() {
     field.addEventListener("input", () => {
       const nextState = cloneProject(state);
       const fieldPath = getRangeFieldPath(field);
-      applyEditableValue(nextState, fieldPath, Number(field.value));
+      applyEditableValue(nextState, fieldPath, rangeInputToBaseValue(field));
       if (fieldPath.startsWith("box.")) syncActiveDesignFromProject(nextState);
       commitState(nextState, { hydrate: true, replaceHistory: true });
     });
@@ -1550,15 +1556,30 @@ function bindEvents() {
   });
   addDriverGroupButton?.addEventListener("click", addDriverGroup);
 
-  driverSelect.addEventListener("change", () => {
+  driverSelect.addEventListener("pointerdown", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverSelect.addEventListener("focus", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverSelect.addEventListener("change", async () => {
+    await ensureDriverLibraryLoaded();
     const selected = driverLibrary.find((driver) => driver.id === driverSelect.value);
     if (!selected) return;
     applyKnownDriver(selected);
   });
-  driverLibraryFilter?.addEventListener("input", () => {
+  driverLibraryFilter?.addEventListener("focus", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverLibraryFilter?.addEventListener("input", async () => {
+    await ensureDriverLibraryLoaded();
     renderDriverSelect();
   });
-  driverLibrarySort?.addEventListener("change", () => {
+  driverLibrarySort?.addEventListener("focus", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverLibrarySort?.addEventListener("change", async () => {
+    await ensureDriverLibraryLoaded();
     libraryControlPrefs.driverSort = driverLibrarySort.value;
     saveLibraryControlPrefs();
     renderDriverSelect();
@@ -1574,26 +1595,49 @@ function bindEvents() {
     event.stopPropagation();
     toggleDriverLibraryFilters();
   });
-  driverLibraryBrand?.addEventListener("change", () => {
+  driverLibraryBrand?.addEventListener("focus", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverLibraryBrand?.addEventListener("change", async () => {
+    await ensureDriverLibraryLoaded();
     libraryControlPrefs.driverBrand = driverLibraryBrand.value;
     saveLibraryControlPrefs();
     renderDriverSelect();
   });
-  driverLibraryDiameter?.addEventListener("change", () => {
+  driverLibraryDiameter?.addEventListener("focus", () => {
+    void ensureDriverLibraryLoaded();
+  });
+  driverLibraryDiameter?.addEventListener("change", async () => {
+    await ensureDriverLibraryLoaded();
     libraryControlPrefs.driverDiameter = driverLibraryDiameter.value;
     saveLibraryControlPrefs();
     renderDriverSelect();
   });
 
-  passiveRadiatorSelect.addEventListener("change", () => {
+  passiveRadiatorSelect.addEventListener("pointerdown", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorSelect.addEventListener("focus", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorSelect.addEventListener("change", async () => {
+    await ensurePassiveRadiatorLibraryLoaded();
     const selected = passiveRadiatorLibrary.find((passiveRadiator) => passiveRadiator.id === passiveRadiatorSelect.value);
     if (!selected) return;
     applyKnownPassiveRadiator(selected);
   });
-  passiveRadiatorLibraryFilter?.addEventListener("input", () => {
+  passiveRadiatorLibraryFilter?.addEventListener("focus", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorLibraryFilter?.addEventListener("input", async () => {
+    await ensurePassiveRadiatorLibraryLoaded();
     renderPassiveRadiatorSelect();
   });
-  passiveRadiatorLibrarySort?.addEventListener("change", () => {
+  passiveRadiatorLibrarySort?.addEventListener("focus", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorLibrarySort?.addEventListener("change", async () => {
+    await ensurePassiveRadiatorLibraryLoaded();
     libraryControlPrefs.passiveRadiatorSort = passiveRadiatorLibrarySort.value;
     saveLibraryControlPrefs();
     renderPassiveRadiatorSelect();
@@ -1609,12 +1653,20 @@ function bindEvents() {
     event.stopPropagation();
     togglePassiveRadiatorLibraryFilters();
   });
-  passiveRadiatorLibraryBrand?.addEventListener("change", () => {
+  passiveRadiatorLibraryBrand?.addEventListener("focus", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorLibraryBrand?.addEventListener("change", async () => {
+    await ensurePassiveRadiatorLibraryLoaded();
     libraryControlPrefs.passiveRadiatorBrand = passiveRadiatorLibraryBrand.value;
     saveLibraryControlPrefs();
     renderPassiveRadiatorSelect();
   });
-  passiveRadiatorLibraryDiameter?.addEventListener("change", () => {
+  passiveRadiatorLibraryDiameter?.addEventListener("focus", () => {
+    void ensurePassiveRadiatorLibraryLoaded();
+  });
+  passiveRadiatorLibraryDiameter?.addEventListener("change", async () => {
+    await ensurePassiveRadiatorLibraryLoaded();
     libraryControlPrefs.passiveRadiatorDiameter = passiveRadiatorLibraryDiameter.value;
     saveLibraryControlPrefs();
     renderPassiveRadiatorSelect();
@@ -1622,7 +1674,6 @@ function bindEvents() {
 
   driverSearchButton.addEventListener("click", searchDriverSpecs);
   passiveRadiatorSearchButton?.addEventListener("click", searchPassiveRadiatorSpecs);
-  planDesignsButton.addEventListener("click", planEnclosureDesigns);
   crossoverGroupSelect?.addEventListener("change", () => {
     setActiveCrossoverGroupId(crossoverGroupSelect.value);
     renderCrossoverControls();
@@ -1675,18 +1726,27 @@ function bindEvents() {
     await importFrequencyResponseFile(file);
     event.target.value = "";
   });
-  measurementAddButton?.addEventListener("click", () => addRecordingFrequencyResponse("measurement"));
-  recordingAddButton?.addEventListener("click", () => addRecordingFrequencyResponse("recording"));
-  measurementGroupAddButton?.addEventListener("click", addMeasurementGroup);
+  recordingAddButton?.addEventListener("click", () => recordFrequencyResponse());
+  recordingTestToneButton?.addEventListener("click", () => playRecordingTestTone());
+  recordingSaveRunButton?.addEventListener("click", () => saveStagedRecording());
+  recordingRunNameInput?.addEventListener("input", syncStagedRecordingRunFields);
+  recordingRunAngleInput?.addEventListener("input", syncStagedRecordingRunFields);
   [
     recordingMicrophoneSelect,
+    recordingOutputSelect,
     recordingSignalSelect,
+    recordingFrequencyStartInput,
+    recordingFrequencyEndInput,
     recordingLevelInput,
     recordingDurationInput,
     recordingAveragingInput,
+    recordingSampleRateSelect,
   ].forEach((control) => {
     control?.addEventListener("change", updateRecordingSettingsFromControls);
   });
+  recordingMicrophoneSelect?.addEventListener("pointerdown", () => hydrateRecordingDeviceOptions());
+  recordingOutputSelect?.addEventListener("pointerdown", () => hydrateRecordingDeviceOptions());
+  navigator.mediaDevices?.addEventListener?.("devicechange", () => hydrateRecordingDeviceOptions());
 
   window.addEventListener("popstate", (event) => {
     const project = event.state?.project;
@@ -1921,6 +1981,43 @@ function getFieldPath(field) {
 
 function getRangeFieldPath(field) {
   return field.dataset.rangeField || field.dataset.derivedRangeField;
+}
+
+function isLogRangeField(field) {
+  return field.dataset.rangeScale === "log";
+}
+
+function rangeBounds(field) {
+  const min = Number(field.dataset.baseMin ?? field.min);
+  const max = Number(field.dataset.baseMax ?? field.max);
+  return {
+    min: Number.isFinite(min) && min > 0 ? min : 1,
+    max: Number.isFinite(max) && max > 0 ? max : 1,
+  };
+}
+
+function rangeInputToBaseValue(field) {
+  if (!isLogRangeField(field)) return Number(field.value);
+  const { min, max } = rangeBounds(field);
+  const position = clampNumber(Number(field.value) || 0, 0, 1000) / 1000;
+  return roundTo(min * ((max / min) ** position), 3);
+}
+
+function baseValueToRangeInput(field, value) {
+  if (!isLogRangeField(field)) return value;
+  const { min, max } = rangeBounds(field);
+  const clampedValue = clampNumber(Number(value) || min, min, max);
+  return roundTo((Math.log(clampedValue / min) / Math.log(max / min)) * 1000, 3);
+}
+
+function configureRangeField(field) {
+  if (!isLogRangeField(field) || field.dataset.logRangeConfigured === "true") return;
+  field.dataset.baseMin = field.min;
+  field.dataset.baseMax = field.max;
+  field.min = "0";
+  field.max = "1000";
+  field.step = "1";
+  field.dataset.logRangeConfigured = "true";
 }
 
 function inputToBaseValue(field) {
@@ -2469,8 +2566,17 @@ function hydrateRecordingControls() {
   if (recordingMicrophoneSelect && document.activeElement !== recordingMicrophoneSelect) {
     recordingMicrophoneSelect.value = settings.microphone;
   }
+  if (recordingOutputSelect && document.activeElement !== recordingOutputSelect) {
+    recordingOutputSelect.value = settings.outputDeviceId;
+  }
   if (recordingSignalSelect && document.activeElement !== recordingSignalSelect) {
     recordingSignalSelect.value = settings.signal;
+  }
+  if (recordingFrequencyStartInput && document.activeElement !== recordingFrequencyStartInput) {
+    recordingFrequencyStartInput.value = String(settings.frequencyStartHz);
+  }
+  if (recordingFrequencyEndInput && document.activeElement !== recordingFrequencyEndInput) {
+    recordingFrequencyEndInput.value = String(settings.frequencyEndHz);
   }
   if (recordingLevelInput && document.activeElement !== recordingLevelInput) {
     recordingLevelInput.value = String(settings.levelDb);
@@ -2479,13 +2585,23 @@ function hydrateRecordingControls() {
     recordingDurationInput.value = String(settings.durationSec);
   }
   if (recordingAveragingInput && document.activeElement !== recordingAveragingInput) {
-    recordingAveragingInput.value = String(settings.averaging);
+    recordingAveragingInput.value = String(settings.repetitions);
   }
-  if (recordingLevelReadout) recordingLevelReadout.textContent = `${settings.levelDb.toFixed(0)} dB`;
-  if (recordingMeterBar) {
-    const width = clampNumber((settings.levelDb - 35) / 70, 0, 1) * 100;
-    recordingMeterBar.style.width = `${width.toFixed(0)}%`;
+  if (recordingSampleRateSelect && document.activeElement !== recordingSampleRateSelect) {
+    recordingSampleRateSelect.value = String(settings.sampleRate);
   }
+  if (recordingRunNameInput && document.activeElement !== recordingRunNameInput) {
+    recordingRunNameInput.value = stagedRecordingResponse?.name || currentRecordingRun?.name || "";
+  }
+  if (recordingRunAngleInput && document.activeElement !== recordingRunAngleInput) {
+    recordingRunAngleInput.value = String(stagedRecordingResponse?.angleDeg ?? currentRecordingRun?.angleDeg ?? 0);
+  }
+  if (recordingLevelReadout) recordingLevelReadout.textContent = recordingInProgress ? "Live" : "Ready";
+  initializeRecordingSpectrogram();
+  [recordingAddButton, recordingTestToneButton].forEach((button) => {
+    if (button) button.disabled = recordingInProgress;
+  });
+  if (recordingSaveRunButton) recordingSaveRunButton.disabled = recordingInProgress || !stagedRecordingResponse;
 }
 
 function updateRecordingSettingsFromControls() {
@@ -2493,58 +2609,525 @@ function updateRecordingSettingsFromControls() {
   nextState.measurements = normalizeMeasurements(nextState.measurements);
   nextState.measurements.recording = normalizeRecordingSettings({
     microphone: recordingMicrophoneSelect?.value,
+    outputDeviceId: recordingOutputSelect?.value,
     signal: recordingSignalSelect?.value,
+    frequencyStartHz: recordingFrequencyStartInput?.value,
+    frequencyEndHz: recordingFrequencyEndInput?.value,
     levelDb: recordingLevelInput?.value,
     durationSec: recordingDurationInput?.value,
-    averaging: recordingAveragingInput?.value,
+    repetitions: recordingAveragingInput?.value,
+    sampleRate: recordingSampleRateSelect?.value,
   });
   commitState(nextState, { replaceHistory: true });
 }
 
-function addRecordingFrequencyResponse(source = "recording") {
-  const nextState = cloneProject(state);
-  nextState.measurements = normalizeMeasurements(nextState.measurements);
-  if (!nextState.measurements.recordingGroups?.length) {
-    nextState.measurements.recordingGroups = [{
-      id: createMeasurementGroupId(),
-      name: "Recording group",
+async function hydrateRecordingDeviceOptions(options = {}) {
+  const settings = recordingSettings();
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    setRecordingDeviceOptions(recordingMicrophoneSelect, [{ value: "default", label: "System default" }], settings.microphone);
+    setRecordingDeviceOptions(recordingOutputSelect, [{ value: "default", label: "System default" }], settings.outputDeviceId);
+    setRecordingStatus("Browser audio device enumeration is not available.");
+    return;
+  }
+  let permissionStream = null;
+  try {
+    if (options.requestPermission) {
+      permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const microphones = devices
+      .filter((device) => device.kind === "audioinput")
+      .map((device, index) => ({ value: device.deviceId, label: device.label || `Microphone ${index + 1}` }));
+    const speakers = devices
+      .filter((device) => device.kind === "audiooutput")
+      .map((device, index) => ({ value: device.deviceId, label: device.label || `Speaker ${index + 1}` }));
+    const nextSettings = recordingSettings();
+    setRecordingDeviceOptions(recordingMicrophoneSelect, [{ value: "default", label: "System default" }, ...microphones], nextSettings.microphone);
+    setRecordingDeviceOptions(recordingOutputSelect, [{ value: "default", label: "System default" }, ...speakers], nextSettings.outputDeviceId);
+  } catch (error) {
+    setRecordingStatus(`Could not access audio devices: ${error.message || error}`);
+  } finally {
+    permissionStream?.getTracks().forEach((track) => track.stop());
+  }
+}
+
+function setRecordingDeviceOptions(select, options, selectedValue) {
+  if (!select) return;
+  const activeValue = selectedValue || "default";
+  const seen = new Set();
+  const uniqueOptions = options.filter((option) => {
+    if (!option.value || seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
+  if (!seen.has(activeValue)) {
+    uniqueOptions.push({ value: activeValue, label: activeValue === "default" ? "System default" : "Selected device" });
+  }
+  select.replaceChildren();
+  uniqueOptions.forEach((option) => select.append(new Option(option.label, option.value)));
+  select.value = activeValue;
+}
+
+async function playRecordingTestTone() {
+  if (recordingInProgress) return;
+  recordingInProgress = true;
+  hydrateRecordingControls();
+  try {
+    const settings = currentRecordingSettingsFromControls();
+    await hydrateRecordingDeviceOptions({ requestPermission: true });
+    resetRecordingSpectrogram();
+    setRecordingStatus("");
+    await playToneAndMonitorLevel(settings, 1000, 2.2);
+  } catch (error) {
+    setRecordingStatus(`Test tone and level check failed: ${error.message || error}`);
+  } finally {
+    recordingInProgress = false;
+    hydrateRecordingControls();
+  }
+}
+
+async function recordFrequencyResponse() {
+  if (recordingInProgress) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setRecordingStatus("Recording requires browser microphone access.");
+    return;
+  }
+  recordingInProgress = true;
+  hydrateRecordingControls();
+  try {
+    await hydrateRecordingDeviceOptions({ requestPermission: true });
+    const nextState = cloneProject(state);
+    nextState.measurements = normalizeMeasurements(nextState.measurements);
+    ensureRecordingGroup(nextState);
+    const settings = currentRecordingSettingsFromControls(nextState.measurements.recording);
+    currentRecordingRun = createRecordingRun(settings);
+    if (recordingRunNameInput) recordingRunNameInput.value = currentRecordingRun.name;
+    if (recordingRunAngleInput) recordingRunAngleInput.value = String(currentRecordingRun.angleDeg);
+    resetRecordingSpectrogram();
+    nextState.measurements.recording = settings;
+    commitState(nextState, { replaceHistory: true });
+
+    const measuredResponses = [];
+    const repetitionCount = Math.max(1, Math.round(settings.repetitions));
+    for (let index = 0; index < repetitionCount; index += 1) {
+      setRecordingStatus(`Measurement ${index + 1}/${repetitionCount}: playing ${settings.signal === "noise" ? "noise" : "log sweep"} and recording microphone.`);
+      const stimulus = generateRecordingStimulus({
+        signal: settings.signal,
+        sampleRate: settings.sampleRate,
+        durationSec: settings.durationSec,
+        levelDb: settings.levelDb,
+        frequencyStartHz: settings.frequencyStartHz,
+        frequencyEndHz: settings.frequencyEndHz,
+      });
+      const capture = await captureStimulusResponse(stimulus.samples, settings, stimulus.sampleRate);
+      measuredResponses.push(estimateFrequencyResponse({
+        stimulus: stimulus.samples,
+        recording: capture.samples,
+        sampleRate: stimulus.sampleRate,
+        frequencies: recordingAnalysisFrequencies(settings),
+        referenceLevelDb: settings.levelDb,
+      }));
+    }
+
+    const points = averageFrequencyResponses(measuredResponses);
+    if (points.length < 2) throw new Error("No usable frequency response could be calculated from the recording.");
+    const microphoneLabel = selectedOptionLabel(recordingMicrophoneSelect, settings.microphone);
+    stagedRecordingResponse = normalizeFrequencyResponse({
+      name: recordingRunName() || currentRecordingRun.name,
+      source: `${microphoneLabel} ${settings.signal}`,
       target: measurementTargetSelect?.value || defaultMeasurementTarget(),
-      kind: "manual",
-      driverId: "",
-    }];
+      recordingGroupId: nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID,
+      plane: measurementPlaneSelect?.value || "horizontal",
+      angleDeg: recordingRunAngle(),
+      color: currentRecordingRun.color,
+      importedAt: currentRecordingRun.importedAt,
+      points,
+    });
+    render({ animatePlots: true });
+    setRecordingStatus("");
+    hydrateRecordingControls();
+  } catch (error) {
+    setRecordingStatus(`Measurement failed: ${error.message || error}`);
+  } finally {
+    recordingInProgress = false;
+    hydrateRecordingControls();
   }
-  const settings = normalizeRecordingSettings({
-    ...nextState.measurements.recording,
-    microphone: recordingMicrophoneSelect?.value || nextState.measurements.recording?.microphone,
-    signal: recordingSignalSelect?.value || nextState.measurements.recording?.signal,
-    levelDb: recordingLevelInput?.value || nextState.measurements.recording?.levelDb,
-    durationSec: recordingDurationInput?.value || nextState.measurements.recording?.durationSec,
-    averaging: recordingAveragingInput?.value || nextState.measurements.recording?.averaging,
-  });
-  nextState.measurements.recording = settings;
+}
 
-  const fallbackName = `${settings.signal === "noise" ? "Noise" : "Sweep"} ${nextState.measurements.frequencyResponses.length + 1}`;
-  const name = measurementNameInput?.value?.trim() || fallbackName;
+function currentRecordingSettingsFromControls(base = state.measurements?.recording) {
+  return normalizeRecordingSettings({
+    ...base,
+    microphone: recordingMicrophoneSelect?.value || base?.microphone,
+    outputDeviceId: recordingOutputSelect?.value || base?.outputDeviceId,
+    signal: recordingSignalSelect?.value || base?.signal,
+    frequencyStartHz: recordingFrequencyStartInput?.value || base?.frequencyStartHz,
+    frequencyEndHz: recordingFrequencyEndInput?.value || base?.frequencyEndHz,
+    levelDb: recordingLevelInput?.value || base?.levelDb,
+    durationSec: recordingDurationInput?.value || base?.durationSec,
+    repetitions: recordingAveragingInput?.value || base?.repetitions || base?.averaging,
+    sampleRate: recordingSampleRateSelect?.value || base?.sampleRate,
+  });
+}
+
+function createRecordingRun(settings) {
+  const timestamp = new Date();
+  const timestampLabel = formatRecordingRunTimestamp(timestamp);
+  return {
+    name: `${recordingDriverName()} ${timestampLabel}`,
+    angleDeg: recordingRunAngleInput?.value || 0,
+    color: randomMeasurementColor(),
+    importedAt: timestamp.toISOString(),
+  };
+}
+
+function recordingDriverName(project = state) {
+  const activeDesign = getActiveDesign(project);
+  const activeGroup = getActiveDriverGroup(project);
+  const driver = activeDesign ? designDriverForName(activeDesign) : activeGroup?.driver || project.driver;
+  return driverNameForParameters(driver) || activeDesign?.name || activeGroup?.name || "Custom driver";
+}
+
+function formatRecordingRunTimestamp(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function randomMeasurementColor() {
+  const palette = getDesignPalette();
+  return palette[Math.floor(Math.random() * palette.length)] || designPaletteColor(0);
+}
+
+function recordingRunName() {
+  return recordingRunNameInput?.value?.trim() || currentRecordingRun?.name || "";
+}
+
+function recordingRunAngle() {
+  const value = parseNumericInputValue(recordingRunAngleInput);
+  if (Number.isFinite(value)) return clampNumber(value, -180, 180);
+  return 0;
+}
+
+function syncStagedRecordingRunFields() {
+  if (!stagedRecordingResponse) return;
   stagedRecordingResponse = normalizeFrequencyResponse({
-    name,
-    source: `${settings.microphone} ${settings.signal}`,
-    target: measurementTargetSelect?.value || defaultMeasurementTarget(),
-    recordingGroupId: nextState.measurements.recordingGroups[0]?.id || UNGROUPED_MEASUREMENT_GROUP_ID,
-    plane: measurementPlaneSelect?.value || "horizontal",
-    angleDeg: measurementAngleInput?.value || 0,
-    importedAt: new Date().toISOString(),
-    points: generatedRecordingPoints(settings, Date.now() % 997),
+    ...stagedRecordingResponse,
+    name: recordingRunName() || stagedRecordingResponse.name,
+    angleDeg: recordingRunAngle(),
+    color: stagedRecordingResponse.color || currentRecordingRun?.color || randomMeasurementColor(),
   });
+  render({ animatePlots: true });
+}
 
-  commitState(nextState, { replaceHistory: true, animatePlots: true });
-  if (measurementStatus) {
-    const origin = source === "recording" ? "Recording" : "Measurement";
-    measurementStatus.textContent = `${origin} staged: ${stagedRecordingResponse.name}. Save it to add the frequency response.`;
+function ensureRecordingGroup(project) {
+  if (project.measurements.recordingGroups?.length) return;
+  project.measurements.recordingGroups = [{
+    id: createMeasurementGroupId(),
+    name: "Recording group",
+    target: measurementTargetSelect?.value || defaultMeasurementTarget(),
+    kind: "manual",
+    driverId: "",
+  }];
+}
+
+function recordingAnalysisFrequencies(settings) {
+  const start = Math.max(1, Number(settings.frequencyStartHz) || FREQUENCY_MIN_HZ);
+  const end = Math.max(start * 1.01, Number(settings.frequencyEndHz) || FREQUENCY_MAX_HZ);
+  const selected = frequencies
+    .filter((frequency) => frequency >= start && frequency <= end)
+    .filter((frequency, index) => index % 4 === 0 || frequency === end);
+  if (selected.length >= 2) return selected;
+  return logFrequencyVector(start, Math.min(end, settings.sampleRate * 0.45), 120);
+}
+
+async function openRecordingStream(settings) {
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      ...(settings.microphone && settings.microphone !== "default" ? { deviceId: { exact: settings.microphone } } : {}),
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+    },
+  });
+}
+
+async function monitorRecordingLevel(stream, durationMs) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available in this browser.");
+  const audioContext = new AudioContextClass();
+  try {
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(2048, 1, 1);
+    const silentOutput = audioContext.createGain();
+    silentOutput.gain.value = 0;
+    processor.onaudioprocess = (event) => updateRecordingSpectrogramFromSamples(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
+    source.connect(processor);
+    processor.connect(silentOutput);
+    silentOutput.connect(audioContext.destination);
+    await delay(durationMs);
+    processor.disconnect();
+    source.disconnect();
+    silentOutput.disconnect();
+  } finally {
+    await audioContext.close().catch(() => {});
   }
+}
+
+async function playToneAndMonitorLevel(settings, frequencyHz, durationSec) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available in this browser.");
+  const audioContext = new AudioContextClass({ sampleRate: settings.sampleRate });
+  const stream = await openRecordingStream(settings);
+  let outputFallback = "";
+  try {
+    outputFallback = await routeAudioOutput(audioContext, settings);
+    const microphoneSource = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(2048, 1, 1);
+    const silentOutput = audioContext.createGain();
+    const oscillator = audioContext.createOscillator();
+    const playbackGain = audioContext.createGain();
+    silentOutput.gain.value = 0;
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequencyHz;
+    playbackGain.gain.value = Math.max(0.005, Math.min(0.4, 0.06 * 10 ** ((settings.levelDb - 75) / 20)));
+    processor.onaudioprocess = (event) => updateRecordingSpectrogramFromSamples(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
+    microphoneSource.connect(processor);
+    processor.connect(silentOutput);
+    silentOutput.connect(audioContext.destination);
+    oscillator.connect(playbackGain);
+    playbackGain.connect(audioContext.destination);
+    await audioContext.resume();
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + durationSec);
+    await delay(durationSec * 1000 + 180);
+    processor.disconnect();
+    microphoneSource.disconnect();
+    playbackGain.disconnect();
+    silentOutput.disconnect();
+    return outputFallback;
+  } finally {
+    stream.getTracks().forEach((track) => track.stop());
+    await audioContext.close().catch(() => {});
+  }
+}
+
+async function captureStimulusResponse(stimulus, settings, sampleRate) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available in this browser.");
+  const audioContext = new AudioContextClass({ sampleRate });
+  const stream = await openRecordingStream(settings);
+  let outputFallback = "";
+  try {
+    outputFallback = await routeAudioOutput(audioContext, settings);
+    await audioContext.resume();
+    const microphoneSource = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const silentOutput = audioContext.createGain();
+    const playbackSource = audioContext.createBufferSource();
+    const playbackGain = audioContext.createGain();
+    const playbackBuffer = audioContext.createBuffer(1, stimulus.length, audioContext.sampleRate);
+    const chunks = [];
+    silentOutput.gain.value = 0;
+    playbackGain.gain.value = 1;
+    playbackBuffer.copyToChannel(stimulus, 0);
+    playbackSource.buffer = playbackBuffer;
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      chunks.push(new Float32Array(input));
+      updateRecordingSpectrogramFromSamples(input, audioContext.sampleRate);
+    };
+    microphoneSource.connect(processor);
+    processor.connect(silentOutput);
+    silentOutput.connect(audioContext.destination);
+    playbackSource.connect(playbackGain);
+    playbackGain.connect(audioContext.destination);
+    playbackSource.start(audioContext.currentTime + 0.12);
+    await delay((stimulus.length / sampleRate) * 1000 + 450);
+    try {
+      playbackSource.stop();
+    } catch {}
+    processor.disconnect();
+    microphoneSource.disconnect();
+    playbackGain.disconnect();
+    silentOutput.disconnect();
+    return {
+      samples: concatenateFloat32(chunks),
+      outputFallback,
+    };
+  } finally {
+    stream.getTracks().forEach((track) => track.stop());
+    await audioContext.close().catch(() => {});
+  }
+}
+
+async function routeAudioOutput(audioContext, settings) {
+  if (!settings.outputDeviceId || settings.outputDeviceId === "default") return "";
+  if (typeof audioContext.setSinkId !== "function") return "unsupported-output-routing";
+  try {
+    await audioContext.setSinkId(settings.outputDeviceId);
+    return "";
+  } catch {
+    return "unsupported-output-routing";
+  }
+}
+
+function updateRecordingSpectrogramFromSamples(samples, sampleRate = 48000) {
+  const peak = peakAbs(samples);
+  const peakDb = 20 * Math.log10(Math.max(peak, 1e-6));
+  if (recordingMeterBar) {
+    const width = clampNumber((peakDb + 60) / 60, 0, 1) * 100;
+    recordingMeterBar.style.width = `${Math.max(2, width).toFixed(0)}%`;
+  }
+  drawRecordingSpectrogramColumn(samples, sampleRate);
+  if (recordingPeakReadout) recordingPeakReadout.textContent = `Peak ${peakDb.toFixed(1)} dBFS`;
+}
+
+function initializeRecordingSpectrogram() {
+  if (!recordingSpectrogram) return;
+  const rect = recordingSpectrogram.getBoundingClientRect();
+  const scale = Math.max(1.5, Math.min(3, window.devicePixelRatio || 1));
+  const width = Math.max(80, Math.round((rect.width || 120) * scale));
+  const height = Math.max(34, Math.round((rect.height || 46) * scale));
+  if (recordingSpectrogram.width !== width || recordingSpectrogram.height !== height) {
+    recordingSpectrogram.width = width;
+    recordingSpectrogram.height = height;
+    recordingSpectrogramInitialized = false;
+  }
+  if (recordingSpectrogramInitialized) return;
+  const ctx = recordingSpectrogram.getContext("2d");
+  if (!ctx) return;
+  const isLight = document.documentElement.dataset.theme === "light";
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  if (isLight) {
+    gradient.addColorStop(0, "rgba(255,255,255,0.92)");
+    gradient.addColorStop(1, "rgba(76,13,202,0.08)");
+  } else {
+    gradient.addColorStop(0, "rgba(255,255,255,0.08)");
+    gradient.addColorStop(1, "rgba(0,0,0,0.34)");
+  }
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = isLight ? "rgba(76,13,202,0.13)" : "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  for (let index = 1; index < 4; index += 1) {
+    const y = Math.round((height * index) / 4) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  recordingSpectrogramInitialized = true;
+}
+
+function resetRecordingSpectrogram() {
+  recordingSpectrogramInitialized = false;
+  initializeRecordingSpectrogram();
+  if (recordingMeterBar) recordingMeterBar.style.width = "0";
+  if (recordingPeakReadout) recordingPeakReadout.textContent = "Peak -inf dBFS";
+}
+
+function drawRecordingSpectrogramColumn(samples, sampleRate) {
+  if (!recordingSpectrogram || samples.length < 32) return;
+  initializeRecordingSpectrogram();
+  const ctx = recordingSpectrogram.getContext("2d");
+  if (!ctx) return;
+  const { width, height } = recordingSpectrogram;
+  ctx.drawImage(recordingSpectrogram, 1, 0, width - 1, height, 0, 0, width - 1, height);
+  const bins = Math.max(36, Math.min(96, Math.floor(height * 0.85)));
+  const minFrequency = 30;
+  const maxFrequency = Math.min(20000, sampleRate * 0.45);
+  const samplesForAnalysis = samples.length > 6144 ? samples.subarray(samples.length - 6144) : samples;
+  for (let bin = 0; bin < bins; bin += 1) {
+    const position = bin / Math.max(1, bins - 1);
+    const frequency = minFrequency * ((maxFrequency / minFrequency) ** position);
+    const db = frequencyMagnitudeDb(samplesForAnalysis, sampleRate, frequency);
+    const intensity = clampNumber((db + 88) / 58, 0, 1);
+    ctx.fillStyle = spectrogramColor(intensity);
+    const y = Math.floor(height - ((bin + 1) / bins) * height);
+    const nextY = Math.floor(height - (bin / bins) * height);
+    ctx.fillRect(width - 1, y, 1, Math.max(1, nextY - y));
+  }
+}
+
+function frequencyMagnitudeDb(samples, sampleRate, frequencyHz) {
+  const step = (Math.PI * 2 * frequencyHz) / sampleRate;
+  const stepCos = Math.cos(step);
+  const stepSin = Math.sin(step);
+  let cos = 1;
+  let sin = 0;
+  let re = 0;
+  let im = 0;
+  const denominator = Math.max(1, samples.length - 1);
+  for (let index = 0; index < samples.length; index += 1) {
+    const windowValue = 0.5 - 0.5 * Math.cos((Math.PI * 2 * index) / denominator);
+    const sample = samples[index] * windowValue;
+    re += sample * cos;
+    im -= sample * sin;
+    const nextCos = cos * stepCos - sin * stepSin;
+    sin = sin * stepCos + cos * stepSin;
+    cos = nextCos;
+  }
+  return 20 * Math.log10(Math.max(1e-8, Math.hypot(re, im) / samples.length));
+}
+
+function spectrogramColor(intensity) {
+  const value = clampNumber(intensity, 0, 1);
+  const palette = document.documentElement.dataset.theme === "light"
+    ? [
+        [246, 248, 255],
+        [76, 13, 202],
+        [213, 0, 0],
+      ]
+    : [
+        [5, 6, 18],
+        [76, 13, 202],
+        [255, 23, 68],
+      ];
+  const scaled = value * 2;
+  const leftIndex = scaled < 1 ? 0 : 1;
+  const rightIndex = scaled < 1 ? 1 : 2;
+  const mix = scaled < 1 ? scaled : scaled - 1;
+  const color = palette[leftIndex].map((channel, index) => Math.round(channel + (palette[rightIndex][index] - channel) * mix));
+  return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+}
+
+function selectedOptionLabel(select, fallbackValue) {
+  return select?.selectedOptions?.[0]?.textContent?.trim() || fallbackValue || "Microphone";
+}
+
+function setRecordingStatus(message) {
+  if (recordingStatus) recordingStatus.textContent = message;
+  if (measurementStatus) measurementStatus.textContent = message;
+}
+
+function concatenateFloat32(chunks) {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Float32Array(length);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return output;
+}
+
+function peakAbs(samples) {
+  let peak = 0;
+  for (let index = 0; index < samples.length; index += 1) peak = Math.max(peak, Math.abs(samples[index]));
+  return peak;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function saveStagedRecording() {
   if (!stagedRecordingResponse) return;
+  syncStagedRecordingRunFields();
   const nextState = cloneProject(state);
   nextState.measurements = normalizeMeasurements(nextState.measurements);
   if (!nextState.measurements.recordingGroups?.length) {
@@ -2562,34 +3145,41 @@ function saveStagedRecording() {
   const targetGroup = nextState.measurements.recordingGroups.find((group) => group.id === validGroupId);
   const response = normalizeFrequencyResponse({
     ...stagedRecordingResponse,
+    name: recordingRunName() || stagedRecordingResponse.name,
+    angleDeg: recordingRunAngle(),
+    color: stagedRecordingResponse.color || currentRecordingRun?.color || randomMeasurementColor(),
     recordingGroupId: validGroupId,
     target: stagedRecordingResponse.target || targetGroup?.target || measurementTargetSelect?.value || defaultMeasurementTarget(),
     importedAt: stagedRecordingResponse.importedAt || new Date().toISOString(),
   });
   nextState.measurements.frequencyResponses.push(response);
   stagedRecordingResponse = null;
+  currentRecordingRun = null;
   commitState(nextState, { animatePlots: true });
-  if (measurementNameInput) measurementNameInput.value = "";
-  if (measurementStatus) measurementStatus.textContent = `Saved recording: ${response.name}.`;
+  if (recordingStatus) recordingStatus.textContent = "";
+  hydrateRecordingControls();
 }
 
 function discardStagedRecording() {
   if (!stagedRecordingResponse) return;
   const name = stagedRecordingResponse.name;
   stagedRecordingResponse = null;
+  currentRecordingRun = null;
   render({ animatePlots: true });
+  hydrateRecordingControls();
   if (measurementStatus) measurementStatus.textContent = `Discarded staged recording: ${name}.`;
 }
 
 function generatedRecordingPoints(settings, seed = 0) {
   return frequencies
-    .filter((frequency, index) => index % 7 === 0 || frequency === frequencies[frequencies.length - 1])
+    .filter((frequency) => frequency >= settings.frequencyStartHz && frequency <= settings.frequencyEndHz)
+    .filter((frequency, index, list) => index % 7 === 0 || frequency === list[list.length - 1])
     .map((frequency, index) => {
-      const logPosition = Math.log10(frequency / FREQUENCY_MIN_HZ) / Math.log10(FREQUENCY_MAX_HZ / FREQUENCY_MIN_HZ);
+      const logPosition = Math.log10(frequency / settings.frequencyStartHz) / Math.log10(settings.frequencyEndHz / settings.frequencyStartHz);
       const sweepTilt = settings.signal === "sweep" ? -5.5 * logPosition : -1.8 * Math.sin(logPosition * Math.PI);
       const roomRipple = 2.2 * Math.sin(Math.log2(frequency / 120) * Math.PI + seed * 0.7);
-      const averagedRipple = roomRipple / Math.sqrt(Math.max(settings.averaging, 1));
-      const sourceOffset = settings.microphone === "calibrated" ? 0 : settings.microphone === "usb-measurement" ? 0.8 : 1.4;
+      const averagedRipple = roomRipple / Math.sqrt(Math.max(settings.repetitions || settings.averaging, 1));
+      const sourceOffset = settings.microphone === "default" ? 1.4 : 0.4;
       return {
         frequencyHz: frequency,
         magnitudeDb: settings.levelDb + sweepTilt + averagedRipple + sourceOffset + 0.15 * Math.sin(index + seed),
@@ -2852,10 +3442,9 @@ async function importFrequencyResponseFile(file) {
   try {
     const source = file.name || "frequency-response";
     const fallbackName = source.replace(/\.[^.]+$/, "");
-    const rawAngle = measurementAngleInput?.value?.trim();
-    const angleDeg = rawAngle ? Number(rawAngle) : inferAngleFromName(source);
+    const angleDeg = inferAngleFromName(source);
     const response = parseFrequencyResponseText(await file.text(), {
-      name: measurementNameInput?.value?.trim() || fallbackName,
+      name: fallbackName,
       source,
       target: measurementTargetSelect?.value || defaultMeasurementTarget(),
       recordingGroupId: UNGROUPED_MEASUREMENT_GROUP_ID,
@@ -2875,7 +3464,6 @@ async function importFrequencyResponseFile(file) {
     response.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || response.recordingGroupId;
     nextState.measurements.frequencyResponses.push(response);
     commitState(nextState, { animatePlots: true });
-    if (measurementNameInput) measurementNameInput.value = "";
     if (measurementStatus) {
       measurementStatus.textContent = `Imported ${response.points.length} points from ${source}.`;
     }
@@ -3068,6 +3656,17 @@ function updateFrequencyResponseAngle(responseId, angleDeg) {
   if (measurementStatus) measurementStatus.textContent = `${shortMeasurementName(response)} angle set to ${Math.round(nextAngle)} deg.`;
 }
 
+function updateFrequencyResponseName(responseId, name) {
+  const nextName = String(name || "").trim();
+  if (!nextName) return;
+  const nextState = cloneProject(state);
+  nextState.measurements = normalizeMeasurements(nextState.measurements);
+  const response = nextState.measurements.frequencyResponses.find((item) => item.id === responseId);
+  if (!response) return;
+  response.name = nextName;
+  commitState(nextState, { animatePlots: true });
+}
+
 function removeFrequencyResponse(responseId) {
   const nextState = cloneProject(state);
   nextState.measurements = normalizeMeasurements(nextState.measurements);
@@ -3209,10 +3808,12 @@ function driverNameForParameters(driver) {
 }
 
 async function searchDriverSpecs() {
+  await ensureDriverLibraryLoaded();
   return searchWorkflows.searchDriverSpecs();
 }
 
-function searchKnownDriverResults(query) {
+async function searchKnownDriverResults(query) {
+  await ensureDriverLibraryLoaded();
   const normalizedQuery = String(query || "").trim().toLowerCase();
   if (!normalizedQuery || isHttpUrl(normalizedQuery)) return [];
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
@@ -3314,10 +3915,6 @@ function isHttpUrl(value) {
 
 function normalizeDirectUrl(value) {
   return searchWorkflows.normalizeDirectUrl(value);
-}
-
-function planEnclosureDesigns() {
-  searchWorkflows.planEnclosureDesigns();
 }
 
 function applyDriverCandidate(result) {
@@ -3491,11 +4088,57 @@ function addPassiveRadiatorToLibrary(entry) {
 }
 
 function loadDriverLibrary() {
-  return mergeLibraryEntries(knownDrivers, readCustomDrivers(), cloneProject);
+  return mergeLibraryEntries(builtInDriverLibrary, readCustomDrivers(), cloneProject);
 }
 
 function loadPassiveRadiatorLibrary() {
-  return mergeLibraryEntries(knownPassiveRadiators, readCustomPassiveRadiators(), cloneProject);
+  return mergeLibraryEntries(builtInPassiveRadiatorLibrary, readCustomPassiveRadiators(), cloneProject);
+}
+
+async function ensureDriverLibraryLoaded() {
+  if (driverLibraryLoaded) return driverLibrary;
+  if (!driverLibraryLoadPromise) {
+    driverLibraryLoadPromise = loadKnownDrivers()
+      .then((entries) => {
+        builtInDriverLibrary = entries;
+        driverLibrary = loadDriverLibrary();
+        driverLibraryLoaded = true;
+        populateLibraryBrandFilter(driverLibraryBrand, driverLibrary, "driver");
+        if (driverLibraryBrand) driverLibraryBrand.value = libraryControlPrefs.driverBrand || "";
+        if (driverLibraryDiameter) driverLibraryDiameter.value = libraryControlPrefs.driverDiameter || "";
+        renderDriverSelect();
+        return driverLibrary;
+      })
+      .catch((error) => {
+        driverLibraryLoadPromise = null;
+        if (driverSearchStatus) driverSearchStatus.textContent = error.message || "Could not load driver database.";
+        return driverLibrary;
+      });
+  }
+  return driverLibraryLoadPromise;
+}
+
+async function ensurePassiveRadiatorLibraryLoaded() {
+  if (passiveRadiatorLibraryLoaded) return passiveRadiatorLibrary;
+  if (!passiveRadiatorLibraryLoadPromise) {
+    passiveRadiatorLibraryLoadPromise = loadKnownPassiveRadiators()
+      .then((entries) => {
+        builtInPassiveRadiatorLibrary = entries;
+        passiveRadiatorLibrary = loadPassiveRadiatorLibrary();
+        passiveRadiatorLibraryLoaded = true;
+        populateLibraryBrandFilter(passiveRadiatorLibraryBrand, passiveRadiatorLibrary, "passiveRadiator");
+        if (passiveRadiatorLibraryBrand) passiveRadiatorLibraryBrand.value = libraryControlPrefs.passiveRadiatorBrand || "";
+        if (passiveRadiatorLibraryDiameter) passiveRadiatorLibraryDiameter.value = libraryControlPrefs.passiveRadiatorDiameter || "";
+        renderPassiveRadiatorSelect();
+        return passiveRadiatorLibrary;
+      })
+      .catch((error) => {
+        passiveRadiatorLibraryLoadPromise = null;
+        if (passiveRadiatorSearchStatus) passiveRadiatorSearchStatus.textContent = error.message || "Could not load P-Radiator database.";
+        return passiveRadiatorLibrary;
+      });
+  }
+  return passiveRadiatorLibraryLoadPromise;
 }
 
 function readCustomDrivers() {
@@ -3507,11 +4150,11 @@ function readCustomPassiveRadiators() {
 }
 
 function saveCustomDrivers() {
-  writeJsonStorage(DRIVER_LIBRARY_STORAGE_KEY, customLibraryEntries(driverLibrary, knownDrivers));
+  writeJsonStorage(DRIVER_LIBRARY_STORAGE_KEY, customLibraryEntries(driverLibrary, builtInDriverLibrary));
 }
 
 function saveCustomPassiveRadiators() {
-  writeJsonStorage(PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY, customLibraryEntries(passiveRadiatorLibrary, knownPassiveRadiators));
+  writeJsonStorage(PASSIVE_RADIATOR_LIBRARY_STORAGE_KEY, customLibraryEntries(passiveRadiatorLibrary, builtInPassiveRadiatorLibrary));
 }
 
 function uniqueDriverId(id) {
@@ -3646,6 +4289,7 @@ function updateMobilePanelMenuLabel() {
 }
 
 function plotCanvasForPanel(panelId) {
+  if (panelId === "recordingPanel") return document.querySelector("#recordingPlot");
   return document.querySelector(`[data-panel="${panelId}"] canvas`);
 }
 
@@ -4055,12 +4699,19 @@ function hydrateField(field) {
 
 function hydrateRangeFields() {
   rangeFields.forEach((field) => {
+    configureRangeField(field);
     const fieldPath = getRangeFieldPath(field);
     const value = Number(field.dataset.derivedRangeField ? derivedFieldValue(fieldPath) : getPath(state, fieldPath));
     if (!Number.isFinite(value)) return;
-    if (value < Number(field.min)) field.min = String(Math.floor(value));
-    if (value > Number(field.max)) field.max = String(Math.ceil(value));
-    field.value = String(value);
+    if (isLogRangeField(field)) {
+      const bounds = rangeBounds(field);
+      if (value < bounds.min) field.dataset.baseMin = String(Math.max(0.001, Math.floor(value)));
+      if (value > bounds.max) field.dataset.baseMax = String(Math.ceil(value));
+    } else {
+      if (value < Number(field.min)) field.min = String(Math.floor(value));
+      if (value > Number(field.max)) field.max = String(Math.ceil(value));
+    }
+    field.value = String(baseValueToRangeInput(field, value));
   });
 }
 

@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cabio Input Field Demos</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f4f4f1;
+        --ink: #181a17;
+        --muted: #666b63;
+        --line: #c9cbc5;
+        --purple: #5b28ff;
+        --teal: #1d8d7c;
+        --amber: #b56b1e;
+        --red: #bd3030;
+        --shadow: 0 18px 44px rgba(20, 22, 18, 0.12);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(rgba(24, 26, 23, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 26, 23, 0.035) 1px, transparent 1px),
+          var(--page);
+        background-size: 32px 32px;
+        color: var(--ink);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .page {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 48px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 36px;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      header p,
+      .option-copy,
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .badge {
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.55);
+        padding: 8px 10px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .option {
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.76);
+        box-shadow: var(--shadow);
+      }
+
+      .option.wide {
+        grid-column: 1 / -1;
+      }
+
+      .option-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .option h2 {
+        font-size: 17px;
+        line-height: 1.1;
+      }
+
+      .tag {
+        padding: 4px 7px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .demo-fields {
+        display: grid;
+        gap: 10px;
+      }
+
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .mono {
+        font-family: ui-monospace, "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+      }
+
+      .note {
+        padding-top: 2px;
+      }
+
+      /* Option 1: Precision Strip */
+      .strip {
+        --surface: #f9faf7;
+        --active: var(--purple);
+      }
+
+      .strip-field {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr) 58px;
+        align-items: center;
+        min-height: 40px;
+        border: 0;
+        border-bottom: 1px solid #c7cac4;
+        background: transparent;
+      }
+
+      .strip-field.with-slider {
+        grid-template-rows: 34px 14px;
+        min-height: 52px;
+        padding-bottom: 6px;
+      }
+
+      .strip-field label {
+        padding-left: 12px;
+        color: #555b52;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .strip-field input,
+      .strip-field select {
+        width: 100%;
+        min-width: 0;
+        height: 100%;
+        border: 0;
+        background: transparent;
+        color: #161814;
+        text-align: right;
+        outline: 0;
+      }
+
+      .strip-field input {
+        padding: 0 12px;
+      }
+
+      .strip-field select {
+        padding: 0 9px;
+      }
+
+      .strip-field:focus-within {
+        border-bottom-color: var(--active);
+        box-shadow: inset 0 -2px 0 var(--active);
+      }
+
+      .strip-field.error {
+        border-bottom-color: var(--red);
+        box-shadow: inset 0 -2px 0 var(--red);
+      }
+
+      .strip-field.with-slider:hover {
+        background: rgba(255, 255, 255, 0.46);
+      }
+
+      .strip-range {
+        grid-column: 1 / -1;
+        -webkit-appearance: none;
+        appearance: none;
+        display: block;
+        width: calc(100% - 34px);
+        max-width: calc(100% - 34px);
+        min-width: 0;
+        height: 10px;
+        margin: 0;
+        justify-self: center;
+        box-sizing: border-box;
+        accent-color: var(--active);
+        opacity: 0.58;
+        transition: opacity 140ms ease;
+      }
+
+      .strip-range::-webkit-slider-runnable-track {
+        height: 2px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--active) 72%, #d8dad5);
+      }
+
+      .strip-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 10px;
+        height: 10px;
+        margin-top: -4px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--active);
+        transition: width 140ms ease, height 140ms ease, margin-top 140ms ease;
+      }
+
+      .strip-range::-moz-range-track {
+        height: 2px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--active) 72%, #d8dad5);
+      }
+
+      .strip-range::-moz-range-thumb {
+        width: 10px;
+        height: 10px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--active);
+        transition: width 140ms ease, height 140ms ease;
+      }
+
+      .strip-field.with-slider:hover .strip-range,
+      .strip-field.with-slider:focus-within .strip-range,
+      .strip-range:hover,
+      .strip-range:focus {
+        opacity: 1;
+      }
+
+      .strip-field.with-slider:hover .strip-range::-webkit-slider-runnable-track,
+      .strip-field.with-slider:focus-within .strip-range::-webkit-slider-runnable-track,
+      .strip-range:hover::-webkit-slider-runnable-track,
+      .strip-range:focus::-webkit-slider-runnable-track {
+        height: 4px;
+      }
+
+      .strip-field.with-slider:hover .strip-range::-webkit-slider-thumb,
+      .strip-field.with-slider:focus-within .strip-range::-webkit-slider-thumb,
+      .strip-range:hover::-webkit-slider-thumb,
+      .strip-range:focus::-webkit-slider-thumb {
+        width: 14px;
+        height: 14px;
+        margin-top: -5px;
+      }
+
+      .strip-field.with-slider:hover .strip-range::-moz-range-track,
+      .strip-field.with-slider:focus-within .strip-range::-moz-range-track,
+      .strip-range:hover::-moz-range-track,
+      .strip-range:focus::-moz-range-track {
+        height: 4px;
+      }
+
+      .strip-field.with-slider:hover .strip-range::-moz-range-thumb,
+      .strip-field.with-slider:focus-within .strip-range::-moz-range-thumb,
+      .strip-range:hover::-moz-range-thumb,
+      .strip-range:focus::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+      }
+
+      .strip-buttons {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .strip-buttons button {
+        min-height: 32px;
+        padding: 0 8px;
+        border: 1px solid #bec1bb;
+        background: #f9faf7;
+        color: #2e332d;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .strip-buttons button.active {
+        border-color: var(--active);
+        background: #eee9ff;
+        color: #24105f;
+        box-shadow: inset 0 -2px 0 var(--active);
+      }
+
+      .strip-buttons button:disabled {
+        color: #999e96;
+        background: #eeeeeb;
+      }
+
+      /* Option 2: Soft Block */
+      .soft {
+        --surface: #ededeb;
+        --active: #22443e;
+      }
+
+      .soft-field {
+        display: grid;
+        gap: 5px;
+        padding: 8px;
+        border: 1px solid transparent;
+        background: var(--surface);
+        border-radius: 6px;
+      }
+
+      .soft-field label {
+        color: #667066;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .soft-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .soft-field input,
+      .soft-field select {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: #171a16;
+        outline: 0;
+      }
+
+      .soft-field input {
+        font-size: 18px;
+        font-weight: 750;
+      }
+
+      .soft-unit {
+        color: #4d554e;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .soft-field:focus-within {
+        border-color: var(--active);
+        background: #ffffff;
+      }
+
+      .soft-field.disabled {
+        opacity: 0.45;
+      }
+
+      /* Option 3: Dark Instrument */
+      .instrument {
+        background: #101211;
+        border-color: #2a2d2a;
+        color: #e8eee8;
+      }
+
+      .instrument .option-copy,
+      .instrument .note,
+      .instrument .tag {
+        color: rgba(232, 238, 232, 0.58);
+      }
+
+      .instrument .tag {
+        border-color: rgba(232, 238, 232, 0.18);
+      }
+
+      .instrument-field {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 112px auto;
+        gap: 8px;
+        align-items: center;
+        min-height: 40px;
+        padding: 5px;
+        border: 1px solid rgba(232, 238, 232, 0.14);
+        background: #151816;
+      }
+
+      .instrument-field label {
+        padding-left: 6px;
+        color: rgba(232, 238, 232, 0.62);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .instrument-field input {
+        height: 28px;
+        border: 1px solid rgba(232, 238, 232, 0.13);
+        background: #070807;
+        color: #f1f6ef;
+        text-align: right;
+        outline: 0;
+      }
+
+      .instrument-stepper {
+        display: grid;
+        grid-template-columns: 26px 26px;
+        gap: 3px;
+      }
+
+      .instrument-stepper button {
+        width: 26px;
+        height: 28px;
+        border: 1px solid rgba(232, 238, 232, 0.16);
+        background: #202420;
+        color: #e8eee8;
+      }
+
+      .instrument-field:focus-within {
+        border-color: #6bd0bf;
+      }
+
+      /* Option 4: Underline Lab */
+      .underline-field {
+        display: grid;
+        grid-template-columns: 1fr 120px 58px;
+        gap: 10px;
+        align-items: end;
+        min-height: 42px;
+        padding: 0 0 7px;
+        border-bottom: 1px solid #aeb2ab;
+      }
+
+      .underline-field label {
+        color: #545a52;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .underline-field input,
+      .underline-field select {
+        border: 0;
+        background: transparent;
+        color: #141713;
+        outline: 0;
+      }
+
+      .underline-field input {
+        text-align: right;
+        font-size: 17px;
+        font-weight: 780;
+      }
+
+      .underline-field select {
+        color: #4f574f;
+        font-size: 12px;
+      }
+
+      .underline-field:focus-within {
+        border-bottom-color: var(--purple);
+        box-shadow: 0 2px 0 var(--purple);
+      }
+
+      /* Option 5: Slider Hybrid */
+      .hybrid-field {
+        display: grid;
+        gap: 8px;
+        padding: 9px;
+        border: 1px solid #c2c6bf;
+        background: #fbfbf8;
+        border-radius: 6px;
+      }
+
+      .hybrid-top {
+        display: grid;
+        grid-template-columns: 1fr 108px 52px;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .hybrid-top label {
+        color: #596057;
+        font-size: 12px;
+        font-weight: 780;
+      }
+
+      .hybrid-top input,
+      .hybrid-top select {
+        height: 30px;
+        border: 1px solid #c9ccc6;
+        background: #ffffff;
+        color: #171a16;
+        outline: 0;
+      }
+
+      .hybrid-top input {
+        text-align: right;
+      }
+
+      .hybrid-field input[type="range"] {
+        width: 100%;
+        accent-color: var(--purple);
+      }
+
+      .hybrid-field:focus-within {
+        border-color: var(--purple);
+      }
+
+      /* Option 6: Compact Table */
+      .table-fields {
+        display: grid;
+        border: 1px solid #c1c4be;
+        background: #fcfcfa;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 1fr 110px 54px;
+        min-height: 34px;
+        border-bottom: 1px solid #d9dbd6;
+      }
+
+      .table-row:last-child {
+        border-bottom: 0;
+      }
+
+      .table-row label,
+      .table-row input,
+      .table-row select {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        outline: 0;
+      }
+
+      .table-row label {
+        padding: 0 9px;
+        color: #555b52;
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      .table-row input,
+      .table-row select {
+        border-left: 1px solid #d9dbd6;
+      }
+
+      .table-row input {
+        padding: 0 8px;
+        text-align: right;
+      }
+
+      .table-row select {
+        padding: 0 4px;
+      }
+
+      .table-row:focus-within {
+        background: #f1eee4;
+        box-shadow: inset 3px 0 0 var(--amber);
+      }
+
+      /* Option 7: Slider with Input Panel */
+      .panel-demo {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .panel-field {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 13px;
+        min-height: 190px;
+        padding: 12px;
+        border: 1px solid #bfc3bc;
+        background: #fbfbf8;
+      }
+
+      .panel-field-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: baseline;
+      }
+
+      .panel-field-title {
+        display: grid;
+        gap: 3px;
+      }
+
+      .panel-field-title strong {
+        font-size: 14px;
+      }
+
+      .panel-field-title span,
+      .panel-range-labels,
+      .panel-hint {
+        color: #626960;
+        font-size: 11px;
+      }
+
+      .panel-value {
+        color: #151814;
+        font-size: 22px;
+        font-weight: 850;
+        text-align: right;
+      }
+
+      .panel-value span {
+        color: #626960;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .panel-slider-zone {
+        display: grid;
+        align-content: center;
+        gap: 8px;
+      }
+
+      .panel-slider-zone input[type="range"] {
+        width: 100%;
+        accent-color: var(--purple);
+      }
+
+      .panel-range-labels {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .panel-range-labels span:nth-child(2),
+      .panel-range-labels span:nth-child(3) {
+        text-align: center;
+      }
+
+      .panel-range-labels span:last-child {
+        text-align: right;
+      }
+
+      .panel-hint {
+        min-height: 28px;
+        padding-top: 9px;
+        border-top: 1px solid #d5d8d2;
+      }
+
+      .input-panel {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #bfc3bc;
+        background: #eceee9;
+      }
+
+      .input-panel h3 {
+        font-size: 13px;
+        line-height: 1.1;
+      }
+
+      .panel-editor-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 76px;
+        gap: 8px;
+      }
+
+      .panel-editor-row input,
+      .panel-editor-row select,
+      .panel-mini-grid input {
+        min-width: 0;
+        height: 34px;
+        border: 1px solid #c2c6bf;
+        background: #fff;
+        color: #151814;
+        outline: 0;
+      }
+
+      .panel-editor-row input,
+      .panel-mini-grid input {
+        padding: 0 8px;
+        text-align: right;
+      }
+
+      .panel-editor-row select {
+        padding: 0 6px;
+      }
+
+      .panel-mini-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .panel-mini-grid label {
+        display: grid;
+        gap: 4px;
+        color: #626960;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .panel-apply {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .panel-apply button {
+        min-height: 34px;
+        border: 1px solid #bfc3bc;
+        background: #fbfbf8;
+        color: #252a24;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .panel-apply .primary {
+        border-color: var(--purple);
+        background: #eee9ff;
+        color: #24105f;
+      }
+
+      .panel-field:focus-within,
+      .input-panel:focus-within {
+        border-color: var(--purple);
+        box-shadow: inset 3px 0 0 var(--purple);
+      }
+
+      @media (max-width: 820px) {
+        header,
+        .grid,
+        .pair,
+        .option-head {
+          grid-template-columns: 1fr;
+        }
+
+        .strip-field,
+        .underline-field,
+        .table-row {
+          grid-template-columns: 1fr 92px 54px;
+        }
+
+        .strip-buttons {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .panel-demo {
+          grid-template-columns: 1fr;
+        }
+
+        .panel-mini-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <div>
+          <h1>Cabio Input Field Demos</h1>
+          <p>Separate minimal demo only. These are alternative field styles for box, driver, crossover, and measurement controls.</p>
+        </div>
+        <div class="badge">No app changes</div>
+      </header>
+
+      <section class="grid">
+        <article class="option strip">
+          <div class="option-head">
+            <div>
+              <h2>1. Precision Strip</h2>
+              <p class="option-copy">Sehr kompakt, klare Tabellenlogik, wirkt technisch und direkt.</p>
+            </div>
+            <span class="tag">Dense</span>
+          </div>
+          <div class="demo-fields">
+            <div class="strip-field with-slider">
+              <label for="strip-volume">Volume</label>
+              <input id="strip-volume" class="mono" value="48.0" />
+              <select aria-label="Volume unit"><option>L</option><option>ft3</option></select>
+              <input class="strip-range" type="range" value="56" aria-label="Volume slider" />
+            </div>
+            <div class="strip-field with-slider">
+              <label for="strip-fb">Target Fb</label>
+              <input id="strip-fb" class="mono" value="34.0" />
+              <select aria-label="Frequency unit"><option>Hz</option><option>kHz</option></select>
+              <input class="strip-range" type="range" value="34" aria-label="Target Fb slider" />
+            </div>
+            <div class="strip-field with-slider error">
+              <label for="strip-port">Port dia.</label>
+              <input id="strip-port" class="mono" value="2.0" />
+              <select aria-label="Length unit"><option>cm</option><option>mm</option></select>
+              <input class="strip-range" type="range" value="18" aria-label="Port diameter slider" />
+            </div>
+            <div class="strip-buttons" aria-label="Dense button samples">
+              <button type="button" class="active">Vented</button>
+              <button type="button">Sealed</button>
+              <button type="button">Auto</button>
+              <button type="button" disabled>Apply</button>
+            </div>
+          </div>
+          <p class="note">Passt gut, wenn die App weiterhin dicht und engineering-lastig bleiben soll.</p>
+        </article>
+
+        <article class="option soft">
+          <div class="option-head">
+            <div>
+              <h2>2. Soft Block</h2>
+              <p class="option-copy">Ruhiger, freundlicher, weniger formularartig. Werte sind deutlich lesbar.</p>
+            </div>
+            <span class="tag">Friendly</span>
+          </div>
+          <div class="demo-fields pair">
+            <label class="soft-field">Volume<div class="soft-row"><input class="mono" value="48.0" /><span class="soft-unit">L</span></div></label>
+            <label class="soft-field">Target Fb<div class="soft-row"><input class="mono" value="34.0" /><span class="soft-unit">Hz</span></div></label>
+            <label class="soft-field">Port shape<div class="soft-row"><select><option>Round</option><option>Rectangular</option></select><span class="soft-unit">type</span></div></label>
+            <label class="soft-field disabled">Calc. length<div class="soft-row"><input class="mono" value="21.156" disabled /><span class="soft-unit">cm</span></div></label>
+          </div>
+          <p class="note">Gute Richtung, wenn Cabio hochwertiger und weniger roh wirken soll.</p>
+        </article>
+
+        <article class="option instrument">
+          <div class="option-head">
+            <div>
+              <h2>3. Dark Instrument</h2>
+              <p class="option-copy">Messgeraet-Charakter mit Steppern. Sehr passend fuer genaue Parameterarbeit.</p>
+            </div>
+            <span class="tag">Lab</span>
+          </div>
+          <div class="demo-fields">
+            <div class="instrument-field"><label for="instrument-volume">Volume / L</label><input id="instrument-volume" class="mono" value="48.0" /><div class="instrument-stepper"><button type="button">-</button><button type="button">+</button></div></div>
+            <div class="instrument-field"><label for="instrument-fb">Target Fb / Hz</label><input id="instrument-fb" class="mono" value="34.0" /><div class="instrument-stepper"><button type="button">-</button><button type="button">+</button></div></div>
+            <div class="instrument-field"><label for="instrument-power">Power / W</label><input id="instrument-power" class="mono" value="10" /><div class="instrument-stepper"><button type="button">-</button><button type="button">+</button></div></div>
+          </div>
+          <p class="note">Stark fuer Dark Mode, aber wahrscheinlich zu schwer fuer Light Mode.</p>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>4. Underline Lab</h2>
+              <p class="option-copy">Sehr reduziert. Die Werte wirken wie ein Datenblatt statt wie Formularfelder.</p>
+            </div>
+            <span class="tag">Minimal</span>
+          </div>
+          <div class="demo-fields">
+            <div class="underline-field"><label for="under-volume">Volume</label><input id="under-volume" class="mono" value="48.0" /><select aria-label="Volume unit"><option>L</option><option>m3</option></select></div>
+            <div class="underline-field"><label for="under-fb">Target Fb</label><input id="under-fb" class="mono" value="34.0" /><select aria-label="Frequency unit"><option>Hz</option><option>kHz</option></select></div>
+            <div class="underline-field"><label for="under-driver">Driver count</label><input id="under-driver" class="mono" value="1" /><select aria-label="Wiring"><option>parallel</option><option>series</option></select></div>
+          </div>
+          <p class="note">Elegant, aber bei vielen Feldern eventuell zu wenig visuelle Trennung.</p>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>5. Slider Hybrid</h2>
+              <p class="option-copy">Direkt manipulierbar: Zahl fuer Praezision, Slider fuer schnelle Abstimmung.</p>
+            </div>
+            <span class="tag">Tuning</span>
+          </div>
+          <div class="demo-fields">
+            <label class="hybrid-field">
+              <div class="hybrid-top"><span>Volume</span><input class="mono" value="48.0" /><select><option>L</option><option>ft3</option></select></div>
+              <input type="range" value="56" />
+            </label>
+            <label class="hybrid-field">
+              <div class="hybrid-top"><span>Target Fb</span><input class="mono" value="34.0" /><select><option>Hz</option><option>kHz</option></select></div>
+              <input type="range" value="34" />
+            </label>
+          </div>
+          <p class="note">Wahrscheinlich am besten fuer Box-Parameter, bei T/S-Werten eher zu gross.</p>
+        </article>
+
+        <article class="option">
+          <div class="option-head">
+            <div>
+              <h2>6. Compact Table</h2>
+              <p class="option-copy">Am dichtesten. Viele Parameter auf kleinem Raum, mit klarer Zeilenstruktur.</p>
+            </div>
+            <span class="tag">Power user</span>
+          </div>
+          <div class="table-fields">
+            <div class="table-row"><label for="table-re">Re</label><input id="table-re" class="mono" value="3.6" /><select aria-label="Resistance unit"><option>ohm</option></select></div>
+            <div class="table-row"><label for="table-fs">Fs</label><input id="table-fs" class="mono" value="21.0" /><select aria-label="Frequency unit"><option>Hz</option></select></div>
+            <div class="table-row"><label for="table-vas">Vas</label><input id="table-vas" class="mono" value="72.0" /><select aria-label="Volume unit"><option>L</option></select></div>
+            <div class="table-row"><label for="table-xmax">Xmax</label><input id="table-xmax" class="mono" value="6.0" /><select aria-label="Length unit"><option>mm</option></select></div>
+          </div>
+          <p class="note">Gute Option fuer Driver-Parameter, weniger fuer die prominentesten Box-Controls.</p>
+        </article>
+
+        <article class="option wide">
+          <div class="option-head">
+            <div>
+              <h2>7. Slider + Input Panel</h2>
+              <p class="option-copy">Ein kompaktes Feld fuer schnelle Bewegung plus ein Praezisionspanel fuer direkte Werte, Einheit und Grenzen.</p>
+            </div>
+            <span class="tag">Expanded</span>
+          </div>
+          <div class="panel-demo">
+            <section class="panel-field" aria-label="Volume slider field">
+              <div class="panel-field-head">
+                <div class="panel-field-title">
+                  <strong>Box volume</strong>
+                  <span>Log scale, active design</span>
+                </div>
+                <div class="panel-value mono">48.0 <span>L</span></div>
+              </div>
+              <div class="panel-slider-zone">
+                <input type="range" value="56" aria-label="Box volume slider" />
+                <div class="panel-range-labels mono">
+                  <span>4 L</span>
+                  <span>16 L</span>
+                  <span>64 L</span>
+                  <span>180 L</span>
+                </div>
+              </div>
+              <div class="panel-hint">Drag for broad tuning, open panel values for exact cabinet targets.</div>
+            </section>
+            <aside class="input-panel" aria-label="Volume precision input panel">
+              <h3>Precision input</h3>
+              <div class="panel-editor-row">
+                <input class="mono" value="48.0" aria-label="Exact volume value" />
+                <select aria-label="Volume unit"><option>L</option><option>m3</option><option>ft3</option></select>
+              </div>
+              <div class="panel-mini-grid">
+                <label>Min<input class="mono" value="4" /></label>
+                <label>Max<input class="mono" value="180" /></label>
+                <label>Step<input class="mono" value="0.1" /></label>
+              </div>
+              <div class="panel-apply">
+                <button type="button">Reset</button>
+                <button type="button" class="primary">Apply</button>
+              </div>
+            </aside>
+          </div>
+          <p class="note">Das Modell eignet sich besonders fuer Volumen, Tuningfrequenz, Portdurchmesser und Crossover-Frequenzen.</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

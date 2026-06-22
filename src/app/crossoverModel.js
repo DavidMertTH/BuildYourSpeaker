@@ -12,6 +12,7 @@ import {
 import { clampCrossoverFrequency, clampDb, clampNumberValue } from "./crossoverUtils.js";
 import {
   createCrossoverCircuitComponentId,
+  createCrossoverModuleGroupId,
   createCrossoverCircuitWireId,
   createCrossoverDesignId,
   createCrossoverTransitionId,
@@ -61,12 +62,49 @@ export function normalizeCrossoverCircuit(circuitInput = {}) {
           isCrossoverCircuitFixedNodeId(wire.to) || isCrossoverCircuitDesignNodeId(wire.to) || isCrossoverCircuitJunctionNodeId(wire.to) || componentPortIds.has(wire.to)
         ))
     : [];
-  return { components, wires, nodes };
+  const componentIds = new Set(components.map((component) => component.id));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const moduleGroups = Array.isArray(circuitInput?.moduleGroups)
+    ? circuitInput.moduleGroups
+        .map((group) => normalizeCrossoverModuleGroup(group, { componentIds, nodeIds }))
+        .filter(Boolean)
+    : [];
+  return { components, wires, nodes, moduleGroups };
+}
+
+export function normalizeCrossoverModuleGroup(group = {}, valid = {}) {
+  const componentIds = uniqueStrings(group.componentIds).filter((id) => valid.componentIds?.has(id));
+  const nodeIds = uniqueStrings(group.nodeIds)
+    .map(normalizeCrossoverCircuitWireNodeId)
+    .filter((id) => (
+      valid.nodeIds?.has(id)
+      || isCrossoverCircuitFixedNodeId(id)
+      || isCrossoverCircuitDesignNodeId(id)
+      || isCrossoverCircuitJunctionNodeId(id)
+    ));
+  const speakerIds = uniqueStrings(group.speakerIds);
+  if (componentIds.length + nodeIds.length + speakerIds.length < 2) return null;
+  return {
+    id: group.id || createCrossoverModuleGroupId(),
+    componentIds,
+    nodeIds,
+    speakerIds,
+  };
 }
 
 export function normalizeCrossoverCircuitComponent(component = {}) {
   const type = CROSSOVER_CIRCUIT_COMPONENT_TYPES.includes(component.type) ? component.type : "resistor";
   const defaults = CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[type];
+  if (type === "wire-segment") {
+    return {
+      id: component.id || createCrossoverCircuitComponentId(),
+      type,
+      value: clampNumberValue(component.value ?? component.length ?? defaults.value, defaults.min, defaults.max),
+      orientation: component.orientation === "vertical" ? "vertical" : "horizontal",
+      x: clampNumberValue(component.x ?? 260, -5000, 5000),
+      y: clampNumberValue(component.y ?? 160, -5000, 5000),
+    };
+  }
   return {
     id: component.id || createCrossoverCircuitComponentId(),
     type,
@@ -194,7 +232,8 @@ export function crossoverDesignBandForDesignId(designCrossover, designId, member
 }
 
 export function normalizeSignalFilter(filter = {}) {
-  const type = SIGNAL_FILTER_TYPES.includes(filter.type) ? filter.type : "parametric";
+  const legacyType = filter.type === "low-shelf" ? "lowpass" : filter.type === "high-shelf" ? "highpass" : filter.type;
+  const type = SIGNAL_FILTER_TYPES.includes(legacyType) ? legacyType : "parametric";
   const defaults = SIGNAL_FILTER_DEFAULTS[type] || SIGNAL_FILTER_DEFAULTS.parametric;
   const normalized = {
     id: filter.id || createSignalFilterId(),
@@ -205,16 +244,18 @@ export function normalizeSignalFilter(filter = {}) {
     ...defaults,
   };
 
-  if (type === "parametric" || type === "low-shelf" || type === "high-shelf" || type === "subsonic") {
+  if (type === "parametric" || type === "lowpass" || type === "highpass" || type === "subsonic") {
     normalized.frequencyHz = clampCrossoverFrequency(filter.frequencyHz ?? defaults.frequencyHz);
   }
-  if (type === "parametric") {
+  if (type === "gain" || type === "parametric") {
     normalized.gainDb = clampDb(filter.gainDb ?? defaults.gainDb, -24, 24);
+  }
+  if (type === "parametric") {
     normalized.q = clampNumberValue(filter.q ?? defaults.q, 0.1, 20);
   }
-  if (type === "low-shelf" || type === "high-shelf") {
-    normalized.gainDb = clampDb(filter.gainDb ?? defaults.gainDb, -24, 24);
-    normalized.q = clampNumberValue(filter.q ?? defaults.q, 0.1, 4);
+  if (type === "lowpass" || type === "highpass") {
+    normalized.order = CROSSOVER_ORDERS.includes(Number(filter.order)) ? Number(filter.order) : defaults.order;
+    normalized.family = CROSSOVER_FAMILIES.includes(filter.family) ? filter.family : defaults.family;
   }
   if (type === "subsonic") {
     normalized.preset = Object.hasOwn(SUBSONIC_PRESETS, filter.preset) ? filter.preset : defaults.preset;
@@ -234,4 +275,8 @@ export function normalizeSignalFilterTarget(target) {
   const value = String(target || SIGNAL_FILTER_TARGET_GROUP);
   if (value === SIGNAL_FILTER_TARGET_GROUP || value.startsWith("design:") || value.startsWith("driverGroup:")) return value;
   return SIGNAL_FILTER_TARGET_GROUP;
+}
+
+function uniqueStrings(values) {
+  return [...new Set(Array.isArray(values) ? values.map((value) => String(value || "")).filter(Boolean) : [])];
 }

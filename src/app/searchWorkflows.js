@@ -1,6 +1,4 @@
 export function createSearchWorkflows(deps) {
-  let plannerCandidates = [];
-
   async function searchDriverSpecs() {
     const query = deps.driverSearchInput.value.trim();
     if (!query) {
@@ -10,7 +8,7 @@ export function createSearchWorkflows(deps) {
 
     deps.driverSearchButton.disabled = true;
     const directUrl = isHttpUrl(query);
-    const knownDriverResults = directUrl ? [] : deps.searchKnownDriverResults?.(query) || [];
+    const knownDriverResults = directUrl ? [] : await (deps.searchKnownDriverResults?.(query) || []);
     deps.driverSearchStatus.textContent = directUrl ? "Reading datasheet and response sources..." : "Searching known drivers and the web...";
     deps.driverSearchResults.replaceChildren();
     if (knownDriverResults.length) {
@@ -93,82 +91,6 @@ export function createSearchWorkflows(deps) {
     }
   }
 
-  function planEnclosureDesigns() {
-    const state = deps.getState();
-    plannerCandidates = deps.planDesigns(deps.driverForProject(), { ...state.inventory, alignment: state.mode }, state.box);
-    if (plannerCandidates[0]) {
-      applyPlannerCandidate(plannerCandidates[0]);
-    }
-    renderPlannerResults(plannerCandidates);
-    deps.plannerStatus.textContent = plannerCandidates.length
-      ? `${plannerCandidates[0].name} applied to the active config.`
-      : "No buildable design candidates found. Try more volume, longer ports, or a lower velocity target.";
-  }
-
-  function renderPlannerResults(candidates) {
-    deps.plannerResults.replaceChildren();
-
-    candidates.forEach((candidate) => {
-      const item = document.createElement("article");
-      item.className = "search-result";
-      deps.setTooltip(item, "Auto plan candidate for the active config.");
-
-      const titleRow = document.createElement("div");
-      titleRow.className = "search-result-title";
-
-      const title = document.createElement("span");
-      const score = document.createElement("span");
-      score.className = "candidate-score";
-      score.textContent = Math.round(candidate.score);
-      title.append(score, `  ${candidate.name}`);
-
-      const applyButton = document.createElement("button");
-      applyButton.type = "button";
-      applyButton.textContent = candidate.applied ? "Applied" : "Use";
-      applyButton.disabled = Boolean(candidate.applied);
-      deps.setTooltip(applyButton, candidate.applied ? "This candidate is currently applied." : "Apply this candidate to the active config.");
-      applyButton.addEventListener("click", () => {
-        applyPlannerCandidate(candidate);
-        plannerCandidates = plannerCandidates.map((item) => ({
-          ...item,
-          applied: item === candidate,
-        }));
-        renderPlannerResults(plannerCandidates);
-        deps.plannerStatus.textContent = `${candidate.name} applied to the active config.`;
-      });
-
-      titleRow.append(title, applyButton);
-
-      const meta = document.createElement("div");
-      meta.className = "search-result-meta";
-      meta.textContent = candidate.notes.join(" - ");
-
-      const dimensions = candidate.dimensions?.external;
-      const fields = document.createElement("div");
-      fields.className = "search-result-fields";
-      const sizeText = dimensions
-        ? `External ${dimensions.widthCm.toFixed(1)} x ${dimensions.heightCm.toFixed(1)} x ${dimensions.depthCm.toFixed(1)} cm`
-        : "";
-      const warningText = candidate.warnings.length ? `Warnings: ${candidate.warnings.join(", ")}` : "No planner warnings";
-      fields.textContent = [sizeText, warningText].filter(Boolean).join(" - ");
-
-      item.append(titleRow, meta, fields);
-      deps.plannerResults.append(item);
-    });
-  }
-
-  function applyPlannerCandidate(candidate) {
-    const nextState = deps.cloneProject(deps.getState());
-    nextState.mode = candidate.mode;
-    nextState.box = deps.completeBox(candidate.box);
-    deps.syncActiveDesignFromProject(nextState);
-    deps.commitState(nextState, { hydrate: true });
-    plannerCandidates = plannerCandidates.map((item) => ({
-      ...item,
-      applied: item === candidate,
-    }));
-  }
-
   function applyDriverCandidate(result) {
     const state = deps.getState();
     const nextDriver = deps.completeDriverParameters(state.driver, result.driver);
@@ -212,7 +134,6 @@ export function createSearchWorkflows(deps) {
     applyPassiveRadiatorCandidate,
     isHttpUrl,
     normalizeDirectUrl,
-    planEnclosureDesigns,
     searchDriverSpecs,
     searchPassiveRadiatorSpecs,
   };

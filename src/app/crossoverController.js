@@ -211,7 +211,7 @@ export function createCrossoverController(deps) {
       const actions = document.createElement("div");
       actions.className = "crossover-transition-actions";
   
-      const annotationToggle = createFilterAnnotationToggle(filter, () => toggleSignalFilterAnnotation(filter.id));
+      const annotationToggle = filter.type === "gain" ? null : createFilterAnnotationToggle(filter, () => toggleSignalFilterAnnotation(filter.id));
   
       const toggle = document.createElement("button");
       toggle.type = "button";
@@ -226,7 +226,8 @@ export function createCrossoverController(deps) {
       setTooltip(remove, "Delete this signal filter.");
       remove.addEventListener("click", () => deleteSignalFilter(filter.id));
   
-      actions.append(annotationToggle, toggle, remove);
+      if (annotationToggle) actions.append(annotationToggle);
+      actions.append(toggle, remove);
       item.classList.toggle("muted", filter.enabled === false);
       item.append(title, fields);
       if (range) item.append(range);
@@ -451,6 +452,11 @@ export function createCrossoverController(deps) {
   }
   
   function signalFilterParameterFields(filter) {
+    if (filter.type === "gain") {
+      return [
+        signalFilterNumberField(filter, "gainDb", "Gain", "Output gain in dB.", { min: -24, max: 24, step: 0.1 }),
+      ];
+    }
     if (filter.type === "linkwitz-transform") {
       return [
         signalFilterNumberField(filter, "sourceFrequencyHz", "Src Hz", "Current system resonance frequency.", { min: 1, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
@@ -463,11 +469,14 @@ export function createCrossoverController(deps) {
     const fields = [
       signalFilterNumberField(filter, "frequencyHz", "Freq", "Filter frequency.", { min: CROSSOVER_FREQUENCY_MIN_HZ, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
     ];
-    if (filter.type === "parametric" || filter.type === "low-shelf" || filter.type === "high-shelf") {
+    if (filter.type === "parametric") {
       fields.push(signalFilterNumberField(filter, "gainDb", "Gain", "Filter gain in dB.", { min: -24, max: 24, step: 0.1 }));
     }
     if (filter.type === "parametric") {
       fields.push(signalFilterNumberField(filter, "q", "Q", "Filter Q / bandwidth.", { min: 0.1, max: 20, step: 0.01 }));
+    }
+    if (filter.type === "lowpass" || filter.type === "highpass") {
+      fields.push(signalFilterFamilyField(filter), signalFilterOrderField(filter));
     }
     if (filter.type === "subsonic") {
       fields.unshift(signalFilterSubsonicPresetField(filter));
@@ -520,6 +529,7 @@ export function createCrossoverController(deps) {
       if (!Number.isFinite(value)) return;
       const range = input.closest(".signal-filter")?.querySelector(".signal-filter-range");
       if (range && key === "frequencyHz") range.value = String(crossoverFrequencyToSliderValue(value));
+      if (range && key === "gainDb") range.value = String(value);
       const badge = input.closest(".signal-filter")?.querySelector(".filter-frequency-badge");
       if (badge) badge.textContent = signalFilterFrequencyLabel({ ...filter, [key]: value });
       updateSignalFilterFields(filter.id, { [key]: value, ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { live: true });
@@ -537,7 +547,7 @@ export function createCrossoverController(deps) {
     select.dataset.signalFilterField = "family";
     select.append(new Option("Butterworth", "butterworth"), new Option("Linkwitz-Riley", "linkwitz-riley"));
     select.value = CROSSOVER_FAMILIES.includes(filter.family) ? filter.family : "butterworth";
-    setTooltip(select, "Subsonic high-pass family.");
+    setTooltip(select, filter.type === "subsonic" ? "Subsonic high-pass family." : "Filter response family.");
     select.addEventListener("change", () => updateSignalFilterFields(filter.id, { family: select.value, ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { animatePlots: true, renderControls: true }));
     label.append(span, select);
     return label;
@@ -552,14 +562,34 @@ export function createCrossoverController(deps) {
     select.dataset.signalFilterField = "order";
     select.append(new Option("2nd", "2"), new Option("4th", "4"));
     select.value = String(CROSSOVER_ORDERS.includes(Number(filter.order)) ? Number(filter.order) : 4);
-    setTooltip(select, "Subsonic filter slope.");
+    setTooltip(select, filter.type === "subsonic" ? "Subsonic filter slope." : "Filter slope.");
     select.addEventListener("change", () => updateSignalFilterFields(filter.id, { order: Number(select.value), ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { animatePlots: true, renderControls: true }));
     label.append(span, select);
     return label;
   }
   
   function signalFilterRange(filter, item) {
-    if (!["parametric", "low-shelf", "high-shelf", "subsonic"].includes(filter.type)) return null;
+    if (filter.type === "gain") {
+      const range = document.createElement("input");
+      range.className = "planner-range crossover-transition-range signal-filter-range signal-filter-gain-range";
+      range.type = "range";
+      range.min = "-24";
+      range.max = "24";
+      range.step = "0.1";
+      range.value = String(Number(filter.gainDb) || 0);
+      range.ariaLabel = "Gain level slider";
+      setTooltip(range, "Adjust this gain filter level live.");
+      range.addEventListener("input", () => {
+        const value = Number(range.value);
+        const numberInput = item.querySelector('input[data-signal-filter-field="gainDb"]');
+        if (numberInput) numberInput.value = String(roundTo(value, 1));
+        const badge = item.querySelector(".filter-frequency-badge");
+        if (badge) badge.textContent = signalFilterFrequencyLabel({ ...filter, gainDb: value });
+        updateSignalFilterFields(filter.id, { gainDb: value }, { live: true });
+      });
+      return range;
+    }
+    if (!["parametric", "lowpass", "highpass", "subsonic"].includes(filter.type)) return null;
     const range = document.createElement("input");
     range.className = "planner-range crossover-transition-range signal-filter-range";
     range.type = "range";
@@ -583,8 +613,9 @@ export function createCrossoverController(deps) {
   function signalFilterTypeLabel(type) {
     return {
       parametric: "Parametric EQ",
-      "low-shelf": "Low shelf",
-      "high-shelf": "High shelf",
+      gain: "Gain",
+      lowpass: "Lowpass",
+      highpass: "Highpass",
       "linkwitz-transform": "Linkwitz Transform",
       subsonic: "Subsonic / rumble",
     }[type] || "Signal filter";
@@ -593,6 +624,10 @@ export function createCrossoverController(deps) {
   function signalFilterFrequencyLabel(filter) {
     if (filter.type === "linkwitz-transform") {
       return `${frequencyLabel(filter.sourceFrequencyHz)} -> ${frequencyLabel(filter.targetFrequencyHz)}`;
+    }
+    if (filter.type === "gain") {
+      const gain = Number(filter.gainDb) || 0;
+      return `${gain >= 0 ? "+" : ""}${roundTo(gain, 1)} dB`;
     }
     return frequencyLabel(filter.frequencyHz);
   }

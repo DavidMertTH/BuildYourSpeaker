@@ -1,6 +1,3 @@
-import { partsExpressDrivers } from "./data/partsExpressDrivers.js";
-import { driverFrequencyResponses } from "./data/driverFrequencyResponses.js";
-import { passiveRadiators } from "./data/passiveRadiators.js";
 import { DEFAULT_INVENTORY } from "./core/planner/componentInventory.js";
 
 const referencePassiveRadiator = {
@@ -55,7 +52,7 @@ const sampleBox = {
   },
 };
 
-export const knownDrivers = [
+const builtInDrivers = [
   {
     id: "audiosim-reference-12",
     name: "AudioSim Reference 12",
@@ -90,11 +87,13 @@ export const knownDrivers = [
       bl: 14.03,
     },
   },
-  ...partsExpressDrivers,
-].map((entry) => ({
-  ...entry,
-  frequencyResponseMatches: driverFrequencyResponses[entry.id] || entry.frequencyResponseMatches || [],
-}));
+];
+
+let knownDriversPromise = null;
+let knownPassiveRadiatorsPromise = null;
+let driverFrequencyResponsesPromise = null;
+
+export const knownDrivers = builtInDrivers.map(cloneEntry);
 
 export const sampleProject = {
   mode: "vented",
@@ -144,11 +143,47 @@ export const sampleProject = {
   ],
 };
 
-export const knownPassiveRadiators = [
+const builtInPassiveRadiators = [
   referencePassiveRadiator,
-  ...passiveRadiators,
 ];
+
+export const knownPassiveRadiators = builtInPassiveRadiators.map(cloneEntry);
+
+export async function loadKnownDrivers() {
+  if (!knownDriversPromise) {
+    knownDriversPromise = Promise.all([
+      import("./data/partsExpressDrivers.js"),
+      loadDriverFrequencyResponses(),
+    ]).then(([{ partsExpressDrivers }, frequencyResponses]) => (
+      [...builtInDrivers, ...partsExpressDrivers].map((entry) => ({
+        ...cloneEntry(entry),
+        frequencyResponseMatches: frequencyResponses[entry.id] || entry.frequencyResponseMatches || [],
+      }))
+    ));
+  }
+  return knownDriversPromise;
+}
+
+export async function loadKnownPassiveRadiators() {
+  if (!knownPassiveRadiatorsPromise) {
+    knownPassiveRadiatorsPromise = import("./data/passiveRadiators.js")
+      .then(({ passiveRadiators }) => [...builtInPassiveRadiators, ...passiveRadiators].map(cloneEntry));
+  }
+  return knownPassiveRadiatorsPromise;
+}
+
+export async function loadDriverFrequencyResponses() {
+  if (!driverFrequencyResponsesPromise) {
+    driverFrequencyResponsesPromise = import("./data/driverFrequencyResponses.js")
+      .then(({ driverFrequencyResponses }) => driverFrequencyResponses);
+  }
+  return driverFrequencyResponsesPromise;
+}
 
 export function cloneProject(project) {
   return JSON.parse(JSON.stringify(project));
+}
+
+function cloneEntry(entry) {
+  return JSON.parse(JSON.stringify(entry));
 }

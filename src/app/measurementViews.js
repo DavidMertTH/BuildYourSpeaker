@@ -5,7 +5,6 @@ export function createMeasurementViews(deps) {
     createTrashIcon,
     cssEscape,
     defaultMeasurementTarget,
-    deleteMeasurementGroup,
     discardStagedRecording,
     enableDecimalTextInput,
     formatFrequencyValue,
@@ -15,10 +14,8 @@ export function createMeasurementViews(deps) {
     getState,
     hydrateMeasurementTargetOptions,
     hydrateMeasurementTargetSelect,
-    measurementGroupList,
     measurementList,
     measurementTargetLabel,
-    measurementValue,
     parseNumericInputValue,
     removeFrequencyResponse,
     removeFrequencyResponseCandidate,
@@ -27,8 +24,8 @@ export function createMeasurementViews(deps) {
     setTooltip,
     shortMeasurementName,
     updateFrequencyResponseAngle,
-    updateMeasurementGroup,
-    updateMeasurementGroupTarget,
+    updateFrequencyResponseName,
+    updateFrequencyResponseTarget,
   } = deps;
 
   let state = getState();
@@ -39,7 +36,6 @@ export function createMeasurementViews(deps) {
     stagedRecordingResponse = getStagedRecordingResponse();
     if (!measurementList) return;
     hydrateMeasurementTargetSelect();
-    renderMeasurementGroups();
     const responses = state.measurements?.frequencyResponses || [];
     const candidates = state.measurements?.frequencyResponseCandidates || [];
     const expectedIds = new Set(responses.map((response) => `response:${response.id}`));
@@ -48,11 +44,10 @@ export function createMeasurementViews(deps) {
     });
   
     renderStagedRecordingSection();
-    renderMeasurementResponseGroups(responses);
+    renderMeasurementResponseSection(responses);
     renderMeasurementCandidateSection(candidates);
   
-    const hasNamedGroups = Boolean(state.measurements?.recordingGroups?.length);
-    const hasRenderableSections = Boolean(stagedRecordingResponse) || hasNamedGroups || responses.length || candidates.length;
+    const hasRenderableSections = Boolean(stagedRecordingResponse) || responses.length || candidates.length;
     if (!hasRenderableSections) {
       measurementList.querySelectorAll("[data-measurement-section]").forEach((item) => item.remove());
       if (!measurementList.querySelector("[data-measurement-empty]")) {
@@ -105,17 +100,40 @@ export function createMeasurementViews(deps) {
     }
   
     const body = section.querySelector('[data-measurement-part="staged-body"]');
-    body.replaceChildren(createStagedRecordingSummary(stagedRecordingResponse));
+    const stagedKey = stagedRecordingIdentity(stagedRecordingResponse);
+    if (body.dataset.stagedRecordingKey !== stagedKey) {
+      body.replaceChildren(createStagedRecordingSummary(stagedRecordingResponse));
+      body.dataset.stagedRecordingKey = stagedKey;
+    }
   
     const save = section.querySelector('[data-staged-recording-action="save"]');
-    save.onclick = saveStagedRecording;
-    setTooltip(save, "Save this staged recording into Measurement.");
+    if (save.onclick !== saveStagedRecording) save.onclick = saveStagedRecording;
+    if (save.title !== "Save this staged recording into Measurement.") setTooltip(save, "Save this staged recording into Measurement.");
     const discard = section.querySelector('[data-staged-recording-action="discard"]');
-    discard.onclick = discardStagedRecording;
-    setTooltip(discard, "Discard this staged recording.");
+    if (discard.onclick !== discardStagedRecording) discard.onclick = discardStagedRecording;
+    if (discard.title !== "Discard this staged recording.") setTooltip(discard, "Discard this staged recording.");
   
     const firstSection = measurementList.querySelector('[data-measurement-section]:not([data-measurement-section="staged-recording"])');
-    measurementList.insertBefore(section, firstSection || measurementList.firstElementChild);
+    const targetNextSibling = firstSection || measurementList.firstElementChild;
+    if (section.parentElement !== measurementList || (targetNextSibling !== section && section.nextElementSibling !== targetNextSibling)) {
+      measurementList.insertBefore(section, targetNextSibling);
+    }
+  }
+
+  function stagedRecordingIdentity(response) {
+    const first = response.points[0]?.frequencyHz ?? "";
+    const last = response.points[response.points.length - 1]?.frequencyHz ?? "";
+    return [
+      response.id,
+      response.name,
+      response.target,
+      response.recordingGroupId,
+      response.angleDeg,
+      response.color,
+      response.points.length,
+      first,
+      last,
+    ].join("|");
   }
   
   function createStagedRecordingSummary(response) {
@@ -133,107 +151,56 @@ export function createMeasurementViews(deps) {
     return summary;
   }
   
-  function renderMeasurementGroups() {
-    if (!measurementGroupList) return;
-    measurementGroupList.replaceChildren();
-    state.measurements?.recordingGroups?.forEach((group) => {
-      const pill = document.createElement("div");
-      pill.className = "config-group-chip measurement-group-chip";
-  
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = group.name;
-      input.ariaLabel = "Recording group name";
-      setTooltip(input, "Rename this recording group.");
-      input.addEventListener("change", () => updateMeasurementGroup(group.id, { name: input.value.trim() || group.name }));
-  
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.append(createTrashIcon());
-      remove.ariaLabel = `Remove ${group.name}`;
-      setTooltip(remove, "Remove this recording group and move its measurements to the next group.");
-      remove.addEventListener("click", () => deleteMeasurementGroup(group.id));
-  
-      pill.append(input, remove);
-      measurementGroupList.append(pill);
-    });
-  }
-  
-  function renderMeasurementResponseGroups(responses) {
-    const expectedSections = new Set((state.measurements?.recordingGroups || []).map((group) => `group:${group.id}`));
-    measurementList.querySelectorAll('[data-measurement-section="responses"]').forEach((item) => {
-      if (!expectedSections.has(item.dataset.measurementKey)) item.remove();
-    });
-  
-    let placement = measurementList.querySelector('[data-measurement-section="candidates"]');
-    const grouped = (state.measurements?.recordingGroups || []).map((group) => ({
-      key: `group:${group.id}`,
-      groupId: group.id,
-      group,
-      responses: responses.filter((response) => response.recordingGroupId === group.id),
-      emptyLabel: "Empty",
-    }));
-  
-    grouped.forEach((entry) => {
-      let section = measurementList.querySelector(`[data-measurement-key="${cssEscape(entry.key)}"]`);
-      if (!section) section = createMeasurementGroupBlock(entry.groupId, entry.group?.name || "Recording group", entry.emptyLabel);
-      updateMeasurementGroupBlock(section, entry);
-      measurementList.insertBefore(section, placement || null);
-    });
-  }
-  
-  function createMeasurementGroupBlock(groupId, label, emptyLabel) {
-    const section = document.createElement("section");
-    section.className = "measurement-group-block";
-    section.dataset.measurementSection = "responses";
-    section.dataset.measurementKey = `group:${groupId}`;
-  
-    const header = document.createElement("div");
-    header.className = "measurement-group-header";
-    header.append(...createMeasurementGroupHeaderControls(groupId, label));
-  
-    const chips = document.createElement("div");
-    chips.className = "measurement-group-chips";
-    chips.dataset.measurementGroupId = groupId;
-    chips.dataset.emptyLabel = emptyLabel;
-  
-    section.append(header, chips);
-    return section;
-  }
-  
-  function updateMeasurementGroupBlock(section, entry) {
-    section.dataset.measurementKey = entry.key;
-    const groupNameInput = section.querySelector('[data-measurement-group-field="name"]');
-    const groupTargetSelect = section.querySelector('[data-measurement-group-field="target"]');
-    const groupTitle = section.querySelector(".measurement-group-title");
-    const removeButton = section.querySelector('[data-measurement-group-action="remove"]');
-    const group = entry.group;
-    if (!group) return;
-  
-    groupNameInput.hidden = false;
-    groupNameInput.disabled = false;
-    if (document.activeElement !== groupNameInput) groupNameInput.value = group.name;
-    groupNameInput.onchange = () => updateMeasurementGroup(group.id, { name: groupNameInput.value.trim() || group.name });
-    groupTargetSelect.hidden = false;
-    groupTargetSelect.disabled = false;
-    hydrateMeasurementTargetOptions(groupTargetSelect, group.target || defaultMeasurementTarget());
-    groupTargetSelect.onchange = () => updateMeasurementGroupTarget(group.id, groupTargetSelect.value);
-    groupTitle.hidden = true;
-    removeButton.hidden = false;
-    removeButton.style.display = "";
-    removeButton.onclick = () => deleteMeasurementGroup(group.id);
-  
-    section.querySelector('[data-measurement-part="count"]').textContent = `${entry.responses.length}`;
+  function renderMeasurementResponseSection(responses) {
+    let section = measurementList.querySelector('[data-measurement-section="responses"]');
+    if (!responses.length) {
+      section?.remove();
+      return;
+    }
+    if (!section) section = createMeasurementResponseBlock();
     const chips = section.querySelector(".measurement-group-chips");
-    chips.dataset.measurementGroupId = group.id;
-    chips.dataset.emptyLabel = entry.emptyLabel;
-    chips.replaceChildren(...entry.responses.map((response) => {
+    const responseItems = responses.map((response) => {
       const measurementId = `response:${response.id}`;
       let item = measurementList.querySelector(`.measurement-chip[data-measurement-id="${cssEscape(measurementId)}"]`);
       if (!item) item = createMeasurementResponseItem(measurementId);
       updateMeasurementResponseItem(item, response);
       return item;
-    }));
+    });
+    reconcileChildren(chips, responseItems);
+    const placement = measurementList.querySelector('[data-measurement-section="candidates"]');
+    if (section.parentElement !== measurementList || section.nextElementSibling !== placement) {
+      measurementList.insertBefore(section, placement || null);
+    }
+  }
+
+  function createMeasurementResponseBlock() {
+    const section = document.createElement("section");
+    section.className = "measurement-group-block";
+    section.dataset.measurementSection = "responses";
+    section.dataset.measurementKey = "responses";
+  
+    const header = document.createElement("div");
+    header.className = "measurement-group-header";
+    header.innerHTML = '<span class="measurement-group-title">Responses</span>';
+  
+    const chips = document.createElement("div");
+    chips.className = "measurement-group-chips";
+    chips.dataset.measurementGroupId = "";
+    chips.dataset.emptyLabel = "No responses";
+  
+    section.append(header, chips);
+    return section;
+  }
+
+  function reconcileChildren(parent, nextChildren) {
+    const expected = new Set(nextChildren);
+    [...parent.children].forEach((child) => {
+      if (!expected.has(child)) child.remove();
+    });
+    nextChildren.forEach((child, index) => {
+      const current = parent.children[index] || null;
+      if (current !== child) parent.insertBefore(child, current);
+    });
   }
   
   function renderMeasurementCandidateSection(candidates) {
@@ -269,45 +236,6 @@ export function createMeasurementViews(deps) {
     measurementList.append(section);
   }
   
-  function createMeasurementGroupHeaderControls(groupId, label) {
-    const wrap = document.createElement("div");
-    wrap.className = "measurement-group-header-main";
-  
-    const title = document.createElement("span");
-    title.className = "measurement-group-title";
-    title.textContent = label;
-  
-    const name = document.createElement("input");
-    name.type = "text";
-    name.className = "measurement-group-name-input";
-    name.dataset.measurementGroupField = "name";
-    name.ariaLabel = "Measurement group name";
-  
-    const target = document.createElement("select");
-    target.className = "measurement-group-target-select";
-    target.dataset.measurementGroupField = "target";
-    target.ariaLabel = "Measurement group target";
-  
-    wrap.append(title, name, target);
-  
-    const count = document.createElement("span");
-    count.className = "measurement-group-count";
-    count.dataset.measurementPart = "count";
-  
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "measurement-group-remove";
-    remove.dataset.measurementGroupAction = "remove";
-    remove.ariaLabel = `Remove ${label}`;
-    remove.append(createTrashIcon());
-  
-    const actions = document.createElement("div");
-    actions.className = "measurement-group-header-actions";
-    actions.append(count, remove);
-  
-    return [wrap, actions];
-  }
-  
   function createMeasurementResponseItem(measurementId) {
     const item = document.createElement("article");
     item.className = "measurement-chip";
@@ -317,6 +245,12 @@ export function createMeasurementViews(deps) {
     const name = document.createElement("span");
     name.className = "measurement-chip-name";
     name.dataset.measurementPart = "name";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "measurement-name-inline";
+    nameInput.dataset.measurementPart = "name-input";
+    nameInput.hidden = true;
   
     const angleInput = document.createElement("input");
     angleInput.type = "number";
@@ -330,19 +264,32 @@ export function createMeasurementViews(deps) {
     const meta = document.createElement("span");
     meta.className = "measurement-chip-meta";
     meta.dataset.measurementPart = "meta";
+
+    const target = document.createElement("select");
+    target.className = "measurement-target-inline";
+    target.dataset.measurementPart = "target";
   
     const actions = document.createElement("div");
     actions.className = "measurement-chip-actions";
     const visible = document.createElement("button");
     visible.type = "button";
     visible.dataset.measurementAction = "visibility";
+    visible.addEventListener("click", () => {
+      const responseId = visible.dataset.responseId;
+      if (!responseId) return;
+      setFrequencyResponseVisibility(responseId, visible.dataset.responseVisible === "false");
+    });
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "danger";
     remove.dataset.measurementAction = "remove";
     remove.append(createTrashIcon());
+    remove.addEventListener("click", () => {
+      const responseId = remove.dataset.responseId;
+      if (responseId) removeFrequencyResponse(responseId);
+    });
     actions.append(visible, remove);
-    item.append(name, meta, angleInput, actions);
+    item.append(name, nameInput, meta, target, angleInput, actions);
     return item;
   }
   
@@ -350,10 +297,40 @@ export function createMeasurementViews(deps) {
     const shortName = shortMeasurementName(response);
     const fullName = fullMeasurementName(response);
     const name = item.querySelector('[data-measurement-part="name"]');
+    const nameInput = item.querySelector('[data-measurement-part="name-input"]');
     name.textContent = shortName;
+    name.dataset.responseId = response.id;
+    name.ondblclick = () => {
+      name.hidden = true;
+      nameInput.hidden = false;
+      nameInput.value = response.name || shortName;
+      nameInput.focus();
+      nameInput.select();
+    };
+    nameInput.dataset.responseId = response.id;
+    if (document.activeElement !== nameInput && nameInput.hidden) nameInput.value = response.name || shortName;
+    nameInput.onkeydown = (event) => {
+      if (event.key === "Enter") nameInput.blur();
+      if (event.key === "Escape") {
+        nameInput.value = response.name || shortName;
+        nameInput.hidden = true;
+        name.hidden = false;
+      }
+    };
+    nameInput.onblur = () => {
+      const nextName = nameInput.value.trim();
+      nameInput.hidden = true;
+      name.hidden = false;
+      if (nextName && nextName !== response.name) updateFrequencyResponseName(response.id, nextName);
+    };
     setTooltip(name, fullName);
     setTooltip(item, fullName);
-    item.querySelector('[data-measurement-part="meta"]').textContent = `${formatMeasurementAngleCompact(response)} / ${response.plane === "vertical" ? "V" : "H"} / ${formatFrequencyValue(response.points[0]?.frequencyHz)}-${formatFrequencyValue(response.points[response.points.length - 1]?.frequencyHz)}`;
+    item.querySelector('[data-measurement-part="meta"]').textContent = `${formatMeasurementAngleCompact(response)} / ${formatFrequencyValue(response.points[0]?.frequencyHz)}-${formatFrequencyValue(response.points[response.points.length - 1]?.frequencyHz)}`;
+
+    const target = item.querySelector('[data-measurement-part="target"]');
+    hydrateMeasurementTargetOptions(target, response.target || defaultMeasurementTarget());
+    target.onchange = () => updateFrequencyResponseTarget(response.id, target.value);
+    setTooltip(target, "Assign this measurement to a config or config group.");
   
     const angleInput = item.querySelector('[data-measurement-part="angle"]');
     if (document.activeElement !== angleInput) angleInput.value = String(Math.round(Number(response.angleDeg || 0)));
@@ -364,17 +341,26 @@ export function createMeasurementViews(deps) {
     };
   
     const visible = item.querySelector('[data-measurement-action="visibility"]');
-    visible.replaceChildren(createEyeIcon(response.visible !== false));
-    visible.classList.toggle("active", response.visible !== false);
-    visible.setAttribute("aria-pressed", String(response.visible !== false));
-    visible.ariaLabel = `${response.visible === false ? "Show" : "Hide"} ${shortName}`;
-    setTooltip(visible, response.visible === false ? "Show this measurement." : "Hide this measurement.");
-    visible.onclick = () => setFrequencyResponseVisibility(response.id, !response.visible);
+    const responseVisible = response.visible !== false;
+    if (visible.dataset.responseVisible !== String(responseVisible)) {
+      visible.replaceChildren(createEyeIcon(responseVisible));
+      visible.dataset.responseVisible = String(responseVisible);
+    }
+    visible.dataset.responseId = response.id;
+    visible.classList.toggle("active", responseVisible);
+    if (visible.getAttribute("aria-pressed") !== String(responseVisible)) {
+      visible.setAttribute("aria-pressed", String(responseVisible));
+    }
+    const visibleLabel = `${response.visible === false ? "Show" : "Hide"} ${shortName}`;
+    if (visible.ariaLabel !== visibleLabel) visible.ariaLabel = visibleLabel;
+    const visibleTooltip = response.visible === false ? "Show this measurement." : "Hide this measurement.";
+    if (visible.title !== visibleTooltip) setTooltip(visible, visibleTooltip);
   
     const remove = item.querySelector('[data-measurement-action="remove"]');
-    remove.ariaLabel = `Remove ${shortName}`;
-    setTooltip(remove, "Delete this measurement.");
-    remove.onclick = () => removeFrequencyResponse(response.id);
+    remove.dataset.responseId = response.id;
+    const removeLabel = `Remove ${shortName}`;
+    if (remove.ariaLabel !== removeLabel) remove.ariaLabel = removeLabel;
+    if (remove.title !== "Delete this measurement.") setTooltip(remove, "Delete this measurement.");
   }
   
   function createMeasurementCandidateItem(measurementId) {

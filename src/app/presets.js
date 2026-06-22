@@ -4,27 +4,27 @@ export const PANEL_PRESETS = {
     visible: ["splPlot", "onAxisResponsePlot", "offAxisResponsePlot"],
   },
   boxSealed: {
-    order: ["spl-plot", "box-preview", "excursion-plot", "impedance-plot", "phase-plot", "group-delay-plot", "port-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
-    visible: ["splPlot", "boxPreview", "excursionPlot"],
+    order: ["spl-plot", "excursion-plot", "box-preview", "impedance-plot", "phase-plot", "group-delay-plot", "port-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
+    visible: ["splPlot"],
   },
   boxVented: {
-    order: ["spl-plot", "box-preview", "port-plot", "excursion-plot", "impedance-plot", "group-delay-plot", "phase-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
-    visible: ["splPlot", "boxPreview", "portPlot", "excursionPlot"],
+    order: ["spl-plot", "port-plot", "excursion-plot", "box-preview", "impedance-plot", "group-delay-plot", "phase-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
+    visible: ["splPlot", "excursionPlot", "portPlot"],
   },
   boxPassive: {
-    order: ["spl-plot", "box-preview", "pr-excursion-plot", "excursion-plot", "impedance-plot", "phase-plot", "group-delay-plot", "port-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
-    visible: ["splPlot", "boxPreview", "prExcursionPlot", "excursionPlot"],
+    order: ["spl-plot", "excursion-plot", "pr-excursion-plot", "box-preview", "impedance-plot", "phase-plot", "group-delay-plot", "port-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
+    visible: ["splPlot", "excursionPlot", "prExcursionPlot"],
   },
   boxBandpass: {
-    order: ["spl-plot", "box-preview", "port-plot", "excursion-plot", "group-delay-plot", "impedance-plot", "phase-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
-    visible: ["splPlot", "boxPreview", "portPlot", "excursionPlot"],
+    order: ["spl-plot", "excursion-plot", "port-plot", "box-preview", "group-delay-plot", "impedance-plot", "phase-plot", "pr-excursion-plot", "on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "recording-panel", "crossover-schematic-panel"],
+    visible: ["splPlot", "excursionPlot", "portPlot"],
   },
   filter: {
     order: ["crossover-schematic-panel", "spl-plot", "phase-plot", "impedance-plot", "on-axis-response-plot", "off-axis-response-plot", "group-delay-plot", "box-preview", "horizontal-polar-plot", "excursion-plot", "port-plot", "pr-excursion-plot"],
     visible: ["crossoverSchematicPanel", "splPlot", "phasePlot", "impedancePlot"],
   },
   measurement: {
-    order: ["on-axis-response-plot", "off-axis-response-plot", "horizontal-polar-plot", "spl-plot", "recording-panel", "phase-plot", "group-delay-plot", "impedance-plot", "box-preview", "excursion-plot", "port-plot", "pr-excursion-plot", "crossover-schematic-panel"],
-    visible: ["onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"],
+    order: ["on-axis-response-plot", "off-axis-response-plot", "recording-panel", "horizontal-polar-plot", "spl-plot", "phase-plot", "group-delay-plot", "impedance-plot", "box-preview", "excursion-plot", "port-plot", "pr-excursion-plot", "crossover-schematic-panel"],
+    visible: ["onAxisResponsePlot", "offAxisResponsePlot", "recordingPanel"],
   },
 };

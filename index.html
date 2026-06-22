@@ -17,8 +17,8 @@
         <nav class="sidebar-tabs" aria-label="Sidebar sections">
           <button class="sidebar-tab active" data-sidebar-tab="driver" type="button">Driver</button>
           <button class="sidebar-tab" data-sidebar-tab="planning" type="button">Box</button>
-          <button class="sidebar-tab" data-sidebar-tab="crossover" type="button">Filter</button>
           <button class="sidebar-tab" data-sidebar-tab="measurement" type="button">Measurement</button>
+          <button class="sidebar-tab" data-sidebar-tab="crossover" type="button">Filter</button>
         </nav>
 
         <section class="panel sidebar-panel active" data-sidebar-panel="driver">
@@ -31,12 +31,12 @@
               <button id="driverSearchButton" type="button">Search</button>
             </div>
             <label class="driver-library-label" for="driverSelect">Known driver</label>
-            <input id="driverLibraryFilter" class="driver-known-search" type="search" placeholder="Filter known drivers by name" />
             <div class="driver-library-row">
               <select id="driverSelect"></select>
               <details class="library-filter-menu">
                 <summary><span>Filters</span><span id="driverLibraryFilterEnabled" class="library-filter-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Enable driver preset filters"></span></summary>
                 <div class="library-filter-menu-body">
+                  <input id="driverLibraryFilter" class="driver-known-search" type="search" placeholder="Filter known drivers by name" />
                   <select id="driverLibraryBrand" aria-label="Filter driver presets by brand"></select>
                   <select id="driverLibraryDiameter" aria-label="Filter driver presets by diameter">
                     <option value="">Any diameter</option>
@@ -160,12 +160,12 @@
           <div class="planner-settings">
             <div class="field-grid">
               <label class="field-card standard-box-only"><span class="field-top"><span>Volume</span></span><input data-field="box.volumeL" data-unit-type="volume" type="number" step="0.1" /></label>
-              <input class="planner-range standard-box-only" data-range-field="box.volumeL" type="range" min="4" max="180" step="0.1" aria-label="Volume slider" />
+              <input class="planner-range standard-box-only" data-range-field="box.volumeL" data-range-scale="log" type="range" min="4" max="180" step="0.1" aria-label="Volume slider" />
               <label class="field-card bandpass-only"><span class="field-top"><span>Bandpass type</span></span><select data-field="box.bandpass.order"><option value="4">4th order</option><option value="6">6th order</option></select></label>
               <label class="field-card bandpass-only"><span class="field-top"><span>Rear chamber</span></span><input data-field="box.bandpass.rearVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
-              <input class="planner-range bandpass-only" data-range-field="box.bandpass.rearVolumeL" type="range" min="2" max="180" step="0.1" aria-label="Bandpass rear chamber volume slider" />
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.rearVolumeL" data-range-scale="log" type="range" min="2" max="180" step="0.1" aria-label="Bandpass rear chamber volume slider" />
               <label class="field-card bandpass-only"><span class="field-top"><span>Front chamber</span></span><input data-field="box.bandpass.frontVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
-              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontVolumeL" type="range" min="2" max="180" step="0.1" aria-label="Bandpass front chamber volume slider" />
+              <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontVolumeL" data-range-scale="log" type="range" min="2" max="180" step="0.1" aria-label="Bandpass front chamber volume slider" />
               <label class="field-card bandpass-only"><span class="field-top"><span>Front Fb</span></span><input data-field="box.bandpass.frontFb" data-unit-type="frequency" type="number" step="0.1" /></label>
               <input class="planner-range bandpass-only" data-range-field="box.bandpass.frontFb" type="range" min="18" max="160" step="0.1" aria-label="Bandpass front tuning slider" />
               <label class="field-card bandpass-only"><span class="field-top"><span>Front port count</span></span><input data-field="box.bandpass.frontPortCount" type="number" min="1" max="12" step="1" /></label>
@@ -224,44 +224,43 @@
               <label class="field-card passive-only"><span class="field-top"><span>PR Cms</span></span><input data-field="box.passiveRadiator.cmsMmN" data-unit-type="compliance" type="number" step="0.001" /></label>
             </div>
           </details>
-          <div class="autoplan-section">
-            <div class="autoplan-title">
-              <button id="planDesignsButton" type="button">Run</button>
+        </section>
+
+        <section class="panel sidebar-panel" data-sidebar-panel="measurement">
+          <details class="collapsible-fields recording-section">
+            <summary>Devices</summary>
+            <div class="field-grid">
+              <label class="field-card"><span class="field-top"><span>Microphone</span></span><select id="recordingMicrophoneSelect"><option value="default">System default</option></select></label>
+              <label class="field-card"><span class="field-top"><span>Speaker</span></span><select id="recordingOutputSelect"><option value="default">System default</option></select></label>
             </div>
-            <label class="driver-select-row">
-              <span>Goal</span>
-              <select data-field="inventory.preference">
-                <option value="balanced">Balanced</option>
-                <option value="compact">Compact</option>
-                <option value="deep">Deep bass</option>
-                <option value="loud">High output</option>
-              </select>
-            </label>
-            <label class="planner-check"><input data-field="inventory.constraints.hasMaxVolume" type="checkbox" /> Limit volume</label>
-            <details class="collapsible-fields">
-              <summary>Build limits</summary>
-              <div class="field-grid">
-                <label class="field-card"><span class="field-top"><span>Max volume</span></span><input data-field="inventory.constraints.maxVolumeL" data-unit-type="volume" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Max W</span></span><input data-field="inventory.constraints.maxWidthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Max H</span></span><input data-field="inventory.constraints.maxHeightCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Max D</span></span><input data-field="inventory.constraints.maxDepthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-              </div>
-            </details>
-            <details class="collapsible-fields">
-              <summary>Advanced port limits</summary>
-              <div class="field-grid">
-                <label class="field-card"><span class="field-top"><span>Max vent</span></span><input data-field="inventory.constraints.maxPortVelocityMs" type="number" step="0.5" /></label>
-                <label class="field-card"><span class="field-top"><span>Max port L</span></span><input data-field="inventory.constraints.maxPortLengthCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Min port ID</span></span><input data-field="inventory.portFabrication.minDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Max port ID</span></span><input data-field="inventory.portFabrication.maxDiameterCm" data-unit-type="smallLength" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Wall</span></span><input data-field="inventory.portFabrication.wallThicknessMm" data-unit-type="length" type="number" step="0.1" /></label>
-                <label class="field-card"><span class="field-top"><span>Flare</span></span><input data-field="inventory.portFabrication.flareAllowed" type="checkbox" /></label>
-                <label class="field-card"><span class="field-top"><span>Fold</span></span><input data-field="inventory.portFabrication.bendAllowed" type="checkbox" /></label>
-              </div>
-            </details>
-            <div id="plannerStatus" class="search-status">Settings edit the active config. Auto plan optimizes it.</div>
-            <div id="plannerResults" class="search-results"></div>
-          </div>
+          </details>
+          <details class="collapsible-fields recording-section">
+            <summary>Signal</summary>
+            <div class="field-grid">
+              <label class="field-card"><span class="field-top"><span>Stimulus</span></span><select id="recordingSignalSelect"><option value="sweep">Log sweep</option><option value="noise">Pink noise</option></select></label>
+              <label class="field-card"><span class="field-top"><span>Start Hz</span></span><input id="recordingFrequencyStartInput" type="number" min="1" max="20000" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>End Hz</span></span><input id="recordingFrequencyEndInput" type="number" min="20" max="24000" step="1" /></label>
+            </div>
+          </details>
+          <details class="collapsible-fields recording-section">
+            <summary>Capture</summary>
+            <div class="field-grid">
+              <label class="field-card"><span class="field-top"><span>Level dB</span></span><input id="recordingLevelInput" type="number" min="35" max="105" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Duration</span></span><input id="recordingDurationInput" type="number" min="1" max="60" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Repeats</span></span><input id="recordingAveragingInput" type="number" min="1" max="8" step="1" /></label>
+              <label class="field-card"><span class="field-top"><span>Sample rate</span></span><select id="recordingSampleRateSelect"><option value="44100">44.1 kHz</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option></select></label>
+            </div>
+          </details>
+          <label class="driver-select-row">
+            <span>Target</span>
+            <select id="measurementTargetSelect"></select>
+          </label>
+          <label class="file-button measurement-file-button">
+            Load response
+            <input id="frequencyResponseInput" type="file" accept=".frd,.txt,.csv,text/plain,text/csv" />
+          </label>
+          <div id="measurementStatus" class="search-status"></div>
+          <div id="measurementList" class="search-results"></div>
         </section>
 
         <section class="panel sidebar-panel crossover-control-panel" data-sidebar-panel="crossover">
@@ -274,9 +273,10 @@
             <select id="signalFilterTypeSelect" aria-label="Signal filter type">
               <option value="crossover-design">Crossover design</option>
               <option value="transition">Transition</option>
+              <option value="gain">Gain</option>
               <option value="parametric">Parametric EQ</option>
-              <option value="low-shelf">Low shelf</option>
-              <option value="high-shelf">High shelf</option>
+              <option value="lowpass">Lowpass</option>
+              <option value="highpass">Highpass</option>
               <option value="linkwitz-transform">Linkwitz Transform</option>
               <option value="subsonic">Subsonic / rumble</option>
             </select>
@@ -284,44 +284,6 @@
           </div>
           <div id="signalFilterList" class="search-results crossover-filter-list"></div>
           <div id="crossoverStatus" class="search-status"></div>
-        </section>
-
-        <section class="panel sidebar-panel" data-sidebar-panel="measurement">
-          <div class="measurement-name-row">
-            <label class="driver-select-row">
-              <span>Response name</span>
-              <input id="measurementNameInput" type="text" placeholder="Imported response" />
-            </label>
-            <button id="measurementAddButton" class="measurement-add-button" type="button" aria-label="Add measurement graph">+</button>
-          </div>
-          <div class="driver-setup-panel">
-            <label class="driver-setup-field">
-              <span>Angle</span>
-              <input id="measurementAngleInput" type="number" min="-180" max="180" step="1" value="0" />
-            </label>
-            <label class="driver-setup-field">
-              <span>Plane</span>
-              <select id="measurementPlaneSelect">
-                <option value="horizontal">Horizontal</option>
-                <option value="vertical">Vertical</option>
-              </select>
-            </label>
-          </div>
-          <label class="driver-select-row">
-            <span>Target</span>
-            <select id="measurementTargetSelect"></select>
-          </label>
-          <div class="measurement-group-toolbar">
-            <span>Recording groups</span>
-            <button id="measurementGroupAddButton" class="measurement-group-add-button" type="button" aria-label="Add recording group">+</button>
-          </div>
-          <div id="measurementGroupList" class="measurement-group-list"></div>
-          <label class="file-button measurement-file-button">
-            Load response
-            <input id="frequencyResponseInput" type="file" accept=".frd,.txt,.csv,text/plain,text/csv" />
-          </label>
-          <div id="measurementStatus" class="search-status"></div>
-          <div id="measurementList" class="search-results"></div>
         </section>
 
         <div class="sidebar-footer">
@@ -474,42 +436,37 @@
           <div class="plot-panel recording-panel" draggable="true" data-reorder-id="recording-panel" data-panel="recordingPanel">
             <div class="pane-bar"><span class="drag-handle plot-drag" aria-hidden="true"></span><span>Recording</span></div>
             <div class="recording-workbench">
-              <canvas id="recordingPlot"></canvas>
-              <section class="recording-controls" aria-label="Recording controls">
-                <div class="recording-level">
-                  <span>Level</span>
-                  <strong id="recordingLevelReadout">75 dB</strong>
-                  <div class="recording-meter" aria-hidden="true"><span id="recordingMeterBar"></span></div>
+              <div class="recording-plot-stage">
+                <canvas id="recordingPlot"></canvas>
+              </div>
+              <aside class="recording-spectrum-panel" aria-label="Input spectrum">
+                <div class="recording-live-controls" aria-label="Recording level and actions">
+                  <div class="recording-level">
+                    <div class="recording-meter" aria-label="Input peak level"><span id="recordingMeterBar"></span></div>
+                    <span id="recordingPeakReadout" class="recording-peak-readout">Peak -inf dBFS</span>
+                  </div>
+                  <div class="recording-actions">
+                    <div class="recording-action-row">
+                      <button id="recordingTestToneButton" class="recording-secondary-button" type="button">Check levels</button>
+                      <button id="recordingAddButton" class="recording-add-button" type="button">Start</button>
+                    </div>
+                    <label class="recording-run-field">
+                      <span>Run</span>
+                      <input id="recordingRunNameInput" type="text" />
+                    </label>
+                    <div class="recording-run-row">
+                      <label class="recording-run-field">
+                        <span>Angle</span>
+                        <input id="recordingRunAngleInput" type="number" min="-180" max="180" step="1" value="0" />
+                      </label>
+                      <button id="recordingSaveRunButton" class="recording-secondary-button" type="button">Save</button>
+                    </div>
+                    <div id="recordingStatus" class="recording-status" aria-live="polite"></div>
+                  </div>
                 </div>
-                <label>
-                  <span>Microphone</span>
-                  <select id="recordingMicrophoneSelect">
-                    <option value="default">System default</option>
-                    <option value="usb-measurement">USB measurement mic</option>
-                    <option value="calibrated">Calibrated mic</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Signal</span>
-                  <select id="recordingSignalSelect">
-                    <option value="sweep">Sweep</option>
-                    <option value="noise">Noise</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Level dB</span>
-                  <input id="recordingLevelInput" type="number" min="35" max="105" step="1" />
-                </label>
-                <label>
-                  <span>Duration</span>
-                  <input id="recordingDurationInput" type="number" min="1" max="60" step="1" />
-                </label>
-                <label>
-                  <span>Averaging</span>
-                  <input id="recordingAveragingInput" type="number" min="1" max="32" step="1" />
-                </label>
-                <button id="recordingAddButton" class="recording-add-button" type="button">Record</button>
-              </section>
+                <span class="recording-spectrum-title">Input spectrum</span>
+                <canvas id="recordingSpectrogram" class="recording-spectrogram" aria-label="Live input spectrogram"></canvas>
+              </aside>
             </div>
           </div>
           <div class="plot-panel crossover-schematic-panel" draggable="true" data-reorder-id="crossover-schematic-panel" data-panel="crossoverSchematicPanel">
@@ -534,6 +491,7 @@
                   </svg>
                 </button>
                 <span class="crossover-toolbar-divider" aria-hidden="true"></span>
+                <button id="crossoverCreateModuleGroupButton" class="crossover-group-button" type="button" disabled>Create group from selection</button>
                 <details class="crossover-preset-menu">
                   <summary aria-label="Open preset filters">Presets</summary>
                   <div class="crossover-preset-list">
