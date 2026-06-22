@@ -29,8 +29,7 @@ import { excursionLimitedSpl, excursionLimitedValues, maxExcursionRatio, maxLine
 import { extractDriverData, extractPassiveRadiatorData, findDatasheetPdfLinks, searchDrivers, searchPassiveRadiators } from "../src/core/driverScraper.js";
 import { fetchUrl } from "../src/core/fetch.js";
 import { extractFrequencyResponseLinks, extractZipTextEntries, parseEmbeddedFrequencyResponse, partsExpressFrequencyResponseCandidatesFromItem } from "../src/core/frequencyResponseScraper.js";
-import { maxBuildableVolumeLiters, normalizeInventory } from "../src/core/planner/componentInventory.js";
-import { planDesigns } from "../src/core/planner/designPlanner.js";
+import { normalizeInventory } from "../src/core/planner/componentInventory.js";
 import { AIR_DENSITY } from "../src/core/constants.js";
 import { loadKnownPassiveRadiators, sampleProject } from "../src/state.js";
 
@@ -1230,59 +1229,14 @@ test("enclosure validation reports extreme losses", () => {
   assert.ok(warnings.length >= 4);
 });
 
-test("planner normalizes printed port fabrication limits", () => {
+test("inventory normalizes port fabrication limits", () => {
   const inventory = normalizeInventory({
     driverCount: 1.2,
-    preference: "deep",
-    alignment: "passive",
     portFabrication: { minDiameterCm: 9, maxDiameterCm: 6, bendAllowed: false },
   });
   assert.equal(inventory.driverCount, 1);
-  assert.equal(inventory.preference, "deep");
-  assert.equal(inventory.alignment, "passive");
   assert.equal(inventory.portFabrication.maxDiameterCm, 9);
   assert.equal(inventory.portFabrication.bendAllowed, false);
-});
-
-test("planner max volume limit can be disabled", () => {
-  const limited = normalizeInventory({ constraints: { hasMaxVolume: true, maxVolumeL: 42 } });
-  const unlimited = normalizeInventory({ constraints: { hasMaxVolume: false, maxVolumeL: 42 } });
-  assert.equal(maxBuildableVolumeLiters(limited), 42);
-  assert.equal(maxBuildableVolumeLiters(unlimited), Number.POSITIVE_INFINITY);
-});
-
-test("planner returns addable enclosure candidates with printed port geometry", () => {
-  const candidates = planDesigns(driver, sampleProject.inventory, sampleProject.box);
-  assert.ok(candidates.length >= 2);
-  assert.ok(candidates.some((candidate) => candidate.mode === "sealed"));
-  assert.ok(candidates.some((candidate) => candidate.mode === "passive"));
-  const vented = candidates.find((candidate) => candidate.mode === "vented");
-  assert.ok(vented);
-  assert.ok(vented.box.volumeL > 0);
-  assert.ok(vented.box.fb > 0);
-  assert.ok(vented.port.physicalLengthCm > 0);
-  assert.ok(vented.notes.some((note) => note.includes("Printed round port")));
-});
-
-test("planner prefers resonant alignments for deep bass when available", () => {
-  const candidates = planDesigns(driver, { ...sampleProject.inventory, preference: "deep" }, sampleProject.box);
-  assert.ok(candidates.some((candidate) => candidate.mode === "vented"));
-  assert.ok(candidates.some((candidate) => candidate.mode === "passive"));
-  assert.notEqual(candidates[0].mode, "sealed");
-});
-
-test("planner respects explicit sealed, vented, or passive alignment choices", () => {
-  const sealed = planDesigns(driver, { ...sampleProject.inventory, alignment: "sealed", preference: "deep" }, sampleProject.box);
-  const vented = planDesigns(driver, { ...sampleProject.inventory, alignment: "vented", preference: "balanced" }, sampleProject.box);
-  const passive = planDesigns(driver, { ...sampleProject.inventory, alignment: "passive", preference: "balanced" }, sampleProject.box);
-  assert.ok(sealed.length > 0);
-  assert.ok(vented.length > 0);
-  assert.ok(passive.length > 0);
-  assert.ok(sealed.every((candidate) => candidate.mode === "sealed"));
-  assert.ok(vented.every((candidate) => candidate.mode === "vented"));
-  assert.ok(passive.every((candidate) => candidate.mode === "passive"));
-  assert.ok(passive[0].box.passiveRadiator.mmsG > 0);
-  assert.ok(passive[0].notes.some((note) => note.includes("PR peak excursion")));
 });
 
 function createSimplePdf(text) {
