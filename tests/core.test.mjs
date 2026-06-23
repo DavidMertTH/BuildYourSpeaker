@@ -22,6 +22,9 @@ import { filterChainResponse, gainResponse, highPassResponse, linkwitzTransformR
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
 import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../src/core/recordingAnalysis.js";
 import { buildGoldenLayoutConfig } from "../src/app/goldenLayoutConfig.js";
+import { completeBox } from "../src/app/boxModel.js";
+import { completeDriverParameters } from "../src/app/driverParameters.js";
+import { simulateHfDriverResponse } from "../src/app/hfDriverSimulation.js";
 import { crossoverCircuitComponentPortId, crossoverCircuitDesignNodeId, hasActiveCrossoverDesign, normalizeCrossoverCircuit, normalizeGroupCrossover } from "../src/app/crossoverModel.js";
 import { crossoverCircuitResponses } from "../src/app/crossoverCircuitSolver.js";
 import { orthogonalWireRoutePoints, snapWirePointToGrid, wirePathD } from "../src/app/crossoverWireRouting.js";
@@ -31,7 +34,7 @@ import { fetchUrl } from "../src/core/fetch.js";
 import { extractFrequencyResponseLinks, extractZipTextEntries, parseEmbeddedFrequencyResponse, partsExpressFrequencyResponseCandidatesFromItem } from "../src/core/frequencyResponseScraper.js";
 import { normalizeInventory } from "../src/core/planner/componentInventory.js";
 import { AIR_DENSITY } from "../src/core/constants.js";
-import { loadKnownPassiveRadiators, sampleProject } from "../src/state.js";
+import { loadKnownDrivers, loadKnownPassiveRadiators, sampleProject } from "../src/state.js";
 
 const driver = normalizeDriver(sampleProject.driver);
 const frequencies = logFrequencyVector(10, 200, 260);
@@ -700,6 +703,19 @@ test("rectangular port area uses width times height", () => {
   assert.ok(Math.abs(rectangularPortArea(10, 5) - 0.005) < 1e-12);
 });
 
+test("box normalization keeps sub-centimeter port geometry", () => {
+  const box = completeBox({
+    ...sampleProject.box,
+    portDiameterCm: 0.4,
+    portWidthCm: 0.3,
+    portHeightCm: 0.2,
+  });
+
+  assert.equal(box.portDiameterCm, 0.4);
+  assert.equal(box.portWidthCm, 0.3);
+  assert.equal(box.portHeightCm, 0.2);
+});
+
 test("rectangular port tuning formula inverts physical port length", () => {
   const options = {
     portShape: "rectangular",
@@ -1117,6 +1133,61 @@ test("passive radiator scraper extracts parameters from a direct PDF datasheet U
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("known driver library includes B&C DE250 as an HF driver entry", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const de250 = knownDrivers.find((entry) => entry.id === "bc-de250-8");
+
+  assert.ok(de250);
+  assert.equal(de250.category, "hf-driver");
+  assert.equal(de250.allowParameterFallback, false);
+  assert.equal(de250.driver.leMh, 0.11);
+  assert.equal(de250.driver.nominalImpedanceOhm, 8);
+  assert.equal(de250.driver.minimumImpedanceOhm, 7.8);
+  assert.equal(de250.driver.minFrequencyHz, 1000);
+  assert.equal(de250.driver.maxFrequencyHz, 18000);
+  assert.equal(de250.driver.recommendedCrossoverHz, 1600);
+  assert.equal(de250.driver.sensitivityDb, 108.5);
+  assert.equal(de250.driver.re, undefined);
+});
+
+test("HF driver completion does not inherit sample woofer parameters", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const de250 = knownDrivers.find((entry) => entry.id === "bc-de250-8");
+  const completed = completeDriverParameters(sampleProject.driver, {
+    ...de250.driver,
+    category: de250.category,
+    allowParameterFallback: false,
+  });
+
+  assert.equal(completed.category, "hf-driver");
+  assert.equal(completed.allowParameterFallback, false);
+  assert.equal(completed.re, undefined);
+  assert.equal(completed.fs, undefined);
+  assert.equal(completed.vasL, undefined);
+  assert.equal(completed.sdCm2, undefined);
+  assert.equal(completed.sensitivityDb, 108.5);
+});
+
+test("HF driver response is independent from enclosure options", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const de250 = knownDrivers.find((entry) => entry.id === "bc-de250-8");
+  const driver = completeDriverParameters(sampleProject.driver, {
+    ...de250.driver,
+    category: de250.category,
+    allowParameterFallback: false,
+  });
+  const compactBox = completeBox({ ...sampleProject.box, volumeL: 18, fb: 48, portDiameterCm: 4 });
+  const largeBox = completeBox({ ...sampleProject.box, volumeL: 110, fb: 28, portDiameterCm: 10 });
+  const compact = simulateHfDriverResponse(driver, frequencies);
+  const large = simulateHfDriverResponse(driver, frequencies);
+
+  assert.notDeepEqual(compactBox, largeBox);
+  assert.deepEqual(compact.spl, large.spl);
+  assert.deepEqual(compact.impedance, large.impedance);
+  assert.ok(compact.spl.every(Number.isFinite));
+  assert.ok(compact.impedance.every((value) => Number.isFinite(value) && value > 0));
 });
 
 test("passive radiator library includes imported radiators", async () => {

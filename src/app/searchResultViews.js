@@ -1,176 +1,92 @@
+const driverSearchResultsById = new Map();
+const frequencySearchResultsById = new Map();
+const passiveRadiatorResultsById = new Map();
+let driverSearchActions = null;
+let passiveRadiatorSearchActions = null;
+let listenersRegistered = false;
+
 export function renderDriverSearchResultsView({
   addFrequencyResponseSearchCandidate,
   applyDriverCandidate,
   driverResultFields,
-  driverSearchResults,
   frequencyResponseResultFields,
   frequencyResults = [],
   query = "",
   results,
-  setTooltip,
 }) {
-  driverSearchResults.replaceChildren();
+  driverSearchActions = { addFrequencyResponseSearchCandidate, applyDriverCandidate };
+  ensureSearchResultListeners();
+  driverSearchResultsById.clear();
+  frequencySearchResultsById.clear();
+
   const rankedResults = rankDriverResultsByFrequencyResponses(results, frequencyResults, query);
-
-  rankedResults.forEach(({ result, matches }, index) => {
-    const item = document.createElement("article");
-    item.className = matches.length ? "search-result has-frequency-response" : "search-result";
-    setTooltip(item, "Review this driver candidate before applying it.");
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "search-result-title";
-
-    const title = document.createElement("span");
-    title.textContent = result.title || `Candidate ${index + 1}`;
-
-    const applyButton = document.createElement("button");
-    applyButton.type = "button";
-    applyButton.textContent = "Apply";
-    setTooltip(applyButton, "Apply these driver parameters to the project.");
-    applyButton.addEventListener("click", () => applyDriverCandidate(result));
-
-    titleRow.append(title, applyButton);
-
-    const meta = document.createElement("div");
-    meta.className = "search-result-meta";
-    meta.textContent = result.url || "";
-
-    const fields = document.createElement("div");
-    fields.className = "search-result-fields";
-    fields.textContent = `Found: ${(result.matched || []).join(", ")}`;
-
-    const responseFields = document.createElement("div");
-    responseFields.className = "search-result-fields driver-response-summary";
-    responseFields.textContent = formatDriverFrequencyResponseSummary(matches);
-
-    const values = renderSearchResultValues(driverResultFields, result.driver || {}, "No numeric driver values recognized.");
-
-    item.append(titleRow, meta, responseFields, values, fields);
-    driverSearchResults.append(item);
+  const driverResults = rankedResults.map(({ result, matches }, index) => {
+    const id = `driver-${index}`;
+    driverSearchResultsById.set(id, result);
+    return {
+      id,
+      title: result.title || `Candidate ${index + 1}`,
+      meta: result.url || "",
+      fields: `Found: ${(result.matched || []).join(", ")}`,
+      responseSummary: formatDriverFrequencyResponseSummary(matches),
+      hasFrequencyResponse: matches.length > 0,
+      values: searchResultValues(driverResultFields, result.driver || {}, "No numeric driver values recognized."),
+    };
   });
 
-  if (frequencyResults.length) {
-    const label = document.createElement("div");
-    label.className = "search-result-section";
-    label.textContent = "Frequency responses";
-    driverSearchResults.append(label);
-  }
-
-  frequencyResults.forEach((result, index) => {
-    const item = document.createElement("article");
-    item.className = "search-result frequency-response-result";
-    setTooltip(item, result.status === "parsed" ? "Add this parsed response to Measurement." : "Inspect this response candidate before importing it.");
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "search-result-title";
-
-    const title = document.createElement("span");
-    title.textContent = result.title || `Frequency response ${index + 1}`;
-
-    const actionButton = document.createElement("button");
-    actionButton.type = "button";
-    actionButton.textContent = result.status === "parsed" ? "Add" : "Open";
-    setTooltip(actionButton, result.status === "parsed" ? "Add this frequency response to the Measurement tab." : "Open the source in a new browser tab.");
-    actionButton.addEventListener("click", () => {
-      if (result.status === "parsed") {
-        addFrequencyResponseSearchCandidate(result);
-      } else if (result.url) {
-        window.open(result.url, "_blank", "noopener");
-      }
-    });
-    actionButton.disabled = result.status !== "parsed" && !result.url;
-
-    titleRow.append(title, actionButton);
-
-    const meta = document.createElement("div");
-    meta.className = "search-result-meta";
-    meta.textContent = [result.source, result.format, result.url].filter(Boolean).join(" / ");
-
-    const values = result.status === "parsed"
-      ? renderSearchResultValues(frequencyResponseResultFields, result, "No numeric response values recognized.")
-      : renderFrequencyResponseCandidateValues(result);
-
-    const fields = document.createElement("div");
-    fields.className = "search-result-fields";
-    fields.textContent = result.reason || "Potential frequency response source.";
-
-    item.append(titleRow, meta, values, fields);
-    driverSearchResults.append(item);
+  const frequencySnapshots = frequencyResults.map((result, index) => {
+    const id = `frequency-${index}`;
+    frequencySearchResultsById.set(id, result);
+    const parsed = result.status === "parsed";
+    return {
+      id,
+      title: result.title || `Frequency response ${index + 1}`,
+      meta: [result.source, result.format, result.url].filter(Boolean).join(" / "),
+      reason: result.reason || "Potential frequency response source.",
+      tooltip: parsed ? "Add this parsed response to Measurement." : "Inspect this response candidate before importing it.",
+      action: parsed ? "add-frequency-response" : "open-frequency-response",
+      actionLabel: parsed ? "Add" : "Open",
+      actionTooltip: parsed ? "Add this frequency response to the Measurement tab." : "Open the source in a new browser tab.",
+      disabled: !parsed && !result.url,
+      values: parsed
+        ? searchResultValues(frequencyResponseResultFields, result, "No numeric response values recognized.")
+        : frequencyResponseCandidateValues(result),
+    };
   });
+
+  window.dispatchEvent(new CustomEvent("cabio:driver-search-results-sync", {
+    detail: {
+      driverResults,
+      frequencyResults: frequencySnapshots,
+      showFrequencySection: frequencySnapshots.length > 0,
+    },
+  }));
 }
 
 export function renderPassiveRadiatorSearchResultsView({
   applyPassiveRadiatorCandidate,
   passiveRadiatorResultFields,
-  passiveRadiatorSearchResults,
   results,
-  setTooltip,
 }) {
-  passiveRadiatorSearchResults.replaceChildren();
+  passiveRadiatorSearchActions = { applyPassiveRadiatorCandidate };
+  ensureSearchResultListeners();
+  passiveRadiatorResultsById.clear();
 
-  results.forEach((result, index) => {
-    const item = document.createElement("article");
-    item.className = "search-result";
-    setTooltip(item, "Review this P-Radiator candidate before applying it.");
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "search-result-title";
-
-    const title = document.createElement("span");
-    title.textContent = result.title || `P-Radiator candidate ${index + 1}`;
-
-    const applyButton = document.createElement("button");
-    applyButton.type = "button";
-    applyButton.textContent = "Apply";
-    setTooltip(applyButton, "Apply these P-Radiator parameters to the active config.");
-    applyButton.addEventListener("click", () => applyPassiveRadiatorCandidate(result));
-
-    titleRow.append(title, applyButton);
-
-    const meta = document.createElement("div");
-    meta.className = "search-result-meta";
-    meta.textContent = result.url || "";
-
-    const fields = document.createElement("div");
-    fields.className = "search-result-fields";
-    fields.textContent = `Found: ${(result.matched || []).join(", ")}`;
-
-    const values = renderSearchResultValues(passiveRadiatorResultFields, result.passiveRadiator || {}, "No numeric P-Radiator values recognized.");
-
-    item.append(titleRow, meta, values, fields);
-    passiveRadiatorSearchResults.append(item);
-  });
-}
-
-export function renderSearchResultValues(resultFields, data, emptyText) {
-  const values = document.createElement("div");
-  values.className = "search-result-values";
-
-  resultFields.forEach((field) => {
-    const value = Number(data[field.key]);
-    if (!Number.isFinite(value)) return;
-
-    const row = document.createElement("div");
-    row.className = "search-result-value";
-
-    const label = document.createElement("span");
-    label.textContent = field.label;
-
-    const output = document.createElement("strong");
-    output.textContent = `${formatSearchResultValue(value)}${field.unit ? ` ${field.unit}` : ""}`;
-
-    row.append(label, output);
-    values.append(row);
-  });
-
-  if (!values.childElementCount) {
-    const empty = document.createElement("div");
-    empty.className = "search-result-value";
-    empty.textContent = emptyText;
-    values.append(empty);
-  }
-
-  return values;
+  window.dispatchEvent(new CustomEvent("cabio:passive-radiator-search-results-sync", {
+    detail: {
+      results: results.map((result, index) => {
+        const id = `passive-radiator-${index}`;
+        passiveRadiatorResultsById.set(id, result);
+        return {
+          id,
+          title: result.title || `P-Radiator candidate ${index + 1}`,
+          meta: result.url || "",
+          fields: `Found: ${(result.matched || []).join(", ")}`,
+          values: searchResultValues(passiveRadiatorResultFields, result.passiveRadiator || {}, "No numeric P-Radiator values recognized."),
+        };
+      }),
+    },
+  }));
 }
 
 export function formatSearchResultValue(value) {
@@ -186,6 +102,60 @@ export function formatDriverFrequencyResponseSummary(matches = []) {
   const sources = [...new Set(matches.map((result) => result.source).filter(Boolean))].slice(0, 2);
   const sourceText = sources.length ? ` from ${sources.join(", ")}` : "";
   return `Frequency response: ${matches.length} candidate${matches.length === 1 ? "" : "s"} found${parsedCount ? `, ${parsedCount} importable` : ""}${sourceText}.`;
+}
+
+function ensureSearchResultListeners() {
+  if (listenersRegistered) return;
+  listenersRegistered = true;
+  window.addEventListener("cabio:driver-search-result-action", handleDriverSearchResultAction);
+  window.addEventListener("cabio:passive-radiator-search-result-action", handlePassiveRadiatorSearchResultAction);
+}
+
+function handleDriverSearchResultAction(event) {
+  const detail = event.detail || {};
+  if (detail.action === "apply-driver") {
+    const result = driverSearchResultsById.get(detail.id);
+    if (result) driverSearchActions?.applyDriverCandidate?.(result);
+    return;
+  }
+  if (detail.action === "add-frequency-response") {
+    const result = frequencySearchResultsById.get(detail.id);
+    if (result) driverSearchActions?.addFrequencyResponseSearchCandidate?.(result);
+    return;
+  }
+  if (detail.action === "open-frequency-response") {
+    const result = frequencySearchResultsById.get(detail.id);
+    if (result?.url) window.open(result.url, "_blank", "noopener");
+  }
+}
+
+function handlePassiveRadiatorSearchResultAction(event) {
+  if (event.detail?.action !== "apply-passive-radiator") return;
+  const result = passiveRadiatorResultsById.get(event.detail.id);
+  if (result) passiveRadiatorSearchActions?.applyPassiveRadiatorCandidate?.(result);
+}
+
+function searchResultValues(resultFields, data, emptyText) {
+  const values = resultFields
+    .map((field) => {
+      const value = Number(data[field.key]);
+      if (!Number.isFinite(value)) return null;
+      return {
+        label: field.label,
+        value: `${formatSearchResultValue(value)}${field.unit ? ` ${field.unit}` : ""}`,
+      };
+    })
+    .filter(Boolean);
+
+  return values.length ? values : [{ empty: true, text: emptyText }];
+}
+
+function frequencyResponseCandidateValues(result) {
+  return [
+    { label: "Status", value: result.status || "candidate" },
+    { label: "Format", value: result.format || "html" },
+    { label: "Source", value: result.source || "Web" },
+  ];
 }
 
 function rankDriverResultsByFrequencyResponses(results, frequencyResults = [], query = "") {
@@ -241,24 +211,4 @@ function normalizeResponseMatchText(value) {
 function driverTextMatchesTokens(driverResult, tokens) {
   const haystack = normalizeResponseMatchText([driverResult?.title, driverResult?.url].filter(Boolean).join(" "));
   return tokens.some((token) => haystack.includes(token));
-}
-
-function renderFrequencyResponseCandidateValues(result) {
-  const values = document.createElement("div");
-  values.className = "search-result-values";
-  [
-    ["Status", result.status || "candidate"],
-    ["Format", result.format || "html"],
-    ["Source", result.source || "Web"],
-  ].forEach(([labelText, valueText]) => {
-    const row = document.createElement("div");
-    row.className = "search-result-value";
-    const label = document.createElement("span");
-    label.textContent = labelText;
-    const output = document.createElement("strong");
-    output.textContent = valueText;
-    row.append(label, output);
-    values.append(row);
-  });
-  return values;
 }

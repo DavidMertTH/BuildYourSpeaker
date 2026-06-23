@@ -135,7 +135,7 @@ export const THEME_TOOLTIPS = {
 };
 export const PLOT_PANEL_TOOLTIPS = {
   splPlot:
-    "SPL shows the predicted linear sound pressure level over frequency. It is limited by Xmax and the driver's usable low-frequency range, so tweeters and small mids no longer appear to produce deep bass.",
+    "SPL shows the predicted linear sound pressure level over frequency. It is limited by Xmax and the driver's usable low-frequency range, so tweeters and small mids no longer appear to produce unrealistic low bass.",
   onAxisResponsePlot:
     "On-axis response shows imported 0 degree frequency response measurements.",
   offAxisResponsePlot:
@@ -190,13 +190,4 @@ export const RANGE_TOOLTIPS = {
   "box.passiveRadiator.fs": "Adjust the passive radiator resonance frequency quickly.",
   "box.passiveRadiator.mmsG": "Adjust the passive radiator moving mass quickly.",
 };
-
-export function summaryTooltip(label) {
-  if (label === "Qts") return "Total driver damping calculated from Qms and Qes.";
-  if (label === "Fc / Qtc") return "Sealed box resonance and damping for the active config.";
-  if (label === "Port length") return "Calculated physical port length for the active config.";
-  if (label === "Calc. port length") return "Calculated physical port length for the active config.";
-  if (label === "Warnings") return "Potential problems detected in the current setup.";
-  return `Shows ${label}.`;
-}
 

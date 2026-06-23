@@ -64,7 +64,6 @@ import {
   RANGE_TOOLTIPS,
   SIDEBAR_TOOLTIPS,
   THEME_TOOLTIPS,
-  summaryTooltip,
 } from "./tooltips.js";
 import { UNIT_GROUPS } from "./units.js";
 import {
@@ -80,7 +79,7 @@ import { broadcastProjectState, initializePopoutProjectSync, isGoldenLayoutPopou
 import { legacyPlotHeight, legacyPlotWidth, normalizePlotSize, readSavedLayout, writeGoldenLayoutState, writeSavedLayout } from "./layoutPersistence.js";
 import { readJsonStorage, readStringStorage, removeStorageItem, writeJsonStorage, writeStringStorage } from "./storage.js";
 import { collectDomRefs } from "./domRefs.js";
-import { enableDecimalTextInput, initializeNumericInputs, isNumericInput, parseNumericInputValue } from "./numericInputs.js";
+import { initializeNumericInputs, isNumericInput, parseNumericInputValue } from "./numericInputs.js";
 import { driverMatches, filteredSortedLibraryEntries, libraryBrand, libraryEntriesWithSelection, passiveRadiatorMatches, slugify } from "./libraryUtils.js";
 import { customLibraryEntries, mergeLibraryEntries, readCustomLibrary, uniqueLibraryId } from "./libraryStore.js";
 import { completeBox, passiveRadiatorAreaFromDiameter, passiveRadiatorDiameterFromArea, portOptionsFromBox } from "./boxModel.js";
@@ -117,13 +116,12 @@ import {
   syncBoxDriverArrayFromActiveGroup,
   syncProjectDriverFromActiveGroup,
 } from "./projectModel.js";
-import { createEyeIcon, createPortLockIcon, createTrashIcon } from "../ui/icons.js";
+import { createEyeIcon, createTrashIcon } from "../ui/icons.js";
 import { createPlotViewController, interpolatePlotSeriesValue, positiveMagnitudeRange } from "./plotViewController.js";
 import {
   formatSearchResultValue,
   renderDriverSearchResultsView,
   renderPassiveRadiatorSearchResultsView,
-  renderSearchResultValues,
 } from "./searchResultViews.js";
 import { createSearchWorkflows } from "./searchWorkflows.js";
 import { createConfigBarController } from "./configBarController.js";
@@ -167,6 +165,8 @@ let resizeTimer = null;
 let recordingInProgress = false;
 let recordingSpectrogramInitialized = false;
 const frequencies = logFrequencyVector(FREQUENCY_MIN_HZ, FREQUENCY_MAX_HZ, 640);
+const RECORDING_ANALYSIS_FREQUENCY_POINTS = 480;
+const RECORDING_PREVIEW_FREQUENCY_POINTS = 640;
 const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
 const AXIS_TOOLBAR_PLOT_IDS = [...PLOT_IDS, "recordingPlot"];
 const BOX_MODE_PRESETS = {
@@ -212,12 +212,9 @@ const {
   driverSearchInput,
   driverSearchButton,
   driverSearchStatus,
-  driverSearchResults,
-  driverSummaryPanel,
   driverUsageSummary,
   driverValidationDetails,
   driverValidationStatus,
-  driverHealthPanel,
   driverSelect,
   driverLibraryFilter,
   driverLibrarySort,
@@ -235,19 +232,10 @@ const {
   passiveRadiatorSearchInput,
   passiveRadiatorSearchButton,
   passiveRadiatorSearchStatus,
-  passiveRadiatorSearchResults,
-  crossoverGroupSelect,
-  crossoverMemberList,
   crossoverStatus,
   signalFilterTypeSelect,
   signalFilterAddButton,
-  signalFilterList,
-  crossoverSchematicFilterSelect,
   crossoverSchematicBoard,
-  crossoverAddResistorButton,
-  crossoverAddCapacitorButton,
-  crossoverAddInductorButton,
-  crossoverPresetButtons,
   measurementPlaneSelect,
   measurementTargetSelect,
   frequencyResponseInput,
@@ -272,7 +260,6 @@ const {
   recordingSpectrogram,
   recordingPeakReadout,
   recordingMeterBar,
-  configGroupList,
   configBarList,
   newConfigButton,
   newConfigGroupButton,
@@ -280,6 +267,19 @@ const {
   mobileNewConfigButton,
   mobileNewConfigGroupButton,
 } = collectDomRefs();
+
+function setUiText(target, text) {
+  const id = typeof target === "string" ? target : target?.id;
+  if (!id) return;
+  window.__cabioTextSync = {
+    ...(window.__cabioTextSync || {}),
+    [id]: String(text ?? ""),
+  };
+  window.dispatchEvent(new CustomEvent("cabio:text-sync", {
+    detail: { id, text: String(text ?? "") },
+  }));
+}
+
 let libraryControlPrefs = readLibraryControlPrefs();
 let unitPrefs = readUnitPrefs();
 let portLockField = readPortLockField();
@@ -327,16 +327,15 @@ const searchWorkflows = createSearchWorkflows({
   driverForProject,
   driverSearchButton,
   driverSearchInput,
-  driverSearchResults,
   driverSearchStatus,
   getState: () => state,
   passiveRadiatorSearchButton,
   passiveRadiatorSearchInput,
-  passiveRadiatorSearchResults,
   passiveRadiatorSearchStatus,
   renderDriverSearchResults,
   renderPassiveRadiatorSearchResults,
   searchKnownDriverResults,
+  setUiText,
   setTooltip,
   slugify,
   syncActiveDesignFromProject,
@@ -351,7 +350,6 @@ const crossoverController = createCrossoverController({
   createCrossoverCircuitWireId,
   createCrossoverDesignId,
   createCrossoverTransitionId,
-  createEyeIcon,
   createSignalFilterId,
   CROSSOVER_FAMILIES,
   CROSSOVER_FREQUENCY_MAX_HZ,
@@ -360,15 +358,12 @@ const crossoverController = createCrossoverController({
   CROSSOVER_SLIDER_STEPS,
   crossoverFrequencyToSliderValue,
   crossoverCircuitComponentPortId,
-  crossoverGroupSelect,
-  crossoverMemberList,
   crossoverCircuitDesignNodeId,
   crossoverCircuitFixedNodeId,
   crossoverSliderValueToFrequency,
   crossoverStatus,
   DEFAULT_CROSSOVER_FREQUENCY_HZ,
   designColorForDesign,
-  enableDecimalTextInput,
   getActiveCrossoverGroupId: () => activeCrossoverGroupId,
   getActiveDesign,
   getState: () => state,
@@ -380,12 +375,10 @@ const crossoverController = createCrossoverController({
   roundTo,
   setActiveCrossoverGroupId,
   setSelectedCrossoverDesignId,
-  setTooltip,
   SIGNAL_FILTER_DEFAULTS,
   SIGNAL_FILTER_TARGET_GROUP,
   SIGNAL_FILTER_TYPES,
   signalFilterAddButton,
-  signalFilterList,
   signalFilterTypeSelect,
   SUBSONIC_PRESETS,
 });
@@ -407,18 +400,11 @@ const crossoverSchematicController = createCrossoverSchematicController({
   createCrossoverModuleGroupId,
   CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS,
   addCrossoverDesign,
-  crossoverAddCapacitorButton,
-  crossoverAddInductorButton,
-  crossoverAddResistorButton,
-  crossoverCreateModuleGroupButton,
-  crossoverPresetButtons,
   crossoverCircuitComponentPortId,
   crossoverCircuitDesignNodeId,
   crossoverCircuitFixedNodeId,
-  crossoverSchematicFilterSelect,
   crossoverSchematicBoard,
   designColorForDesign,
-  enableDecimalTextInput,
   getActiveCrossoverGroupId: () => activeCrossoverGroupId,
   getActiveDesign,
   getSelectedCrossoverDesignId,
@@ -486,7 +472,6 @@ const renderPipeline = createRenderPipeline({
   roundTo,
   selectMatchingDriver,
   selectMatchingPassiveRadiator,
-  setTooltip,
   shortMeasurementName,
   signalFilterTypeLabel,
   SIGNAL_FILTER_TARGET_GROUP,
@@ -565,21 +550,16 @@ const {
 } = configBarController;
 const { renderMeasurementControls } = createMeasurementViews({
   compactMeasurementSeriesName,
-  createEyeIcon,
-  createTrashIcon,
-  cssEscape,
   defaultMeasurementTarget,
   discardStagedRecording,
-  enableDecimalTextInput,
   formatFrequencyValue,
   formatMeasurementAngleCompact,
   fullMeasurementName,
   getStagedRecordingResponse: () => stagedRecordingResponse,
   getState: () => state,
-  hydrateMeasurementTargetOptions,
   hydrateMeasurementTargetSelect,
-  measurementList,
   measurementTargetLabel,
+  measurementTargetOptions,
   parseNumericInputValue,
   removeFrequencyResponse,
   removeFrequencyResponseCandidate,
@@ -621,6 +601,7 @@ function initializeApplication(config) {
   initializeLibraryControls();
   initializePillTransitions();
   initializePlotControls();
+  initializePlotResizeHandles();
   initializeGoldenLayout();
   if (config.isGoldenPopout) return;
 
@@ -664,6 +645,7 @@ function registerApplicationEvents(config) {
 
 function startApplication() {
   render();
+  window.requestAnimationFrame(initializePlotResizeHandles);
 }
 
 function initializeTooltips() {
@@ -713,10 +695,6 @@ function initializeTooltips() {
     panel.querySelector(".pane-bar")?.removeAttribute("title");
     setTooltip(title, tooltip);
   });
-  document.querySelectorAll(".summary-strip > div").forEach((metric) => {
-    const label = metric.querySelector(".metric-label")?.textContent || "Metric";
-    setTooltip(metric, summaryTooltip(label));
-  });
 }
 
 function setTooltip(element, text) {
@@ -729,11 +707,6 @@ function initializePlotControls() {
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     const canvas = plotCanvasForPanel(panelId);
     if (!panel) return;
-
-    const toolbarHost = plotToolbarHostForPanel(panelId, panel);
-    let toolbar = panel.querySelector(`.plot-toolbar[data-plot-toolbar="${panelId}"]`);
-    if (!toolbar) toolbar = createPlotToolbar(panelId, "plot-overlay-toolbar");
-    if (toolbar.parentElement !== toolbarHost) toolbarHost.append(toolbar);
 
     const axisPlotId = axisPlotIdForPanel(panelId);
     if (!axisPlotId || !canvas) return;
@@ -751,14 +724,10 @@ function initializePlotControls() {
 
 function initializePlotResizeHandles() {
   plotPanels.forEach((panel) => {
-    if (panel.querySelector(".plot-resize-handle")) return;
-    ["n", "e", "s", "w", "se"].forEach((direction) => {
-      const handle = document.createElement("span");
-      handle.className = `plot-resize-handle plot-resize-${direction}`;
-      handle.dataset.resizeDirection = direction;
-      handle.setAttribute("aria-hidden", "true");
-      handle.addEventListener("mousedown", (event) => startPlotResize(panel.dataset.panel, direction, event));
-      panel.append(handle);
+    panel.querySelectorAll(".plot-resize-handle[data-resize-direction]").forEach((handle) => {
+      if (handle.dataset.resizeBound === "true") return;
+      handle.dataset.resizeBound = "true";
+      handle.addEventListener("mousedown", (event) => startPlotResize(panel.dataset.panel, handle.dataset.resizeDirection, event));
     });
   });
 }
@@ -773,10 +742,8 @@ function initializeGoldenLayout() {
   const layoutHost = isPopout ? document.body : host;
   layoutHost.classList.add("golden-layout-host");
   if (!isPopout) {
-    goldenLayoutStaging = document.createElement("div");
-    goldenLayoutStaging.className = "plot-panel-staging";
-    host.append(goldenLayoutStaging);
-    plotPanels.forEach((panel) => goldenLayoutStaging.append(panel));
+    goldenLayoutStaging = host.querySelector("[data-golden-layout-staging]");
+    if (goldenLayoutStaging) plotPanels.forEach((panel) => goldenLayoutStaging.append(panel));
   }
 
   goldenLayout = isPopout ? new GoldenLayout() : new GoldenLayout(host);
@@ -1042,85 +1009,6 @@ function applyPlotPanelSize(panel, size) {
   panel.style.height = `${size.heightPx}px`;
 }
 
-function createPlotToolbar(panelId, placementClass = "") {
-  const axisPlotId = axisPlotIdForPanel(panelId);
-  const toolbar = document.createElement("div");
-  toolbar.className = ["plot-toolbar", placementClass].filter(Boolean).join(" ");
-  toolbar.dataset.plotToolbar = panelId;
-  toolbar.addEventListener("click", (event) => event.stopPropagation());
-  toolbar.addEventListener("dblclick", (event) => event.stopPropagation());
-  toolbar.addEventListener("mousedown", (event) => event.stopPropagation());
-
-  const pill = document.createElement("button");
-  pill.type = "button";
-  pill.className = "plot-toolbar-pill";
-  pill.textContent = "Plot";
-  setTooltip(pill, "Show graph and axis controls.");
-
-  const menu = document.createElement("div");
-  menu.className = "plot-toolbar-menu";
-
-  const reset = plotToolButton("Reset", "Reset zoom and manual axes");
-  reset.className = "plot-tool-button plot-tool-reset";
-  reset.addEventListener("click", () => resetGraphPanelView(panelId));
-
-  const axes = document.createElement("div");
-  axes.className = "plot-axis-panel";
-  axes.setAttribute("aria-label", "Axis controls");
-  if (axisPlotId) {
-    axes.append(
-      plotAxisModeToggle(axisPlotId),
-      plotAxisField(axisPlotId, "xMin", "X min"),
-      plotAxisField(axisPlotId, "xMax", "X max"),
-      plotAxisField(axisPlotId, "yMin", "Y min"),
-      plotAxisField(axisPlotId, "yMax", "Y max"),
-    );
-  }
-
-  const graphRow = document.createElement("div");
-  graphRow.className = "plot-graph-axis-row";
-  graphRow.append(createGraphPanelSelect(panelId));
-
-  menu.append(reset, graphRow);
-  if (axisPlotId) menu.append(axes);
-  toolbar.append(pill, menu);
-  return toolbar;
-}
-
-function plotToolbarHostForPanel(panelId, panel) {
-  if (panelId === "recordingPanel") return panel.querySelector(".recording-plot-stage") || panel;
-  return panel;
-}
-
-function createGraphPanelSwitcher(panelId) {
-  const switcher = document.createElement("div");
-  switcher.className = "plot-panel-switcher";
-  if (PLOT_IDS.includes(panelId)) switcher.classList.add("plot-panel-mobile-switcher");
-  switcher.dataset.plotPanelSwitcher = panelId;
-  switcher.addEventListener("click", (event) => event.stopPropagation());
-  switcher.addEventListener("dblclick", (event) => event.stopPropagation());
-  switcher.addEventListener("mousedown", (event) => event.stopPropagation());
-  switcher.append(createGraphPanelSelect(panelId));
-  return switcher;
-}
-
-function createGraphPanelSelect(panelId) {
-  const select = document.createElement("select");
-  select.className = "plot-panel-select";
-  select.dataset.plotPanelSelect = panelId;
-  select.ariaLabel = "Graph shown in this panel";
-  setTooltip(select, "Change the graph shown in this panel.");
-  GRAPH_PANEL_IDS.forEach((graphPanelId) => {
-    const option = document.createElement("option");
-    option.value = graphPanelId;
-    option.textContent = PANEL_LABELS[graphPanelId] || graphPanelId;
-    select.append(option);
-  });
-  select.value = panelId;
-  select.addEventListener("change", () => replaceGraphPanel(panelId, select.value));
-  return select;
-}
-
 function axisPlotIdForPanel(panelId) {
   if (PLOT_IDS.includes(panelId)) return panelId;
   if (panelId === "recordingPanel") return "recordingPlot";
@@ -1252,78 +1140,32 @@ function currentPlotPanelSize(panel) {
   return plotSizeForPanel(panel?.dataset?.panel);
 }
 
-function plotToolButton(text, tooltip) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "plot-tool-button";
-  button.textContent = text;
-  setTooltip(button, tooltip);
-  return button;
-}
-
-function plotAxisField(plotId, key, labelText) {
-  const label = document.createElement("label");
-  label.className = "plot-axis-field";
-  const span = document.createElement("span");
-  span.textContent = labelText;
-  const input = document.createElement("input");
-  input.type = "number";
-  input.step = key.startsWith("x") ? "1" : "0.1";
-  enableDecimalTextInput(input);
-  input.dataset.plotAxisInput = `${plotId}.${key}`;
-  input.addEventListener("input", () => queuePlotAxisInput(plotId, key, input));
-  input.addEventListener("change", () => plotViewController.commitPlotAxisInput(plotId, key, input));
-  label.append(span, input);
-  return label;
-}
-
-function plotAxisModeToggle(plotId) {
-  const label = document.createElement("label");
-  label.className = "plot-axis-mode-toggle";
-  setTooltip(label, "A = adaptive axes. F = fixed X/Y min and max.");
-
-  const adaptive = document.createElement("span");
-  adaptive.textContent = "A";
-  setTooltip(adaptive, "Adaptive: axes follow the visible data.");
-
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.dataset.plotAxisMode = plotId;
-  input.setAttribute("aria-label", "Use fixed X and Y axis bounds");
-  setTooltip(input, "Switch between adaptive and fixed axes.");
-  input.addEventListener("change", () => setPlotAxisMode(plotId, input.checked ? "fixed" : "adaptive"));
-
-  const fixed = document.createElement("span");
-  fixed.textContent = "F";
-  setTooltip(fixed, "Fixed: use the values below for both axes.");
-
-  label.append(adaptive, input, fixed);
-  return label;
-}
-
 function bindSidebarTabs() {
-  sidebarTabs.forEach((button) => {
-    button.addEventListener("click", () => {
-      setActiveSidebarPanel(button.dataset.sidebarTab);
-    });
+  window.addEventListener("cabio:sidebar-panel-change", (event) => {
+    const panelId = event.detail?.panelId;
+    if (!panelId) return;
+    setActiveSidebarPanel(panelId, { syncSvelte: false });
   });
 }
 
-function setActiveSidebarPanel(panelId) {
+function setActiveSidebarPanel(panelId, { syncSvelte = true } = {}) {
   sidebarTabs.forEach((button) => {
     button.classList.toggle("active", button.dataset.sidebarTab === panelId);
   });
   sidebarPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.sidebarPanel === panelId);
   });
+  if (syncSvelte) {
+    window.dispatchEvent(new CustomEvent("cabio:sidebar-panel-sync", { detail: { panelId } }));
+  }
   updatePillIndicators();
   applyWorkModeView(panelId);
 }
 
 function initializeThemeControls() {
   hydrateThemeButtons();
-  themeButtons.forEach((button) => {
-    button.addEventListener("click", () => setThemePreference(button.dataset.themeChoice));
+  window.addEventListener("cabio:theme-choice-change", (event) => {
+    setThemePreference(event.detail?.choice);
   });
   systemThemeQuery.addEventListener("change", () => {
     if (themePreference !== "sync") return;
@@ -1334,7 +1176,11 @@ function initializeThemeControls() {
 
 function setThemePreference(choice) {
   if (isMobileLayout()) choice = "sync";
-  if (!THEME_CHOICES.includes(choice) || choice === themePreference) return;
+  if (!THEME_CHOICES.includes(choice)) return;
+  if (choice === themePreference) {
+    hydrateThemeButtons();
+    return;
+  }
   themePreference = choice;
   writeStringStorage(THEME_STORAGE_KEY, themePreference);
   applyThemePreference(themePreference);
@@ -1354,6 +1200,7 @@ function hydrateThemeButtons() {
   themeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.themeChoice === themePreference);
   });
+  window.dispatchEvent(new CustomEvent("cabio:theme-choice-sync", { detail: { choice: themePreference } }));
 }
 
 function readThemePreference() {
@@ -1362,39 +1209,44 @@ function readThemePreference() {
 }
 
 function initializeLibraryControls() {
-  populateLibraryBrandFilter(driverLibraryBrand, driverLibrary, "driver");
-  populateLibraryBrandFilter(passiveRadiatorLibraryBrand, passiveRadiatorLibrary, "passiveRadiator");
-  if (driverLibrarySort) driverLibrarySort.value = libraryControlPrefs.driverSort || "name-asc";
-  setLibraryFilterSwitchState(driverLibraryFilterEnabled, Boolean(libraryControlPrefs.driverFilterEnabled));
-  if (driverLibraryBrand) driverLibraryBrand.value = libraryControlPrefs.driverBrand || "";
-  if (driverLibraryDiameter) driverLibraryDiameter.value = libraryControlPrefs.driverDiameter || "";
-  if (passiveRadiatorLibrarySort) passiveRadiatorLibrarySort.value = libraryControlPrefs.passiveRadiatorSort || "name-asc";
-  setLibraryFilterSwitchState(passiveRadiatorLibraryFilterEnabled, Boolean(libraryControlPrefs.passiveRadiatorFilterEnabled));
-  if (passiveRadiatorLibraryBrand) passiveRadiatorLibraryBrand.value = libraryControlPrefs.passiveRadiatorBrand || "";
-  if (passiveRadiatorLibraryDiameter) passiveRadiatorLibraryDiameter.value = libraryControlPrefs.passiveRadiatorDiameter || "";
+  const driverControls = getLibraryControls("driver");
+  const passiveRadiatorControls = getLibraryControls("passiveRadiator");
+  populateLibraryBrandFilter(driverControls.brand, driverLibrary, "driver", libraryControlPrefs.driverBrand || "");
+  populateLibraryBrandFilter(passiveRadiatorControls.brand, passiveRadiatorLibrary, "passiveRadiator", libraryControlPrefs.passiveRadiatorBrand || "");
+  if (driverControls.sort) driverControls.sort.value = libraryControlPrefs.driverSort || "name-asc";
+  setLibraryFilterSwitchState(driverControls.filterEnabled, Boolean(libraryControlPrefs.driverFilterEnabled));
+  if (driverControls.diameter) driverControls.diameter.value = libraryControlPrefs.driverDiameter || "";
+  if (passiveRadiatorControls.sort) passiveRadiatorControls.sort.value = libraryControlPrefs.passiveRadiatorSort || "name-asc";
+  setLibraryFilterSwitchState(passiveRadiatorControls.filterEnabled, Boolean(libraryControlPrefs.passiveRadiatorFilterEnabled));
+  if (passiveRadiatorControls.diameter) passiveRadiatorControls.diameter.value = libraryControlPrefs.passiveRadiatorDiameter || "";
   updateLibraryFilterControlState("driver");
   updateLibraryFilterControlState("passiveRadiator");
 }
 
-function populateLibraryBrandFilter(select, entries, kind) {
-  if (!select) return;
-  const currentValue = select.value;
-  select.replaceChildren();
-  const anyOption = document.createElement("option");
-  anyOption.value = "";
-  anyOption.textContent = "Any brand";
-  select.append(anyOption);
+function getLibraryControls(kind) {
+  const isPassiveRadiator = kind === "passiveRadiator";
+  return {
+    filter: document.querySelector(isPassiveRadiator ? "#passiveRadiatorLibraryFilter" : "#driverLibraryFilter"),
+    sort: document.querySelector(isPassiveRadiator ? "#passiveRadiatorLibrarySort" : "#driverLibrarySort"),
+    filterEnabled: document.querySelector(isPassiveRadiator ? "#passiveRadiatorLibraryFilterEnabled" : "#driverLibraryFilterEnabled"),
+    brand: document.querySelector(isPassiveRadiator ? "#passiveRadiatorLibraryBrand" : "#driverLibraryBrand"),
+    diameter: document.querySelector(isPassiveRadiator ? "#passiveRadiatorLibraryDiameter" : "#driverLibraryDiameter"),
+  };
+}
 
-  [...new Set(entries.map((entry) => libraryBrand(entry, kind)).filter(Boolean))]
+function populateLibraryBrandFilter(select, entries, kind, selectedValue = select?.value || "") {
+  const brands = [...new Set(entries.map((entry) => libraryBrand(entry, kind)).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }))
-    .forEach((brand) => {
-      const option = document.createElement("option");
-      option.value = brand;
-      option.textContent = brand;
-      select.append(option);
-    });
-
-  select.value = [...select.options].some((option) => option.value === currentValue) ? currentValue : "";
+    .map((brand) => ({ value: brand, label: brand }));
+  const options = [{ value: "", label: "Any brand" }, ...brands];
+  const resolvedValue = options.some((option) => option.value === selectedValue) ? selectedValue : "";
+  window.dispatchEvent(new CustomEvent("cabio:library-brand-options-sync", {
+    detail: {
+      kind: kind === "passiveRadiator" ? "passive-radiator" : "driver",
+      options,
+      selectedValue: resolvedValue,
+    },
+  }));
 }
 
 function readLibraryControlPrefs() {
@@ -1408,6 +1260,8 @@ function saveLibraryControlPrefs() {
 
 function setLibraryFilterSwitchState(control, enabled) {
   control?.setAttribute("aria-checked", enabled ? "true" : "false");
+  const kind = control?.id === "passiveRadiatorLibraryFilterEnabled" ? "passive-radiator" : "driver";
+  window.dispatchEvent(new CustomEvent("cabio:library-filter-sync", { detail: { kind, enabled } }));
 }
 
 function isLibraryFilterSwitchEnabled(control) {
@@ -1420,8 +1274,9 @@ function isSwitchActivationKey(event) {
 
 async function toggleDriverLibraryFilters() {
   await ensureDriverLibraryLoaded();
-  const enabled = !isLibraryFilterSwitchEnabled(driverLibraryFilterEnabled);
-  setLibraryFilterSwitchState(driverLibraryFilterEnabled, enabled);
+  const { filterEnabled } = getLibraryControls("driver");
+  const enabled = !isLibraryFilterSwitchEnabled(filterEnabled);
+  setLibraryFilterSwitchState(filterEnabled, enabled);
   libraryControlPrefs.driverFilterEnabled = enabled;
   saveLibraryControlPrefs();
   updateLibraryFilterControlState("driver");
@@ -1430,8 +1285,9 @@ async function toggleDriverLibraryFilters() {
 
 async function togglePassiveRadiatorLibraryFilters() {
   await ensurePassiveRadiatorLibraryLoaded();
-  const enabled = !isLibraryFilterSwitchEnabled(passiveRadiatorLibraryFilterEnabled);
-  setLibraryFilterSwitchState(passiveRadiatorLibraryFilterEnabled, enabled);
+  const { filterEnabled } = getLibraryControls("passiveRadiator");
+  const enabled = !isLibraryFilterSwitchEnabled(filterEnabled);
+  setLibraryFilterSwitchState(filterEnabled, enabled);
   libraryControlPrefs.passiveRadiatorFilterEnabled = enabled;
   saveLibraryControlPrefs();
   updateLibraryFilterControlState("passiveRadiator");
@@ -1439,12 +1295,9 @@ async function togglePassiveRadiatorLibraryFilters() {
 }
 
 function updateLibraryFilterControlState(kind) {
-  const enabledInput = kind === "passiveRadiator" ? passiveRadiatorLibraryFilterEnabled : driverLibraryFilterEnabled;
-  const controls = kind === "passiveRadiator"
-    ? [passiveRadiatorLibraryBrand, passiveRadiatorLibraryDiameter]
-    : [driverLibraryBrand, driverLibraryDiameter];
-  const enabled = isLibraryFilterSwitchEnabled(enabledInput);
-  controls.forEach((control) => {
+  const controls = getLibraryControls(kind);
+  const enabled = isLibraryFilterSwitchEnabled(controls.filterEnabled);
+  [controls.brand, controls.diameter].forEach((control) => {
     if (control) control.disabled = !enabled;
   });
 }
@@ -1462,11 +1315,6 @@ function isMobileLayout() {
 function initializePillTransitions() {
   pillTabGroups.forEach((group) => {
     group.classList.add("pill-track");
-    if (group.querySelector(":scope > .pill-indicator")) return;
-    const indicator = document.createElement("span");
-    indicator.className = "pill-indicator";
-    indicator.setAttribute("aria-hidden", "true");
-    group.prepend(indicator);
   });
   window.addEventListener("resize", updatePillIndicatorsSoon);
 }
@@ -1509,13 +1357,9 @@ function updatePillIndicators() {
 
 function bindEvents() {
   fields.forEach((field) => {
+    if (field.dataset.svelteField === "true") return;
     field.addEventListener("input", () => {
-      if (isNumericInput(field) && !Number.isFinite(inputToBaseValue(field))) return;
-      const nextState = cloneProject(state);
-      const fieldPath = getFieldPath(field);
-      applyEditableValue(nextState, fieldPath, inputToBaseValue(field));
-      if (fieldPath.startsWith("box.")) syncActiveDesignFromProject(nextState);
-      commitState(nextState, { hydrate: shouldHydrateAfterFieldEdit(field, fieldPath) });
+      commitEditableField(field);
     });
     if (isNumericInput(field)) {
       field.addEventListener("blur", () => hydrateField(field));
@@ -1523,229 +1367,28 @@ function bindEvents() {
   });
 
   rangeFields.forEach((field) => {
+    if (field.dataset.svelteRange === "true") return;
     field.addEventListener("input", () => {
-      const nextState = cloneProject(state);
-      const fieldPath = getRangeFieldPath(field);
-      applyEditableValue(nextState, fieldPath, rangeInputToBaseValue(field));
-      if (fieldPath.startsWith("box.")) syncActiveDesignFromProject(nextState);
-      commitState(nextState, { hydrate: true, replaceHistory: true });
+      commitRangeField(field);
     });
   });
 
-  modeButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      if (state.mode === button.dataset.mode) return;
-      const nextState = cloneProject(state);
-      nextState.mode = button.dataset.mode;
-      if (nextState.mode === "bandpass") updateBandpassPortLengths(nextState);
-      syncActiveDesignFromProject(nextState);
-      commitState(nextState, { animatePlots: true });
-      if (activeSidebarPanelId() === "planning") applyWorkModeView("planning");
-    });
+  window.addEventListener("cabio:box-mode-change", (event) => {
+    setBoxMode(event.detail?.mode);
   });
 
-  newConfigButton.addEventListener("click", createDesignFromCurrentProject);
-  newConfigGroupButton.addEventListener("click", createConfigGroup);
-  mobileNewConfigButton?.addEventListener("click", () => {
-    createDesignFromCurrentProject();
-    if (configAddMenu) configAddMenu.open = false;
-  });
-  mobileNewConfigGroupButton?.addEventListener("click", () => {
-    createConfigGroup();
-    if (configAddMenu) configAddMenu.open = false;
-  });
-  addDriverGroupButton?.addEventListener("click", addDriverGroup);
+  window.addEventListener("cabio:config-bar-request", () => renderConfigBar());
+  window.addEventListener("cabio:config-action", handleConfigAction);
+  window.addEventListener("cabio:driver-group-action", handleDriverGroupAction);
 
-  driverSelect.addEventListener("pointerdown", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverSelect.addEventListener("focus", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverSelect.addEventListener("change", async () => {
-    await ensureDriverLibraryLoaded();
-    const selected = driverLibrary.find((driver) => driver.id === driverSelect.value);
-    if (!selected) return;
-    applyKnownDriver(selected);
-  });
-  driverLibraryFilter?.addEventListener("focus", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverLibraryFilter?.addEventListener("input", async () => {
-    await ensureDriverLibraryLoaded();
-    renderDriverSelect();
-  });
-  driverLibrarySort?.addEventListener("focus", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverLibrarySort?.addEventListener("change", async () => {
-    await ensureDriverLibraryLoaded();
-    libraryControlPrefs.driverSort = driverLibrarySort.value;
-    saveLibraryControlPrefs();
-    renderDriverSelect();
-  });
-  driverLibraryFilterEnabled?.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleDriverLibraryFilters();
-  });
-  driverLibraryFilterEnabled?.addEventListener("keydown", (event) => {
-    if (!isSwitchActivationKey(event)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    toggleDriverLibraryFilters();
-  });
-  driverLibraryBrand?.addEventListener("focus", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverLibraryBrand?.addEventListener("change", async () => {
-    await ensureDriverLibraryLoaded();
-    libraryControlPrefs.driverBrand = driverLibraryBrand.value;
-    saveLibraryControlPrefs();
-    renderDriverSelect();
-  });
-  driverLibraryDiameter?.addEventListener("focus", () => {
-    void ensureDriverLibraryLoaded();
-  });
-  driverLibraryDiameter?.addEventListener("change", async () => {
-    await ensureDriverLibraryLoaded();
-    libraryControlPrefs.driverDiameter = driverLibraryDiameter.value;
-    saveLibraryControlPrefs();
-    renderDriverSelect();
-  });
-
-  passiveRadiatorSelect.addEventListener("pointerdown", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorSelect.addEventListener("focus", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorSelect.addEventListener("change", async () => {
-    await ensurePassiveRadiatorLibraryLoaded();
-    const selected = passiveRadiatorLibrary.find((passiveRadiator) => passiveRadiator.id === passiveRadiatorSelect.value);
-    if (!selected) return;
-    applyKnownPassiveRadiator(selected);
-  });
-  passiveRadiatorLibraryFilter?.addEventListener("focus", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorLibraryFilter?.addEventListener("input", async () => {
-    await ensurePassiveRadiatorLibraryLoaded();
-    renderPassiveRadiatorSelect();
-  });
-  passiveRadiatorLibrarySort?.addEventListener("focus", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorLibrarySort?.addEventListener("change", async () => {
-    await ensurePassiveRadiatorLibraryLoaded();
-    libraryControlPrefs.passiveRadiatorSort = passiveRadiatorLibrarySort.value;
-    saveLibraryControlPrefs();
-    renderPassiveRadiatorSelect();
-  });
-  passiveRadiatorLibraryFilterEnabled?.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    togglePassiveRadiatorLibraryFilters();
-  });
-  passiveRadiatorLibraryFilterEnabled?.addEventListener("keydown", (event) => {
-    if (!isSwitchActivationKey(event)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    togglePassiveRadiatorLibraryFilters();
-  });
-  passiveRadiatorLibraryBrand?.addEventListener("focus", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorLibraryBrand?.addEventListener("change", async () => {
-    await ensurePassiveRadiatorLibraryLoaded();
-    libraryControlPrefs.passiveRadiatorBrand = passiveRadiatorLibraryBrand.value;
-    saveLibraryControlPrefs();
-    renderPassiveRadiatorSelect();
-  });
-  passiveRadiatorLibraryDiameter?.addEventListener("focus", () => {
-    void ensurePassiveRadiatorLibraryLoaded();
-  });
-  passiveRadiatorLibraryDiameter?.addEventListener("change", async () => {
-    await ensurePassiveRadiatorLibraryLoaded();
-    libraryControlPrefs.passiveRadiatorDiameter = passiveRadiatorLibraryDiameter.value;
-    saveLibraryControlPrefs();
-    renderPassiveRadiatorSelect();
-  });
-
-  driverSearchButton.addEventListener("click", searchDriverSpecs);
-  passiveRadiatorSearchButton?.addEventListener("click", searchPassiveRadiatorSpecs);
-  crossoverGroupSelect?.addEventListener("change", () => {
-    setActiveCrossoverGroupId(crossoverGroupSelect.value);
-    renderCrossoverControls();
-  });
-  signalFilterAddButton?.addEventListener("click", () => addSignalFilter(signalFilterTypeSelect?.value || "parametric"));
-  signalFilterTypeSelect?.addEventListener("change", () => updateSignalFilterAddButton());
-  driverSearchInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      searchDriverSpecs();
-    }
-  });
-  passiveRadiatorSearchInput?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      searchPassiveRadiatorSpecs();
-    }
-  });
-
-  importExportButton.addEventListener("click", openImportExportDialog);
-  fileOpenButton?.addEventListener("click", () => {
-    fileOpenButton.closest("details")?.removeAttribute("open");
-    openImportExportDialog();
-  });
-  fileSaveButton?.addEventListener("click", () => {
-    fileSaveButton.closest("details")?.removeAttribute("open");
-    exportProjectJson();
-  });
-
-  closeImportExportDialog.addEventListener("click", () => {
-    importExportDialog.close();
-  });
-
-  exportButton?.addEventListener("click", exportProjectJson);
-
-  importJsonButton.addEventListener("click", () => {
-    importProjectJson(projectJson.value);
-  });
-
-  importInput?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    importProjectJson(await file.text());
-    event.target.value = "";
-  });
-
-  frequencyResponseInput?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await importFrequencyResponseFile(file);
-    event.target.value = "";
-  });
-  recordingAddButton?.addEventListener("click", () => recordFrequencyResponse());
-  recordingTestToneButton?.addEventListener("click", () => playRecordingTestTone());
-  recordingSaveRunButton?.addEventListener("click", () => saveStagedRecording());
-  recordingRunNameInput?.addEventListener("input", syncStagedRecordingRunFields);
-  recordingRunAngleInput?.addEventListener("input", syncStagedRecordingRunFields);
-  [
-    recordingMicrophoneSelect,
-    recordingOutputSelect,
-    recordingSignalSelect,
-    recordingFrequencyStartInput,
-    recordingFrequencyEndInput,
-    recordingLevelInput,
-    recordingDurationInput,
-    recordingAveragingInput,
-    recordingSampleRateSelect,
-  ].forEach((control) => {
-    control?.addEventListener("change", updateRecordingSettingsFromControls);
-  });
-  recordingMicrophoneSelect?.addEventListener("pointerdown", () => hydrateRecordingDeviceOptions());
-  recordingOutputSelect?.addEventListener("pointerdown", () => hydrateRecordingDeviceOptions());
+  window.addEventListener("cabio:library-action", handleLibraryAction);
+  window.addEventListener("cabio:crossover-control-action", handleCrossoverControlAction);
+  window.addEventListener("cabio:project-action", handleProjectAction);
+  window.addEventListener("cabio:field-action", handleFieldAction);
+  window.addEventListener("cabio:driver-health-action", handleDriverHealthAction);
+  window.addEventListener("cabio:plot-toolbar-action", handlePlotToolbarAction);
+  window.addEventListener("cabio:measurement-action", handleMeasurementAction);
+  window.addEventListener("cabio:recording-action", handleRecordingAction);
   navigator.mediaDevices?.addEventListener?.("devicechange", () => hydrateRecordingDeviceOptions());
 
   window.addEventListener("popstate", (event) => {
@@ -1823,45 +1466,11 @@ function initializeUnitControls() {
     const units = UNIT_GROUPS[field.dataset.unitType];
     if (!units) return;
     const fieldPath = getFieldPath(field);
-    ensureFieldValueGroup(field);
-    if (units.length < 2) {
-      const unitLabel = document.createElement("span");
-      unitLabel.className = "unit-fixed";
-      unitLabel.textContent = units[0].label;
-      field.insertAdjacentElement("afterend", unitLabel);
-      applyFieldStep(field);
-      return;
-    }
-    const select = document.createElement("select");
-    select.className = "unit-select";
-    select.dataset.unitFor = fieldPath;
-    units.forEach((unit) => {
-      const option = document.createElement("option");
-      option.value = unit.id;
-      option.textContent = unit.label;
-      select.append(option);
-    });
-    select.value = unitPrefs[fieldPath] || units[0].id;
-    field.insertAdjacentElement("afterend", select);
+    window.dispatchEvent(new CustomEvent("cabio:unit-select-sync", {
+      detail: { fieldPath, unitId: unitPrefs[fieldPath] || units[0].id },
+    }));
     applyFieldStep(field);
-    select.addEventListener("change", () => {
-      unitPrefs[fieldPath] = select.value;
-      writeJsonStorage(UNIT_PREF_STORAGE_KEY, unitPrefs);
-      applyFieldStep(field);
-      hydrateField(field);
-    });
   });
-}
-
-function ensureFieldValueGroup(field) {
-  if (field.parentElement?.classList.contains("field-value-group")) return field.parentElement;
-  if (!field.parentElement?.classList.contains("field-card")) return field.parentElement;
-
-  const valueGroup = document.createElement("span");
-  valueGroup.className = "field-value-group";
-  field.insertAdjacentElement("beforebegin", valueGroup);
-  valueGroup.append(field);
-  return valueGroup;
 }
 
 function initializePortLockControls() {
@@ -1880,33 +1489,9 @@ function setPortLockField(fieldPath) {
 }
 
 function hydratePortLockButtons() {
-  document.querySelectorAll("[data-port-lock-field]").forEach((button) => {
-    const locked = button.dataset.portLockField === portLockField;
-    button.classList.toggle("locked", locked);
-    button.ariaPressed = String(locked);
-    button.ariaLabel = `${locked ? "Locked" : "Unlocked"} ${portFieldName(button.dataset.portLockField)}`;
-    button.title = `${portFieldName(button.dataset.portLockField)} ${locked ? "locked" : "unlocked"}`;
-    button.replaceChildren(createPortLockIcon(locked));
-  });
-}
-
-function portFieldName(fieldPath) {
-  if (fieldPath === "box.fb") return "Target Fb";
-  if (fieldPath === "box.portCount") return "Port count";
-  if (fieldPath === "box.portShape") return "Port shape";
-  if (fieldPath === "box.portDiameterCm") return "Port diameter";
-  if (fieldPath === "box.portWidthCm") return "Port width";
-  if (fieldPath === "box.portHeightCm") return "Port height";
-  if (fieldPath === "box.portLengthCm") return "Port length";
-  if (fieldPath === "box.bandpass.frontFb") return "Front Fb";
-  if (fieldPath === "box.bandpass.frontPortCount") return "Front port count";
-  if (fieldPath === "box.bandpass.frontPortDiameterCm") return "Front port diameter";
-  if (fieldPath === "box.bandpass.frontPortLengthCm") return "Front port length";
-  if (fieldPath === "box.bandpass.rearFb") return "Rear Fb";
-  if (fieldPath === "box.bandpass.rearPortCount") return "Rear port count";
-  if (fieldPath === "box.bandpass.rearPortDiameterCm") return "Rear port diameter";
-  if (fieldPath === "box.bandpass.rearPortLengthCm") return "Rear port length";
-  return fieldPath;
+  window.dispatchEvent(new CustomEvent("cabio:port-lock-sync", {
+    detail: { fieldPath: portLockField },
+  }));
 }
 
 function readPortLockField() {
@@ -1981,6 +1566,331 @@ function getFieldPath(field) {
 
 function getRangeFieldPath(field) {
   return field.dataset.rangeField || field.dataset.derivedRangeField;
+}
+
+function commitEditableField(field) {
+  if (!field) return;
+  if (isNumericInput(field) && !Number.isFinite(inputToBaseValue(field))) return;
+  const nextState = cloneProject(state);
+  const fieldPath = getFieldPath(field);
+  applyEditableValue(nextState, fieldPath, inputToBaseValue(field));
+  if (fieldPath.startsWith("box.")) syncActiveDesignFromProject(nextState);
+  commitState(nextState, { hydrate: shouldHydrateAfterFieldEdit(field, fieldPath) });
+}
+
+function commitRangeField(field) {
+  if (!field) return;
+  const nextState = cloneProject(state);
+  const fieldPath = getRangeFieldPath(field);
+  applyEditableValue(nextState, fieldPath, rangeInputToBaseValue(field));
+  if (fieldPath.startsWith("box.")) syncActiveDesignFromProject(nextState);
+  commitState(nextState, { hydrate: true, replaceHistory: true });
+}
+
+function handleFieldAction(event) {
+  const action = event.detail?.action;
+  if (action === "unit-change") {
+    const fieldPath = event.detail?.field || event.detail?.derivedField;
+    const field = event.detail?.inputElement
+      || (fieldPath ? document.querySelector(`[data-field="${cssEscape(fieldPath)}"], [data-derived-field="${cssEscape(fieldPath)}"]`) : null);
+    const unitSelect = event.detail?.element;
+    if (!fieldPath || !unitSelect) return;
+    unitPrefs[fieldPath] = unitSelect.value;
+    writeJsonStorage(UNIT_PREF_STORAGE_KEY, unitPrefs);
+    if (field) {
+      applyFieldStep(field);
+      hydrateField(field);
+    }
+    return;
+  }
+  if (action === "toggle-port-lock") {
+    if (event.detail?.field) setPortLockField(event.detail.field);
+    return;
+  }
+  if (action === "editable-field-input") {
+    commitEditableField(event.detail.element);
+    return;
+  }
+  if (action === "editable-field-blur") {
+    if (isNumericInput(event.detail.element)) hydrateField(event.detail.element);
+    return;
+  }
+  if (action === "range-field-input") {
+    commitRangeField(event.detail.element);
+    return;
+  }
+  if (action === "recording-settings-change") {
+    updateRecordingSettingsFromControls();
+    return;
+  }
+  if (action === "hydrate-recording-devices") hydrateRecordingDeviceOptions();
+}
+
+function handleDriverHealthAction(event) {
+  const detail = event.detail || {};
+  if (detail.action !== "fill-derived") return;
+  if (!detail.fieldPath || !Number.isFinite(Number(detail.value))) return;
+  applyDerivedDriverParameter(detail.fieldPath, Number(detail.value));
+}
+
+function handlePlotToolbarAction(event) {
+  const detail = event.detail || {};
+  if (detail.action === "reset-panel") {
+    resetGraphPanelView(detail.panelId);
+    return;
+  }
+  if (detail.action === "replace-panel") {
+    replaceGraphPanel(detail.panelId, detail.nextPanelId);
+    return;
+  }
+  if (detail.action === "axis-input") {
+    queuePlotAxisInput(detail.plotId, detail.key, detail.element);
+    return;
+  }
+  if (detail.action === "axis-change") {
+    plotViewController.commitPlotAxisInput(detail.plotId, detail.key, detail.element);
+    return;
+  }
+  if (detail.action === "axis-mode") setPlotAxisMode(detail.plotId, detail.mode);
+}
+
+function handleCrossoverControlAction(event) {
+  const action = event.detail?.action;
+  if (action === "select-group") {
+    setActiveCrossoverGroupId(event.detail.groupId || "");
+    renderCrossoverControls();
+    return;
+  }
+  if (action === "select-member") {
+    activateDesign(event.detail.designId);
+    return;
+  }
+  if (action === "add-filter") {
+    addSignalFilter(signalFilterTypeSelect?.value || "parametric");
+    return;
+  }
+  if (action === "select-filter-type") updateSignalFilterAddButton();
+}
+
+function handleRecordingAction(event) {
+  const action = event.detail?.action;
+  if (action === "sync-run-fields") {
+    syncStagedRecordingRunFields();
+    return;
+  }
+  if (action === "record") {
+    recordFrequencyResponse();
+    return;
+  }
+  if (action === "test-tone") {
+    playRecordingTestTone();
+    return;
+  }
+  if (action === "save-run") saveStagedRecording();
+}
+
+async function handleMeasurementAction(event) {
+  const action = event.detail?.action;
+  if (action === "import-frequency-response" && event.detail.file) {
+    await importFrequencyResponseFile(event.detail.file);
+  }
+}
+
+async function handleLibraryAction(event) {
+  const action = event.detail?.action;
+  if (action === "ensure-driver-library") {
+    await ensureDriverLibraryLoaded();
+    return;
+  }
+  if (action === "select-driver") {
+    await ensureDriverLibraryLoaded();
+    const selected = driverLibrary.find((driver) => driver.id === driverSelect.value);
+    if (selected) applyKnownDriver(selected);
+    return;
+  }
+  if (action === "driver-filter-input") {
+    await ensureDriverLibraryLoaded();
+    renderDriverSelect();
+    return;
+  }
+  if (action === "driver-brand-change") {
+    await ensureDriverLibraryLoaded();
+    libraryControlPrefs.driverBrand = getLibraryControls("driver").brand?.value || "";
+    saveLibraryControlPrefs();
+    renderDriverSelect();
+    return;
+  }
+  if (action === "driver-diameter-change") {
+    await ensureDriverLibraryLoaded();
+    libraryControlPrefs.driverDiameter = getLibraryControls("driver").diameter?.value || "";
+    saveLibraryControlPrefs();
+    renderDriverSelect();
+    return;
+  }
+  if (action === "ensure-passive-radiator-library") {
+    await ensurePassiveRadiatorLibraryLoaded();
+    return;
+  }
+  if (action === "select-passive-radiator") {
+    await ensurePassiveRadiatorLibraryLoaded();
+    const selected = passiveRadiatorLibrary.find((passiveRadiator) => passiveRadiator.id === passiveRadiatorSelect.value);
+    if (selected) applyKnownPassiveRadiator(selected);
+    return;
+  }
+  if (action === "passive-radiator-brand-change") {
+    await ensurePassiveRadiatorLibraryLoaded();
+    libraryControlPrefs.passiveRadiatorBrand = getLibraryControls("passiveRadiator").brand?.value || "";
+    saveLibraryControlPrefs();
+    renderPassiveRadiatorSelect();
+    return;
+  }
+  if (action === "passive-radiator-diameter-change") {
+    await ensurePassiveRadiatorLibraryLoaded();
+    libraryControlPrefs.passiveRadiatorDiameter = getLibraryControls("passiveRadiator").diameter?.value || "";
+    saveLibraryControlPrefs();
+    renderPassiveRadiatorSelect();
+    return;
+  }
+  if (action === "toggle-driver-filters") {
+    await toggleDriverLibraryFilters();
+    return;
+  }
+  if (action === "toggle-passive-radiator-filters") {
+    await togglePassiveRadiatorLibraryFilters();
+    return;
+  }
+  if (action === "driver-search") {
+    searchDriverSpecs();
+    return;
+  }
+  if (action === "passive-radiator-search") {
+    searchPassiveRadiatorSpecs();
+  }
+}
+
+function handleConfigAction(event) {
+  const action = event.detail?.action;
+  if (action === "new-config") {
+    createDesignFromCurrentProject();
+    return;
+  }
+  if (action === "new-group") {
+    createConfigGroup();
+    return;
+  }
+  if (action === "activate-design") {
+    activateDesign(event.detail.designId);
+    return;
+  }
+  if (action === "rename-group") {
+    updateConfigGroup(event.detail.groupId, { name: event.detail.value.trim() || event.detail.fallback || "Config group" });
+    return;
+  }
+  if (action === "toggle-group-combined") {
+    updateConfigGroup(event.detail.groupId, { showCombined: event.detail.showCombined === true });
+    return;
+  }
+  if (action === "delete-group") {
+    deleteConfigGroup(event.detail.groupId);
+    return;
+  }
+  if (action === "set-design-visible") {
+    setDesignVisibility(event.detail.designId, event.detail.visible === true);
+    return;
+  }
+  if (action === "set-design-graph-visible") {
+    setDesignGraphVisibility(event.detail.designId, event.detail.visible === true);
+    return;
+  }
+  if (action === "rename-active-design") {
+    renameActiveDesign(event.detail.value || "");
+    return;
+  }
+  if (action === "assign-design-group") {
+    assignDesignToConfigGroup(event.detail.designId, event.detail.groupId);
+    return;
+  }
+  if (action === "set-design-color") {
+    setDesignColor(event.detail.designId, event.detail.color || "");
+    return;
+  }
+  if (action === "duplicate-design") {
+    duplicateDesign(event.detail.designId);
+    return;
+  }
+  if (action === "delete-design") {
+    deleteDesign(event.detail.designId);
+  }
+}
+
+function handleDriverGroupAction(event) {
+  const action = event.detail?.action;
+  const groupId = event.detail?.groupId;
+  if (action === "add") {
+    addDriverGroup();
+    return;
+  }
+  if (action === "activate") {
+    activateDriverGroup(groupId);
+    return;
+  }
+  if (action === "duplicate") {
+    duplicateDriverGroup(groupId);
+    return;
+  }
+  if (action === "remove") {
+    deleteDriverGroup(groupId);
+    return;
+  }
+  if (action === "update-name") {
+    updateDriverGroup(groupId, { name: event.detail.value.trim() || event.detail.fallback || "Driver group" });
+    return;
+  }
+  if (action === "select-driver") {
+    updateDriverGroupDriver(groupId, event.detail.driverId);
+    return;
+  }
+  if (action === "update-count") {
+    const value = Number(event.detail.value);
+    if (Number.isFinite(value)) updateDriverGroup(groupId, { count: value });
+    return;
+  }
+  if (action === "update-wiring") {
+    updateDriverGroup(groupId, { wiring: event.detail.value === "series" ? "series" : "parallel" });
+  }
+}
+
+function handleProjectAction(event) {
+  const action = event.detail?.action;
+  if (action === "open-import-export") {
+    openImportExportDialog();
+    return;
+  }
+  if (action === "close-import-export") {
+    importExportDialog.close();
+    return;
+  }
+  if (action === "export-project") {
+    exportProjectJson();
+    return;
+  }
+  if (action === "apply-project-json") {
+    importProjectJson(projectJson.value);
+    return;
+  }
+  if (action === "import-project-file" && event.detail.file) {
+    event.detail.file.text().then(importProjectJson);
+  }
+}
+
+function setBoxMode(mode) {
+  if (!mode || state.mode === mode) return;
+  const nextState = cloneProject(state);
+  nextState.mode = mode;
+  if (nextState.mode === "bandpass") updateBandpassPortLengths(nextState);
+  syncActiveDesignFromProject(nextState);
+  commitState(nextState, { animatePlots: true });
+  if (activeSidebarPanelId() === "planning") applyWorkModeView("planning");
 }
 
 function isLogRangeField(field) {
@@ -2538,7 +2448,7 @@ function updateDriverGroup(groupId, patch) {
 function updateDriverGroupDriver(groupId, driverId) {
   const selected = driverLibrary.find((driver) => driver.id === driverId);
   if (!selected) return;
-  updateDriverGroup(groupId, { driver: completeDriverParameters(sampleProject.driver, selected.driver) });
+  updateDriverGroup(groupId, { driver: driverParametersFromLibraryEntry(selected) });
 }
 
 function renderDesignControls() {
@@ -2546,15 +2456,9 @@ function renderDesignControls() {
 }
 
 function hydrateDesignControls() {
-  renderConfigGroups();
   renderConfigBar();
   renderDriverGroups();
   renderCrossoverControls();
-}
-
-function renderConfigGroups() {
-  configGroupList.replaceChildren();
-  configGroupList.hidden = true;
 }
 
 function recordingSettings() {
@@ -2596,7 +2500,7 @@ function hydrateRecordingControls() {
   if (recordingRunAngleInput && document.activeElement !== recordingRunAngleInput) {
     recordingRunAngleInput.value = String(stagedRecordingResponse?.angleDeg ?? currentRecordingRun?.angleDeg ?? 0);
   }
-  if (recordingLevelReadout) recordingLevelReadout.textContent = recordingInProgress ? "Live" : "Ready";
+  setUiText(recordingLevelReadout, recordingInProgress ? "Live" : "Ready");
   initializeRecordingSpectrogram();
   [recordingAddButton, recordingTestToneButton].forEach((button) => {
     if (button) button.disabled = recordingInProgress;
@@ -2652,7 +2556,6 @@ async function hydrateRecordingDeviceOptions(options = {}) {
 }
 
 function setRecordingDeviceOptions(select, options, selectedValue) {
-  if (!select) return;
   const activeValue = selectedValue || "default";
   const seen = new Set();
   const uniqueOptions = options.filter((option) => {
@@ -2663,9 +2566,13 @@ function setRecordingDeviceOptions(select, options, selectedValue) {
   if (!seen.has(activeValue)) {
     uniqueOptions.push({ value: activeValue, label: activeValue === "default" ? "System default" : "Selected device" });
   }
-  select.replaceChildren();
-  uniqueOptions.forEach((option) => select.append(new Option(option.label, option.value)));
-  select.value = activeValue;
+  window.dispatchEvent(new CustomEvent("cabio:select-options-sync", {
+    detail: {
+      id: select?.id,
+      options: uniqueOptions,
+      selectedValue: activeValue,
+    },
+  }));
 }
 
 async function playRecordingTestTone() {
@@ -2835,12 +2742,10 @@ function ensureRecordingGroup(project) {
 
 function recordingAnalysisFrequencies(settings) {
   const start = Math.max(1, Number(settings.frequencyStartHz) || FREQUENCY_MIN_HZ);
-  const end = Math.max(start * 1.01, Number(settings.frequencyEndHz) || FREQUENCY_MAX_HZ);
-  const selected = frequencies
-    .filter((frequency) => frequency >= start && frequency <= end)
-    .filter((frequency, index) => index % 4 === 0 || frequency === end);
-  if (selected.length >= 2) return selected;
-  return logFrequencyVector(start, Math.min(end, settings.sampleRate * 0.45), 120);
+  const sampleRateLimit = Math.max(start * 1.01, Number(settings.sampleRate) * 0.45 || FREQUENCY_MAX_HZ);
+  const requestedEnd = Math.max(start * 1.01, Number(settings.frequencyEndHz) || FREQUENCY_MAX_HZ);
+  const end = Math.min(requestedEnd, sampleRateLimit);
+  return logFrequencyVector(start, end, RECORDING_ANALYSIS_FREQUENCY_POINTS);
 }
 
 async function openRecordingStream(settings) {
@@ -2983,7 +2888,7 @@ function updateRecordingSpectrogramFromSamples(samples, sampleRate = 48000) {
     recordingMeterBar.style.width = `${Math.max(2, width).toFixed(0)}%`;
   }
   drawRecordingSpectrogramColumn(samples, sampleRate);
-  if (recordingPeakReadout) recordingPeakReadout.textContent = `Peak ${peakDb.toFixed(1)} dBFS`;
+  setUiText(recordingPeakReadout, `Peak ${peakDb.toFixed(1)} dBFS`);
 }
 
 function initializeRecordingSpectrogram() {
@@ -3027,7 +2932,7 @@ function resetRecordingSpectrogram() {
   recordingSpectrogramInitialized = false;
   initializeRecordingSpectrogram();
   if (recordingMeterBar) recordingMeterBar.style.width = "0";
-  if (recordingPeakReadout) recordingPeakReadout.textContent = "Peak -inf dBFS";
+  setUiText(recordingPeakReadout, "Peak -inf dBFS");
 }
 
 function drawRecordingSpectrogramColumn(samples, sampleRate) {
@@ -3100,8 +3005,8 @@ function selectedOptionLabel(select, fallbackValue) {
 }
 
 function setRecordingStatus(message) {
-  if (recordingStatus) recordingStatus.textContent = message;
-  if (measurementStatus) measurementStatus.textContent = message;
+  setUiText(recordingStatus, message);
+  setUiText(measurementStatus, message);
 }
 
 function concatenateFloat32(chunks) {
@@ -3156,7 +3061,7 @@ function saveStagedRecording() {
   stagedRecordingResponse = null;
   currentRecordingRun = null;
   commitState(nextState, { animatePlots: true });
-  if (recordingStatus) recordingStatus.textContent = "";
+  setUiText(recordingStatus, "");
   hydrateRecordingControls();
 }
 
@@ -3167,15 +3072,17 @@ function discardStagedRecording() {
   currentRecordingRun = null;
   render({ animatePlots: true });
   hydrateRecordingControls();
-  if (measurementStatus) measurementStatus.textContent = `Discarded staged recording: ${name}.`;
+  setUiText(measurementStatus, `Discarded staged recording: ${name}.`);
 }
 
 function generatedRecordingPoints(settings, seed = 0) {
-  return frequencies
-    .filter((frequency) => frequency >= settings.frequencyStartHz && frequency <= settings.frequencyEndHz)
-    .filter((frequency, index, list) => index % 7 === 0 || frequency === list[list.length - 1])
+  const start = Math.max(1, Number(settings.frequencyStartHz) || FREQUENCY_MIN_HZ);
+  const sampleRateLimit = Math.max(start * 1.01, Number(settings.sampleRate) * 0.45 || FREQUENCY_MAX_HZ);
+  const requestedEnd = Math.max(start * 1.01, Number(settings.frequencyEndHz) || FREQUENCY_MAX_HZ);
+  const end = Math.min(requestedEnd, sampleRateLimit);
+  return logFrequencyVector(start, end, RECORDING_PREVIEW_FREQUENCY_POINTS)
     .map((frequency, index) => {
-      const logPosition = Math.log10(frequency / settings.frequencyStartHz) / Math.log10(settings.frequencyEndHz / settings.frequencyStartHz);
+      const logPosition = Math.log10(frequency / start) / Math.log10(end / start);
       const sweepTilt = settings.signal === "sweep" ? -5.5 * logPosition : -1.8 * Math.sin(logPosition * Math.PI);
       const roomRipple = 2.2 * Math.sin(Math.log2(frequency / 120) * Math.PI + seed * 0.7);
       const averagedRipple = roomRipple / Math.sqrt(Math.max(settings.repetitions || settings.averaging, 1));
@@ -3185,18 +3092,6 @@ function generatedRecordingPoints(settings, seed = 0) {
         magnitudeDb: settings.levelDb + sweepTilt + averagedRipple + sourceOffset + 0.15 * Math.sin(index + seed),
       };
     });
-}
-
-function measurementValue(label, value, key = "") {
-  const item = document.createElement("div");
-  item.className = "search-result-value";
-  const labelElement = document.createElement("span");
-  labelElement.textContent = label;
-  const valueElement = document.createElement("strong");
-  if (key) valueElement.dataset.measurementValue = key;
-  valueElement.textContent = value;
-  item.append(labelElement, valueElement);
-  return item;
 }
 
 function measurementTargetOptions() {
@@ -3217,13 +3112,11 @@ function defaultMeasurementTarget() {
 }
 
 function hydrateMeasurementTargetOptions(select, value = "") {
-  if (!select) return;
   const options = measurementTargetOptions();
-  select.replaceChildren();
-  options.forEach((option) => select.append(new Option(option.label, option.value)));
   const resolved = options.some((option) => option.value === value) ? value : defaultMeasurementTarget();
-  select.value = resolved;
-  setTooltip(select, "Choose whether this measurement belongs to one config or one config group.");
+  window.dispatchEvent(new CustomEvent("cabio:measurement-target-options-sync", {
+    detail: { options, selectedValue: resolved },
+  }));
 }
 
 function hydrateMeasurementTargetSelect() {
@@ -3280,120 +3173,19 @@ function formatFrequencyValue(value) {
 }
 
 function renderDriverGroups() {
-  if (!driverGroupList) return;
-  driverGroupList.replaceChildren();
-  state.driverGroups.forEach((group) => {
-    const card = document.createElement("article");
-    card.className = "driver-group-card";
-    card.classList.toggle("active", group.id === state.activeDriverGroupId);
-    card.addEventListener("click", () => activateDriverGroup(group.id));
-    setTooltip(card, "Select this driver group for editing.");
-
-    const header = document.createElement("div");
-    header.className = "driver-group-card-header";
-
-    const name = document.createElement("input");
-    name.type = "text";
-    name.value = group.name;
-    name.ariaLabel = "Driver group name";
-    setTooltip(name, "Name this driver group.");
-    name.addEventListener("click", (event) => event.stopPropagation());
-    name.addEventListener("change", () => updateDriverGroup(group.id, { name: name.value.trim() || group.name }));
-
-    const actions = document.createElement("div");
-    actions.className = "driver-group-actions";
-
-    const duplicate = document.createElement("button");
-    duplicate.type = "button";
-    duplicate.textContent = "+";
-    duplicate.ariaLabel = `Duplicate ${group.name}`;
-    setTooltip(duplicate, "Duplicate this driver group.");
-    duplicate.addEventListener("click", (event) => {
-      event.stopPropagation();
-      duplicateDriverGroup(group.id);
-    });
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "x";
-    remove.disabled = state.driverGroups.length <= 1;
-    remove.ariaLabel = `Remove ${group.name}`;
-    setTooltip(remove, "Remove this driver group.");
-    remove.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteDriverGroup(group.id);
-    });
-
-    actions.append(duplicate, remove);
-    header.append(name, actions);
-
-    const driverRow = document.createElement("label");
-    driverRow.className = "driver-group-row wide";
-    const driverLabel = document.createElement("span");
-    driverLabel.textContent = "Driver";
-    const driverPick = document.createElement("select");
-    driverPick.ariaLabel = `${group.name} driver`;
-    const customOption = document.createElement("option");
-    customOption.value = "";
-    customOption.textContent = "Custom group driver";
-    driverPick.append(customOption);
-    driverLibrary.forEach((entry) => {
-      const option = document.createElement("option");
-      option.value = entry.id;
-      option.textContent = entry.name;
-      driverPick.append(option);
-    });
-    const match = driverLibrary.find((entry) => driverMatches(group.driver, entry.driver));
-    driverPick.value = match?.id || "";
-    driverPick.addEventListener("click", (event) => event.stopPropagation());
-    driverPick.addEventListener("change", () => updateDriverGroupDriver(group.id, driverPick.value));
-    driverRow.append(driverLabel, driverPick);
-
-    const fields = document.createElement("div");
-    fields.className = "driver-group-fields";
-    fields.append(
-      driverGroupNumberField(group, "Count", "count", 1, 16, 1),
-      driverGroupSelectField(group),
-    );
-
-    card.append(header, driverRow, fields);
-    driverGroupList.append(card);
-  });
-}
-
-function driverGroupNumberField(group, labelText, key, min, max, step) {
-  const label = document.createElement("label");
-  label.className = "driver-group-row";
-  const span = document.createElement("span");
-  span.textContent = labelText;
-  const input = document.createElement("input");
-  input.type = "number";
-  enableDecimalTextInput(input);
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = group[key];
-  input.addEventListener("click", (event) => event.stopPropagation());
-  input.addEventListener("change", () => {
-    const value = parseNumericInputValue(input);
-    if (Number.isFinite(value)) updateDriverGroup(group.id, { [key]: value });
-  });
-  label.append(span, input);
-  return label;
-}
-
-function driverGroupSelectField(group) {
-  const label = document.createElement("label");
-  label.className = "driver-group-row";
-  const span = document.createElement("span");
-  span.textContent = "Wiring";
-  const select = document.createElement("select");
-  select.innerHTML = '<option value="parallel">Parallel</option><option value="series">Series</option>';
-  select.value = group.wiring;
-  select.addEventListener("click", (event) => event.stopPropagation());
-  select.addEventListener("change", () => updateDriverGroup(group.id, { wiring: select.value }));
-  label.append(span, select);
-  return label;
+  window.dispatchEvent(new CustomEvent("cabio:driver-groups-sync", {
+    detail: {
+      activeGroupId: state.activeDriverGroupId,
+      driverOptions: driverLibrary.map((entry) => ({ id: entry.id, name: entry.name })),
+      groups: state.driverGroups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        count: group.count,
+        wiring: group.wiring,
+        selectedDriverId: driverLibrary.find((entry) => driverMatches(group.driver, entry.driver))?.id || "",
+      })),
+    },
+  }));
 }
 
 function renameActiveDesign(rawName) {
@@ -3411,29 +3203,26 @@ function renameActiveDesign(rawName) {
 
 function openImportExportDialog() {
   projectJson.value = JSON.stringify(state, null, 2);
-  projectDialogStatus.textContent = "";
+  setUiText(projectDialogStatus, "");
   importExportDialog.showModal();
 }
 
 function exportProjectJson() {
   const text = JSON.stringify(state, null, 2);
   projectJson.value = text;
-  const blob = new Blob([text], { type: "application/json" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "audiosim-project.json";
-  link.click();
-  URL.revokeObjectURL(link.href);
+  window.dispatchEvent(new CustomEvent("cabio:project-download", {
+    detail: { text, filename: "audiosim-project.json" },
+  }));
 }
 
 function importProjectJson(text) {
   try {
     stagedRecordingResponse = null;
     commitState(normalizeProjectState(JSON.parse(text)), { hydrate: true });
-    projectDialogStatus.textContent = "";
+    setUiText(projectDialogStatus, "");
     importExportDialog.close();
   } catch (error) {
-    projectDialogStatus.textContent = "Could not import JSON. Check the project data and try again.";
+    setUiText(projectDialogStatus, "Could not import JSON. Check the project data and try again.");
     console.error(error);
   }
 }
@@ -3464,11 +3253,9 @@ async function importFrequencyResponseFile(file) {
     response.recordingGroupId = nextState.measurements.recordingGroups[0]?.id || response.recordingGroupId;
     nextState.measurements.frequencyResponses.push(response);
     commitState(nextState, { animatePlots: true });
-    if (measurementStatus) {
-      measurementStatus.textContent = `Imported ${response.points.length} points from ${source}.`;
-    }
+    setUiText(measurementStatus, `Imported ${response.points.length} points from ${source}.`);
   } catch (error) {
-    if (measurementStatus) measurementStatus.textContent = error.message || "Could not import frequency response.";
+    setUiText(measurementStatus, error.message || "Could not import frequency response.");
     console.error(error);
   }
 }
@@ -3499,12 +3286,10 @@ function addFrequencyResponseSearchCandidate(result) {
     nextState.measurements.frequencyResponses.push(response);
     commitState(nextState, { animatePlots: true });
     setActiveSidebarPanel("measurement");
-    if (measurementStatus) {
-      measurementStatus.textContent = `Added ${response.points.length} points from ${result.source || "web search"}.`;
-    }
-    driverSearchStatus.textContent = `${response.name} added to Measurement.`;
+    setUiText(measurementStatus, `Added ${response.points.length} points from ${result.source || "web search"}.`);
+    setUiText(driverSearchStatus, `${response.name} added to Measurement.`);
   } catch (error) {
-    driverSearchStatus.textContent = error.message || "Could not add frequency response.";
+    setUiText(driverSearchStatus, error.message || "Could not add frequency response.");
     console.error(error);
   }
 }
@@ -3601,7 +3386,7 @@ function addFrequencyResponseSearchResultsToMeasurements(results = [], query = "
         : reassigned
           ? `${reassigned} existing frequency response ${reassigned === 1 ? "entry" : "entries"} moved into a new recording group from ${sourceLabel}.`
           : `New recording group created for ${sourceLabel}.`;
-      measurementStatus.textContent = actionText;
+      setUiText(measurementStatus, actionText);
     }
   }
   return { added, parsed, candidates, reassigned };
@@ -3653,7 +3438,7 @@ function updateFrequencyResponseAngle(responseId, angleDeg) {
   const nextAngle = clampNumber(Number(angleDeg), -180, 180, response.angleDeg || 0);
   response.angleDeg = nextAngle;
   commitState(nextState, { animatePlots: true });
-  if (measurementStatus) measurementStatus.textContent = `${shortMeasurementName(response)} angle set to ${Math.round(nextAngle)} deg.`;
+  setUiText(measurementStatus, `${shortMeasurementName(response)} angle set to ${Math.round(nextAngle)} deg.`);
 }
 
 function updateFrequencyResponseName(responseId, name) {
@@ -3672,7 +3457,7 @@ function removeFrequencyResponse(responseId) {
   nextState.measurements = normalizeMeasurements(nextState.measurements);
   nextState.measurements.frequencyResponses = nextState.measurements.frequencyResponses.filter((item) => item.id !== responseId);
   commitState(nextState, { animatePlots: true });
-  if (measurementStatus) measurementStatus.textContent = "Frequency response removed.";
+  setUiText(measurementStatus, "Frequency response removed.");
 }
 
 function removeFrequencyResponseCandidate(candidateId) {
@@ -3680,7 +3465,7 @@ function removeFrequencyResponseCandidate(candidateId) {
   nextState.measurements = normalizeMeasurements(nextState.measurements);
   nextState.measurements.frequencyResponseCandidates = nextState.measurements.frequencyResponseCandidates.filter((item) => item.id !== candidateId);
   commitState(nextState, { animatePlots: true });
-  if (measurementStatus) measurementStatus.textContent = "Frequency response candidate removed.";
+  setUiText(measurementStatus, "Frequency response candidate removed.");
 }
 
 function updateFrequencyResponseTarget(responseId, target) {
@@ -3690,7 +3475,7 @@ function updateFrequencyResponseTarget(responseId, target) {
   if (!response) return;
   response.target = String(target || "").trim() || defaultMeasurementTarget();
   commitState(nextState, { animatePlots: true });
-  if (measurementStatus) measurementStatus.textContent = `${shortMeasurementName(response)} target set to ${measurementTargetLabel(response.target)}.`;
+  setUiText(measurementStatus, `${shortMeasurementName(response)} target set to ${measurementTargetLabel(response.target)}.`);
 }
 
 function addMeasurementGroup() {
@@ -3799,12 +3584,16 @@ function normalizedDesignName(name, design) {
 
 function designDriverForName(design = {}) {
   const activeGroup = design.driverGroups?.find((group) => group.id === design.activeDriverGroupId) || design.driverGroups?.[0];
-  return completeDriverParameters(sampleProject.driver, activeGroup?.driver || design.driver || state?.driver || sampleProject.driver);
+  return completeDriverForMetadata(activeGroup?.driver || design.driver || state?.driver || sampleProject.driver);
 }
 
 function driverNameForParameters(driver) {
-  const normalizedDriver = completeDriverParameters(sampleProject.driver, driver);
+  const normalizedDriver = completeDriverForMetadata(driver);
   return driverLibrary.find((entry) => driverMatches(normalizedDriver, entry.driver))?.name || "";
+}
+
+function completeDriverForMetadata(driver) {
+  return completeDriverParameters(driver?.allowParameterFallback === false ? {} : sampleProject.driver, driver);
 }
 
 async function searchDriverSpecs() {
@@ -3886,12 +3675,10 @@ function renderDriverSearchResults(results, frequencyResults = [], query = "") {
     addFrequencyResponseSearchCandidate,
     applyDriverCandidate,
     driverResultFields: DRIVER_RESULT_FIELDS,
-    driverSearchResults,
     frequencyResponseResultFields: FREQUENCY_RESPONSE_RESULT_FIELDS,
     frequencyResults,
     query,
     results,
-    setTooltip,
   });
 }
 
@@ -3903,9 +3690,7 @@ function renderPassiveRadiatorSearchResults(results) {
   renderPassiveRadiatorSearchResultsView({
     applyPassiveRadiatorCandidate,
     passiveRadiatorResultFields: PASSIVE_RADIATOR_RESULT_FIELDS,
-    passiveRadiatorSearchResults,
     results,
-    setTooltip,
   });
 }
 
@@ -3922,8 +3707,8 @@ function applyDriverCandidate(result) {
     const entry = driverLibrary.find((item) => item.id === result.libraryEntryId);
     if (entry) {
       applyKnownDriver(entry);
-      driverSearchResults.replaceChildren();
-      driverSearchStatus.textContent = `${entry.name} applied from Known driver.`;
+      renderDriverSearchResults([], [], "");
+      setUiText(driverSearchStatus, `${entry.name} applied from Known driver.`);
       return;
     }
   }
@@ -3936,7 +3721,7 @@ function applyPassiveRadiatorCandidate(result) {
 
 function applyKnownDriver(driverEntry) {
   const nextState = cloneProject(state);
-  nextState.driver = completeDriverParameters(sampleProject.driver, driverEntry.driver);
+  nextState.driver = driverParametersFromLibraryEntry(driverEntry);
   const removedDriverGroups = removeDriverMeasurementGroups(nextState);
   syncActiveDriverGroupFromProject(nextState);
   syncActiveDesignFromProject(nextState);
@@ -3950,16 +3735,24 @@ function applyKnownDriver(driverEntry) {
       groupDriverId: driverEntry.id,
       sourceLabel: "known driver library",
     });
-    if (removedDriverGroups && measurementStatus) {
+    if (removedDriverGroups) {
       const importedCount = responseImport.added || responseImport.reassigned;
       const suffix = importedCount ? " New driver measurements added." : "";
-      measurementStatus.textContent = `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.${suffix}`;
+      setUiText(measurementStatus, `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.${suffix}`);
     }
-  } else if (removedDriverGroups && measurementStatus) {
-    measurementStatus.textContent = `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.`;
+  } else if (removedDriverGroups) {
+    setUiText(measurementStatus, `${removedDriverGroups} previous driver measurement ${removedDriverGroups === 1 ? "group was" : "groups were"} removed.`);
   }
   renderDriverSelect();
-  driverSelect.value = driverEntry.id;
+}
+
+function driverParametersFromLibraryEntry(driverEntry = {}) {
+  const fallbackDriver = driverEntry.allowParameterFallback === false ? {} : sampleProject.driver;
+  return {
+    ...completeDriverParameters(fallbackDriver, driverEntry.driver),
+    ...(driverEntry.category ? { category: driverEntry.category } : {}),
+    ...(driverEntry.allowParameterFallback === false ? { allowParameterFallback: false } : {}),
+  };
 }
 
 function renameActiveDesignForDriver(project, driverName) {
@@ -3982,34 +3775,27 @@ function applyKnownPassiveRadiator(passiveRadiatorEntry) {
   syncActiveDesignFromProject(nextState);
   commitState(nextState, { hydrate: true });
   renderPassiveRadiatorSelect();
-  passiveRadiatorSelect.value = passiveRadiatorEntry.id;
 }
 
 function renderDriverSelect() {
-  driverSelect.replaceChildren();
-  const customOption = document.createElement("option");
-  customOption.value = "";
-  customOption.textContent = "Custom current driver";
-  driverSelect.append(customOption);
   const selectedEntry = matchingDriverEntry();
-  libraryEntriesWithSelection(filteredSortedLibraryEntries(driverLibrary, {
+  const controls = getLibraryControls("driver");
+  const options = [
+    { value: "", label: "Custom current driver" },
+    ...libraryEntriesWithSelection(filteredSortedLibraryEntries(driverLibrary, {
     kind: "driver",
-    filter: driverLibraryFilter?.value,
-    filtersEnabled: isLibraryFilterSwitchEnabled(driverLibraryFilterEnabled),
-    brand: driverLibraryBrand?.value,
-    diameter: driverLibraryDiameter?.value,
-    sort: driverLibrarySort?.value,
-  }), selectedEntry).forEach((entry) => {
-    const option = document.createElement("option");
-    option.value = entry.id;
-    option.textContent = entry.name;
-    driverSelect.append(option);
-  });
-  selectMatchingDriver(selectedEntry);
+    filter: controls.filter?.value,
+    filtersEnabled: isLibraryFilterSwitchEnabled(controls.filterEnabled),
+    brand: controls.brand?.value,
+    diameter: controls.diameter?.value,
+    sort: controls.sort?.value,
+  }), selectedEntry).map((entry) => ({ value: entry.id, label: entry.name })),
+  ];
+  syncLibrarySelect("driver", options, selectedEntry?.id || "");
 }
 
 function selectMatchingDriver(match = matchingDriverEntry()) {
-  driverSelect.value = match?.id || "";
+  syncLibrarySelect("driver", null, match?.id || "");
 }
 
 function matchingDriverEntry() {
@@ -4017,30 +3803,34 @@ function matchingDriverEntry() {
 }
 
 function renderPassiveRadiatorSelect() {
-  passiveRadiatorSelect.replaceChildren();
-  const customOption = document.createElement("option");
-  customOption.value = "";
-  customOption.textContent = "Custom P-Radiator";
-  passiveRadiatorSelect.append(customOption);
   const selectedEntry = matchingPassiveRadiatorEntry();
-  libraryEntriesWithSelection(filteredSortedLibraryEntries(passiveRadiatorLibrary, {
+  const controls = getLibraryControls("passiveRadiator");
+  const options = [
+    { value: "", label: "Custom P-Radiator" },
+    ...libraryEntriesWithSelection(filteredSortedLibraryEntries(passiveRadiatorLibrary, {
     kind: "passiveRadiator",
-    filter: passiveRadiatorLibraryFilter?.value,
-    filtersEnabled: isLibraryFilterSwitchEnabled(passiveRadiatorLibraryFilterEnabled),
-    brand: passiveRadiatorLibraryBrand?.value,
-    diameter: passiveRadiatorLibraryDiameter?.value,
-    sort: passiveRadiatorLibrarySort?.value,
-  }), selectedEntry).forEach((entry) => {
-    const option = document.createElement("option");
-    option.value = entry.id;
-    option.textContent = entry.name;
-    passiveRadiatorSelect.append(option);
-  });
-  selectMatchingPassiveRadiator(selectedEntry);
+    filter: controls.filter?.value,
+    filtersEnabled: isLibraryFilterSwitchEnabled(controls.filterEnabled),
+    brand: controls.brand?.value,
+    diameter: controls.diameter?.value,
+    sort: controls.sort?.value,
+  }), selectedEntry).map((entry) => ({ value: entry.id, label: entry.name })),
+  ];
+  syncLibrarySelect("passive-radiator", options, selectedEntry?.id || "");
 }
 
 function selectMatchingPassiveRadiator(match = matchingPassiveRadiatorEntry()) {
-  passiveRadiatorSelect.value = match?.id || "";
+  syncLibrarySelect("passive-radiator", null, match?.id || "");
+}
+
+function syncLibrarySelect(kind, options, selectedId) {
+  window.dispatchEvent(new CustomEvent("cabio:library-select-sync", {
+    detail: {
+      kind,
+      ...(Array.isArray(options) ? { options } : {}),
+      selectedId,
+    },
+  }));
 }
 
 function matchingPassiveRadiatorEntry() {
@@ -4061,7 +3851,7 @@ function addDriverToLibrary(entry) {
     driverLibrary.push(normalized);
   }
   saveCustomDrivers();
-  populateLibraryBrandFilter(driverLibraryBrand, driverLibrary, "driver");
+  populateLibraryBrandFilter(getLibraryControls("driver").brand, driverLibrary, "driver", libraryControlPrefs.driverBrand || "");
   renderDriverSelect();
   return driverLibrary.find((driver) => driver.id === normalized.id) || normalized;
 }
@@ -4082,7 +3872,7 @@ function addPassiveRadiatorToLibrary(entry) {
     passiveRadiatorLibrary.push(normalized);
   }
   saveCustomPassiveRadiators();
-  populateLibraryBrandFilter(passiveRadiatorLibraryBrand, passiveRadiatorLibrary, "passiveRadiator");
+  populateLibraryBrandFilter(getLibraryControls("passiveRadiator").brand, passiveRadiatorLibrary, "passiveRadiator", libraryControlPrefs.passiveRadiatorBrand || "");
   renderPassiveRadiatorSelect();
   return passiveRadiatorLibrary.find((passiveRadiatorEntry) => passiveRadiatorEntry.id === normalized.id) || normalized;
 }
@@ -4103,15 +3893,16 @@ async function ensureDriverLibraryLoaded() {
         builtInDriverLibrary = entries;
         driverLibrary = loadDriverLibrary();
         driverLibraryLoaded = true;
-        populateLibraryBrandFilter(driverLibraryBrand, driverLibrary, "driver");
-        if (driverLibraryBrand) driverLibraryBrand.value = libraryControlPrefs.driverBrand || "";
-        if (driverLibraryDiameter) driverLibraryDiameter.value = libraryControlPrefs.driverDiameter || "";
+        const controls = getLibraryControls("driver");
+        populateLibraryBrandFilter(controls.brand, driverLibrary, "driver", libraryControlPrefs.driverBrand || "");
+        if (controls.diameter) controls.diameter.value = libraryControlPrefs.driverDiameter || "";
+        updateLibraryFilterControlState("driver");
         renderDriverSelect();
         return driverLibrary;
       })
       .catch((error) => {
         driverLibraryLoadPromise = null;
-        if (driverSearchStatus) driverSearchStatus.textContent = error.message || "Could not load driver database.";
+        setUiText(driverSearchStatus, error.message || "Could not load driver database.");
         return driverLibrary;
       });
   }
@@ -4126,15 +3917,16 @@ async function ensurePassiveRadiatorLibraryLoaded() {
         builtInPassiveRadiatorLibrary = entries;
         passiveRadiatorLibrary = loadPassiveRadiatorLibrary();
         passiveRadiatorLibraryLoaded = true;
-        populateLibraryBrandFilter(passiveRadiatorLibraryBrand, passiveRadiatorLibrary, "passiveRadiator");
-        if (passiveRadiatorLibraryBrand) passiveRadiatorLibraryBrand.value = libraryControlPrefs.passiveRadiatorBrand || "";
-        if (passiveRadiatorLibraryDiameter) passiveRadiatorLibraryDiameter.value = libraryControlPrefs.passiveRadiatorDiameter || "";
+        const controls = getLibraryControls("passiveRadiator");
+        populateLibraryBrandFilter(controls.brand, passiveRadiatorLibrary, "passiveRadiator", libraryControlPrefs.passiveRadiatorBrand || "");
+        if (controls.diameter) controls.diameter.value = libraryControlPrefs.passiveRadiatorDiameter || "";
+        updateLibraryFilterControlState("passiveRadiator");
         renderPassiveRadiatorSelect();
         return passiveRadiatorLibrary;
       })
       .catch((error) => {
         passiveRadiatorLibraryLoadPromise = null;
-        if (passiveRadiatorSearchStatus) passiveRadiatorSearchStatus.textContent = error.message || "Could not load P-Radiator database.";
+        setUiText(passiveRadiatorSearchStatus, error.message || "Could not load P-Radiator database.");
         return passiveRadiatorLibrary;
       });
   }
@@ -4166,36 +3958,42 @@ function uniquePassiveRadiatorId(id) {
 }
 
 function bindPanelControls() {
-  panelToggles.forEach((toggle) => {
-    toggle.addEventListener("change", () => {
-      if (isMobileLayout()) {
-        const previousMobilePanel = mobileActivePanel;
-        mobileActivePanel = toggle.dataset.panelToggle;
-        adoptPlotState(plotCanvasForPanel(mobileActivePanel), plotCanvasForPanel(previousMobilePanel));
-        applyMobilePanelVisibility();
-        updatePanelToggleState();
-        toggle.closest(".panel-menu")?.removeAttribute("open");
-        render({ animatePlots: true });
-        return;
-      }
-      if (goldenLayout) {
-        const panelId = toggle.dataset.panelToggle;
-        const currentPanelIds = currentGoldenPanelIds();
-        const nextPanelIds = toggle.checked
-          ? [...currentPanelIds, panelId].sort((left, right) => PANEL_IDS.indexOf(left) - PANEL_IDS.indexOf(right))
-          : currentPanelIds.filter((id) => id !== panelId);
-        loadGoldenLayoutConfig(buildGoldenLayoutConfig(nextPanelIds));
-      } else {
-        const panel = document.querySelector(`[data-panel="${toggle.dataset.panelToggle}"]`);
-        panel.classList.toggle("is-hidden", !toggle.checked);
-      }
-      activePreset = "custom";
-      updatePanelToggleState();
-      updatePresetButtonState();
-      saveLayout();
-      render();
-    });
+  window.addEventListener("cabio:panel-toggle-change", (event) => {
+    const panelId = event.detail?.panelId;
+    const toggle = panelToggles.find((item) => item.dataset.panelToggle === panelId);
+    if (!toggle) return;
+    toggle.checked = Boolean(event.detail?.checked);
+    handlePanelToggle(toggle);
   });
+}
+
+function handlePanelToggle(toggle) {
+  if (isMobileLayout()) {
+    const previousMobilePanel = mobileActivePanel;
+    mobileActivePanel = toggle.dataset.panelToggle;
+    adoptPlotState(plotCanvasForPanel(mobileActivePanel), plotCanvasForPanel(previousMobilePanel));
+    applyMobilePanelVisibility();
+    updatePanelToggleState();
+    toggle.closest(".panel-menu")?.removeAttribute("open");
+    render({ animatePlots: true });
+    return;
+  }
+  if (goldenLayout) {
+    const panelId = toggle.dataset.panelToggle;
+    const currentPanelIds = currentGoldenPanelIds();
+    const nextPanelIds = toggle.checked
+      ? [...currentPanelIds, panelId].sort((left, right) => PANEL_IDS.indexOf(left) - PANEL_IDS.indexOf(right))
+      : currentPanelIds.filter((id) => id !== panelId);
+    loadGoldenLayoutConfig(buildGoldenLayoutConfig(nextPanelIds));
+  } else {
+    const panel = document.querySelector(`[data-panel="${toggle.dataset.panelToggle}"]`);
+    panel.classList.toggle("is-hidden", !toggle.checked);
+  }
+  activePreset = "custom";
+  updatePanelToggleState();
+  updatePresetButtonState();
+  saveLayout();
+  render();
 }
 
 function bindToolbarMenuExclusivity() {
@@ -4283,9 +4081,11 @@ function updateMobileToolbarOffset() {
 }
 
 function updateMobilePanelMenuLabel() {
-  const label = document.querySelector(".graph-menu .panel-menu-summary-label");
-  if (!label) return;
-  label.textContent = isMobileLayout() ? PANEL_LABELS[mobileActivePanel] || "Graph" : "Graphs";
+  const label = isMobileLayout() ? PANEL_LABELS[mobileActivePanel] || "Graph" : "Graphs";
+  window.__cabioGraphMenuLabel = label;
+  window.dispatchEvent(new CustomEvent("cabio:graph-menu-label-sync", {
+    detail: { label },
+  }));
 }
 
 function plotCanvasForPanel(panelId) {
@@ -4638,6 +4438,11 @@ function updatePanelToggleState() {
     const panel = document.querySelector(`[data-panel="${toggle.dataset.panelToggle}"]`);
     toggle.checked = isMobileLayout() ? toggle.dataset.panelToggle === mobileActivePanel : Boolean(panel && !panel.classList.contains("is-hidden"));
   });
+  window.dispatchEvent(new CustomEvent("cabio:panel-toggle-sync", {
+    detail: {
+      checkedPanelIds: panelToggles.filter((toggle) => toggle.checked).map((toggle) => toggle.dataset.panelToggle),
+    },
+  }));
   updateMobilePanelMenuLabel();
 }
 
@@ -4722,7 +4527,6 @@ function hydrateDerivedFields() {
 }
 
 function renderDriverSummaryPanel() {
-  if (!driverSummaryPanel) return;
   const analysis = analyzeDriverParameters(state.driver);
   const match = matchingDriverEntry();
   const hasErrors = analysis.issues.some((issue) => issue.severity === "error");
@@ -4741,43 +4545,22 @@ function renderDriverSummaryPanel() {
     { label: "Xmax", value: positiveDriverValue(state.driver.xmaxMm), unit: "mm", decimals: 1 },
   ];
 
-  driverSummaryPanel.classList.toggle("has-errors", hasErrors);
-  driverSummaryPanel.classList.toggle("has-warnings", hasWarnings && !hasErrors);
-  driverSummaryPanel.replaceChildren();
+  window.dispatchEvent(new CustomEvent("cabio:driver-summary-sync", {
+    detail: {
+      name: driverName,
+      source: driverSource,
+      status: hasErrors ? "Missing data" : hasWarnings ? "Review" : isLibraryDriver ? "Library" : "Manual",
+      note: driverHealthSummary(analysis),
+      hasErrors,
+      hasWarnings: hasWarnings && !hasErrors,
+      specs: specs.map((spec) => ({
+        label: spec.label,
+        value: formatDriverSummaryValue(spec.value, spec.unit, spec.decimals),
+      })),
+    },
+  }));
 
-  const header = document.createElement("div");
-  header.className = "driver-summary-header";
-  const title = document.createElement("div");
-  title.className = "driver-summary-title";
-  const titleText = document.createElement("strong");
-  titleText.textContent = driverName;
-  const sourceText = document.createElement("span");
-  sourceText.textContent = driverSource;
-  title.append(titleText, sourceText);
-  const status = document.createElement("span");
-  status.className = "driver-summary-status";
-  status.textContent = hasErrors ? "Missing data" : hasWarnings ? "Review" : isLibraryDriver ? "Library" : "Manual";
-  header.append(title, status);
-
-  const specGrid = document.createElement("div");
-  specGrid.className = "driver-summary-specs";
-  specs.forEach((spec) => {
-    const item = document.createElement("div");
-    item.className = "driver-summary-spec";
-    const label = document.createElement("span");
-    label.textContent = spec.label;
-    const value = document.createElement("strong");
-    value.textContent = formatDriverSummaryValue(spec.value, spec.unit, spec.decimals);
-    item.append(label, value);
-    specGrid.append(item);
-  });
-
-  const note = document.createElement("div");
-  note.className = "driver-summary-note";
-  note.textContent = driverHealthSummary(analysis);
-  driverSummaryPanel.append(header, specGrid, note);
-
-  if (driverUsageSummary) driverUsageSummary.textContent = driverUsageText();
+  setUiText(driverUsageSummary, driverUsageText());
 }
 
 function formatDriverSummaryValue(value, unit, decimals = 1) {
@@ -4802,63 +4585,38 @@ function driverUsageText() {
 }
 
 function renderDriverHealthPanel() {
-  if (!driverHealthPanel) return;
   const analysis = analyzeDriverParameters(state.driver);
   markDriverFieldIssues(analysis.fieldIssues);
 
   const hasErrors = analysis.issues.some((issue) => issue.severity === "error");
   const hasWarnings = analysis.issues.some((issue) => issue.severity === "warning");
   updateDriverValidationStatus(hasErrors, hasWarnings);
-  driverHealthPanel.classList.toggle("has-errors", hasErrors);
-  driverHealthPanel.classList.toggle("has-warnings", hasWarnings && !hasErrors);
-  driverHealthPanel.replaceChildren();
+  const derived = DRIVER_ANALYSIS_DERIVED_FIELDS
+    .map((field) => {
+      const value = Number(analysis.derived[field.key]);
+      if (!Number.isFinite(value)) return null;
+      return {
+        label: field.label,
+        value: `${formatSearchResultValue(value)}${field.unit ? ` ${field.unit}` : ""}`,
+        rawValue: value,
+        fieldPath: field.fieldPath || "",
+        canFill: Boolean(field.fieldPath && !positiveDriverValue(getPath(state, field.fieldPath))),
+      };
+    })
+    .filter(Boolean);
 
-  const header = document.createElement("div");
-  header.className = "driver-health-header";
-  const title = document.createElement("strong");
-  title.textContent = hasErrors ? "Driver check: missing values" : hasWarnings ? "Driver check: review" : "Driver check: OK";
-  const summary = document.createElement("span");
-  summary.textContent = driverHealthSummary(analysis);
-  header.append(title, summary);
-
-  const derived = document.createElement("div");
-  derived.className = "driver-derived-grid";
-  DRIVER_ANALYSIS_DERIVED_FIELDS.forEach((field) => {
-    const value = Number(analysis.derived[field.key]);
-    if (!Number.isFinite(value)) return;
-    const item = document.createElement("div");
-    item.className = "driver-derived-item";
-    const label = document.createElement("span");
-    label.textContent = field.label;
-    const output = document.createElement("strong");
-    output.textContent = `${formatSearchResultValue(value)}${field.unit ? ` ${field.unit}` : ""}`;
-    item.append(label, output);
-
-    if (field.fieldPath && !positiveDriverValue(getPath(state, field.fieldPath))) {
-      const fill = document.createElement("button");
-      fill.type = "button";
-      fill.textContent = "Fill";
-      fill.addEventListener("click", () => applyDerivedDriverParameter(field.fieldPath, value));
-      item.append(fill);
-    }
-    derived.append(item);
-  });
-
-  driverHealthPanel.append(header);
-  if (derived.childElementCount) driverHealthPanel.append(derived);
-
-  const visibleIssues = analysis.issues.filter((issue) => issue.severity !== "info");
-  if (visibleIssues.length) {
-    const list = document.createElement("ul");
-    list.className = "driver-health-issues";
-    visibleIssues.forEach((issue) => {
-      const item = document.createElement("li");
-      item.className = `driver-health-${issue.severity}`;
-      item.textContent = issue.message;
-      list.append(item);
-    });
-    driverHealthPanel.append(list);
-  }
+  window.dispatchEvent(new CustomEvent("cabio:driver-health-sync", {
+    detail: {
+      title: hasErrors ? "Driver check: missing values" : hasWarnings ? "Driver check: review" : "Driver check: OK",
+      summary: driverHealthSummary(analysis),
+      derived,
+      issues: analysis.issues
+        .filter((issue) => issue.severity !== "info")
+        .map((issue) => ({ severity: issue.severity, message: issue.message })),
+      hasErrors,
+      hasWarnings: hasWarnings && !hasErrors,
+    },
+  }));
 }
 
 function updateDriverValidationStatus(hasErrors, hasWarnings) {
@@ -4866,9 +4624,7 @@ function updateDriverValidationStatus(hasErrors, hasWarnings) {
   driverValidationDetails.classList.toggle("has-errors", hasErrors);
   driverValidationDetails.classList.toggle("has-warnings", hasWarnings && !hasErrors);
   driverValidationDetails.classList.toggle("is-ok", !hasErrors && !hasWarnings);
-  if (driverValidationStatus) {
-    driverValidationStatus.textContent = hasErrors ? "Missing data" : hasWarnings ? "Review" : "OK";
-  }
+  setUiText(driverValidationStatus, hasErrors ? "Missing data" : hasWarnings ? "Review" : "OK");
 }
 
 function driverHealthSummary(analysis) {
@@ -4962,18 +4718,34 @@ function arrayDriverForBox(box, driver = normalizeDriver(state.driver)) {
 }
 
 function driverForProject(project = state) {
+  if (isHfDriverInput(project.driver)) return completeDriverForSimulation(project.driver);
   if (project.driverGroups?.length) {
+    const activeGroup = project.driverGroups.find((group) => group.id === project.activeDriverGroupId) || project.driverGroups[0];
+    if (isHfDriverInput(activeGroup?.driver)) return completeDriverForSimulation(activeGroup.driver);
     return combineDriverGroups(project.driverGroups, project.driver);
   }
-  return arrayDriverForBox(project.box, normalizeDriver(project.driver));
+  return arrayDriverForBox(project.box, completeDriverForSimulation(project.driver));
 }
 
 function driverForDesign(design, box = completeBox(design.box)) {
-  const driver = normalizeDriver(completeDriverParameters(sampleProject.driver, design.driver || state.driver));
+  const sourceDriver = design.driver || state.driver;
+  if (isHfDriverInput(sourceDriver)) return completeDriverForSimulation(sourceDriver);
+  const driver = completeDriverForSimulation(sourceDriver);
   if (design.driverGroups?.length) {
+    const activeGroup = design.driverGroups.find((group) => group.id === design.activeDriverGroupId) || design.driverGroups[0];
+    if (isHfDriverInput(activeGroup?.driver)) return completeDriverForSimulation(activeGroup.driver);
     return combineDriverGroups(design.driverGroups, driver);
   }
   return arrayDriverForBox(box, driver);
+}
+
+function isHfDriverInput(driver = {}) {
+  return driver?.category === "hf-driver";
+}
+
+function completeDriverForSimulation(driver = {}) {
+  const completed = completeDriverParameters(driver?.allowParameterFallback === false ? {} : sampleProject.driver, driver || sampleProject.driver);
+  return isHfDriverInput(completed) ? completed : normalizeDriver(completed);
 }
 
 function designColorIndex(designId) {

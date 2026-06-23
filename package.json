@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node server.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
     "start": "node server.mjs",
     "style:audit": "node scripts/style-audit.mjs",
     "test": "node --test"
@@ -11,5 +14,10 @@
   "dependencies": {
     "pdfjs-dist": "^5.6.205"
   },
-  "description": "Browser-based loudspeaker enclosure simulator inspired by WINISD."
+  "description": "Browser-based loudspeaker enclosure simulator inspired by WINISD.",
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "svelte": "^5.56.3",
+    "vite": "^8.0.16"
+  }
 }

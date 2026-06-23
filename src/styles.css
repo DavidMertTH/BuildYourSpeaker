@@ -647,38 +647,6 @@ label {
   white-space: nowrap;
 }
 
-.port-lock-button {
-  grid-column: 4;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.field-value-group .port-lock-button {
-  grid-column: auto;
-}
-
-.port-lock-button svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-}
-
-.port-lock-button.locked {
-  background: var(--accent);
-  color: var(--active-text);
-  border-color: var(--accent);
-}
-
 input,
 select,
 textarea {
@@ -697,21 +665,6 @@ textarea {
 
 .collapsible-fields {
   margin-top: 6px;
-}
-
-.planner-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  margin: 3px 0 6px;
-  color: var(--text);
-}
-
-.planner-check input {
-  width: auto;
-  min-height: 16px;
-  margin: 0;
 }
 
 .collapsible-fields summary {
@@ -1098,7 +1051,15 @@ select {
   min-width: 0;
   min-height: var(--control-height);
   appearance: auto;
+  background-color: var(--field);
+  color: var(--text);
   text-overflow: ellipsis;
+}
+
+select option,
+select optgroup {
+  background-color: var(--field);
+  color: var(--text);
 }
 
 .driver-search {
@@ -1315,21 +1276,6 @@ select {
 
 .planner-settings .field-grid {
   gap: var(--space-1);
-}
-
-.autoplan-section {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line-soft);
-}
-
-.autoplan-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
 }
 
 input.planner-range {
@@ -2367,39 +2313,10 @@ textarea:focus {
   accent-color: var(--accent);
 }
 
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
-  border-bottom: 1px solid var(--line);
-  background: var(--bar-bg);
-  color: var(--bar-text);
-}
-
-.summary-strip > div {
-  min-width: 0;
-  padding: 10px 14px;
-  border-right: 1px solid var(--bar-soft);
-}
-
-.summary-strip strong {
-  display: block;
-  margin-top: 2px;
-  overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 15px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .metric-label {
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.summary-strip .metric-label {
-  color: var(--bar-muted);
 }
 
 .config-chip {
@@ -2427,8 +2344,16 @@ textarea:focus {
   color: var(--accent-text);
 }
 
-.config-chip.muted {
+.config-chip.muted > input[type="checkbox"],
+.config-chip.muted > .config-visibility-toggle,
+.config-chip.muted > .legend-swatch,
+.config-chip.muted > .config-name,
+.config-chip.muted > .config-name-runner {
   opacity: 0.54;
+}
+
+.config-chip.muted .config-menu-button {
+  opacity: 1;
 }
 
 .config-chip input {
@@ -2748,7 +2673,8 @@ textarea:focus {
 
 .plot-panel-select:hover,
 .plot-panel-select:focus,
-.plot-toolbar:hover .plot-toolbar-pill {
+.plot-toolbar:hover .plot-toolbar-pill,
+.plot-toolbar:focus-within .plot-toolbar-pill {
   color: var(--text);
 }
 
@@ -2759,7 +2685,8 @@ textarea:focus {
   background: color-mix(in srgb, var(--accent) 20%, var(--chrome));
 }
 
-.plot-toolbar:hover .plot-toolbar-pill {
+.plot-toolbar:hover .plot-toolbar-pill,
+.plot-toolbar:focus-within .plot-toolbar-pill {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line-soft));
 }
 
@@ -2767,7 +2694,8 @@ textarea:focus {
   outline: 0;
 }
 
-.plot-toolbar:hover .plot-toolbar-pill {
+.plot-toolbar:hover .plot-toolbar-pill,
+.plot-toolbar:focus-within .plot-toolbar-pill {
   opacity: 0;
   pointer-events: none;
   transform: scale(0.92);
@@ -2795,7 +2723,8 @@ textarea:focus {
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
-.plot-toolbar:hover .plot-toolbar-menu {
+.plot-toolbar:hover .plot-toolbar-menu,
+.plot-toolbar:focus-within .plot-toolbar-menu {
   opacity: 1;
   pointer-events: auto;
   transform: scale(1);
@@ -5032,7 +4961,6 @@ textarea,
 .config-chip-menu-panel,
 .config-chip-menu-panel > button,
 .recording-panel,
-.summary-strip,
 .project-dialog,
 .driver-group-card,
 .measurement-group-card,
@@ -5084,7 +5012,6 @@ textarea,
 .measurement-staged-actions button,
 .plot-tool-button,
 .box-preview-control,
-.port-lock-button,
 .crossover-add-button,
 .crossover-symbol-button,
 .crossover-preset-button,
@@ -5299,21 +5226,12 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     width: 104px;
   }
 
-  .summary-strip {
+  .plot-grid {
     order: 3;
   }
 
-  .plot-grid {
-    order: 4;
-  }
-
-  .app-toolbar,
-  .summary-strip {
+  .app-toolbar {
     position: static;
-  }
-
-  .summary-strip {
-    grid-template-columns: 1fr 1fr;
   }
 
   .plot-panel {
@@ -5584,17 +5502,6 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     background: var(--accent);
   }
 
-  .summary-strip {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .summary-strip > div {
-    padding: 8px 12px;
-  }
-
-  .summary-strip strong {
-    font-size: 14px;
-  }
 
   .config-bar {
     position: relative;
@@ -5908,7 +5815,4 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
     height: 100%;
   }
 
-  .summary-strip {
-    display: none;
-  }
 }

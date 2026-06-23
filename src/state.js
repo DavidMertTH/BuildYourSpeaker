@@ -87,6 +87,38 @@ const builtInDrivers = [
       bl: 14.03,
     },
   },
+  {
+    id: "bc-de250-8",
+    name: "B&C Speakers DE250 8 Ohm 1 in Compression Driver",
+    source: "https://www.bcspeakers.com/en/products/hf-driver/1/8/DE250",
+    category: "hf-driver",
+    allowParameterFallback: false,
+    driver: {
+      leMh: 0.11,
+      nominalImpedanceOhm: 8,
+      minimumImpedanceOhm: 7.8,
+      sensitivityDb: 108.5,
+      minFrequencyHz: 1000,
+      maxFrequencyHz: 18000,
+      recommendedCrossoverHz: 1600,
+      throatDiameterMm: 25,
+      voiceCoilDiameterMm: 44,
+      nominalPowerW: 60,
+      continuousPowerW: 120,
+      fluxDensityT: 1.85,
+    },
+    matched: [
+      "Nominal impedance",
+      "Minimum impedance",
+      "Le",
+      "Sensitivity",
+      "Usable range",
+      "Recommended crossover",
+      "Throat diameter",
+      "Voice coil diameter",
+      "Power handling",
+    ],
+  },
 ];
 
 let knownDriversPromise = null;

@@ -8,19 +8,6 @@ import {
   wirePathD,
 } from "./crossoverWireRouting.js";
 
-const CROSSOVER_PRESET_TOOLTIPS = {
-  "lowpass-2": "Insert a 2nd order low-pass block with series inductor and shunt capacitor.",
-  "lowpass-3": "Insert a 3rd order low-pass block with two series inductors and a shunt capacitor.",
-  "highpass-2": "Insert a 2nd order high-pass block with series capacitor and shunt inductor.",
-  "highpass-3": "Insert a 3rd order high-pass block with two series capacitors and a shunt inductor.",
-  "lowpass-1": "Insert a 1st order low-pass block with a series inductor.",
-  "highpass-1": "Insert a 1st order high-pass block with a series capacitor.",
-  lpad: "Insert an L-pad block with series and shunt resistors.",
-  zobel: "Insert a Zobel impedance compensation block with series resistor and capacitor.",
-  notch: "Insert a shunt RLC notch / trap block.",
-  "baffle-step": "Insert a simple baffle-step compensation block with a bypass resistor around an inductor.",
-};
-
 const NEW_CROSSOVER_FOR_GROUP_OPTION = "__new_crossover_for_group__";
 
 const CROSSOVER_SCHEMATIC_PRESETS = {
@@ -203,18 +190,11 @@ export function createCrossoverSchematicController(deps) {
     createCrossoverModuleGroupId,
     CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS,
     addCrossoverDesign = () => "",
-    crossoverAddCapacitorButton,
-    crossoverAddInductorButton,
-    crossoverAddResistorButton,
-    crossoverCreateModuleGroupButton,
-    crossoverPresetButtons = [],
     crossoverCircuitComponentPortId,
     crossoverCircuitDesignNodeId,
     crossoverCircuitFixedNodeId,
-    crossoverSchematicFilterSelect,
     crossoverSchematicBoard,
     designColorForDesign,
-    enableDecimalTextInput,
     getActiveCrossoverGroupId,
     getActiveDesign,
     getSelectedCrossoverDesignId = () => "",
@@ -224,7 +204,6 @@ export function createCrossoverSchematicController(deps) {
     parseNumericInputValue,
     roundTo,
     setSelectedCrossoverDesignId = () => {},
-    setTooltip,
   } = deps;
 
   const GRID_SIZE = 28;
@@ -246,7 +225,6 @@ export function createCrossoverSchematicController(deps) {
   let boardPinch = null;
   let boardTouchPointers = new Map();
   let selectionDrag = null;
-  let selectionBox = null;
   let wireDraft = null;
   let selectedComponentIds = new Set();
   let selectedNodeIds = new Set();
@@ -271,40 +249,19 @@ export function createCrossoverSchematicController(deps) {
   function bindEvents() {
     if (eventsBound) return;
     eventsBound = true;
-    crossoverAddResistorButton?.addEventListener("click", () => addComponent("resistor"));
-    crossoverAddCapacitorButton?.addEventListener("click", () => addComponent("capacitor"));
-    crossoverAddInductorButton?.addEventListener("click", () => addComponent("inductor"));
-    crossoverCreateModuleGroupButton?.addEventListener("click", createModuleGroupFromSelection);
-    crossoverPresetButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        addPreset(button.dataset.crossoverPreset);
-        button.closest("details")?.removeAttribute("open");
-      });
-    });
-    crossoverSchematicFilterSelect?.addEventListener("change", () => {
-      if (crossoverSchematicFilterSelect.value === NEW_CROSSOVER_FOR_GROUP_OPTION) {
-        const groupId = activeCrossoverGroup()?.id || "";
-        const newDesignId = addCrossoverDesign();
-        if (newDesignId) {
-          selectedCrossoverDesignId = newDesignId;
-          setSelectedCrossoverDesignId(groupId, selectedCrossoverDesignId);
-        }
-        crossoverSchematicFilterSelect.value = selectedCrossoverDesignId || "";
-        return;
-      }
-      selectedCrossoverDesignId = crossoverSchematicFilterSelect.value || "";
-      setSelectedCrossoverDesignId(activeCrossoverGroup()?.id || "", selectedCrossoverDesignId);
-      wireMode = WIRE_MODE_IDLE;
-      selectedNodeId = "";
-      wireDraft = null;
-      clearSchematicSelection();
-      lastRenderSignature = "";
-      renderCrossoverSchematic();
-    });
+    window.addEventListener("cabio:crossover-schematic-action", handleCrossoverSchematicAction);
     if (crossoverSchematicBoard) {
       crossoverSchematicBoard.tabIndex = 0;
       crossoverSchematicBoard.addEventListener("keydown", handleBoardKeyDown);
     }
+    crossoverSchematicBoard?.addEventListener("pointerdown", handleSchematicElementPointerDown);
+    crossoverSchematicBoard?.addEventListener("click", handleSchematicElementClick);
+    crossoverSchematicBoard?.addEventListener("input", handleSchematicElementInput);
+    crossoverSchematicBoard?.addEventListener("wheel", handleSchematicElementWheel, { passive: false });
+    crossoverSchematicBoard?.addEventListener("contextmenu", handleSchematicElementContextMenu);
+    crossoverSchematicBoard?.addEventListener("pointerover", handleSchematicWirePointer);
+    crossoverSchematicBoard?.addEventListener("pointermove", handleSchematicWirePointer);
+    crossoverSchematicBoard?.addEventListener("pointerout", handleSchematicWirePointerOut);
     crossoverSchematicBoard?.addEventListener("pointerdown", startBoardPan);
     crossoverSchematicBoard?.addEventListener("pointerdown", handleWireCancelPointer, { capture: true });
     crossoverSchematicBoard?.addEventListener("pointermove", handleBoardPointerMove);
@@ -314,18 +271,233 @@ export function createCrossoverSchematicController(deps) {
     crossoverSchematicBoard?.addEventListener("auxclick", (event) => {
       if (event.button === 1) event.preventDefault();
     });
-    setTooltip(crossoverAddResistorButton, "Add a resistor to the crossover schematic.");
-    setTooltip(crossoverAddCapacitorButton, "Add a capacitor to the crossover schematic.");
-    setTooltip(crossoverAddInductorButton, "Add an inductor to the crossover schematic.");
-    setTooltip(crossoverCreateModuleGroupButton, "Create a module group from the current schematic selection.");
-    crossoverPresetButtons.forEach((button) => {
-      setTooltip(button, CROSSOVER_PRESET_TOOLTIPS[button.dataset.crossoverPreset] || "Insert this preset schematic block.");
-    });
-    setTooltip(crossoverSchematicFilterSelect, "Choose which crossover design shows the schematic editor.");
+  }
+
+  function handleCrossoverSchematicAction(event) {
+    const detail = event.detail || {};
+    if (detail.action === "add-resistor") {
+      addComponent("resistor");
+      return;
+    }
+    if (detail.action === "add-capacitor") {
+      addComponent("capacitor");
+      return;
+    }
+    if (detail.action === "add-inductor") {
+      addComponent("inductor");
+      return;
+    }
+    if (detail.action === "add-preset") {
+      addPreset(detail.preset);
+      return;
+    }
+    if (detail.action === "create-module-group") {
+      createModuleGroupFromSelection();
+      return;
+    }
+    if (detail.action === "select-design") {
+      selectCrossoverDesignFromToolbar(detail.designId || "");
+    }
+  }
+
+  function selectCrossoverDesignFromToolbar(designId) {
+    if (designId === NEW_CROSSOVER_FOR_GROUP_OPTION) {
+      const groupId = activeCrossoverGroup()?.id || "";
+      const newDesignId = addCrossoverDesign();
+      if (newDesignId) {
+        selectedCrossoverDesignId = newDesignId;
+        setSelectedCrossoverDesignId(groupId, selectedCrossoverDesignId);
+      }
+      syncSchematicToolbar();
+      return;
+    }
+    selectedCrossoverDesignId = designId || "";
+    setSelectedCrossoverDesignId(activeCrossoverGroup()?.id || "", selectedCrossoverDesignId);
+    wireMode = WIRE_MODE_IDLE;
+    selectedNodeId = "";
+    wireDraft = null;
+    clearSchematicSelection();
+    lastRenderSignature = "";
+    renderCrossoverSchematic();
   }
 
   function suppressBoardContextMenu(event) {
     event.preventDefault();
+  }
+
+  function handleSchematicElementPointerDown(event) {
+    const target = event.target;
+    if (!target?.closest) return;
+
+    if (target.closest(".crossover-module-group-ungroup")) {
+      event.cabioSchematicHandled = true;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const nodeElement = target.closest("[data-node-id]");
+    if (nodeElement && crossoverSchematicBoard?.contains(nodeElement)) {
+      event.cabioSchematicHandled = true;
+      if (event.button === 2 && nodeElement.classList.contains("crossover-schematic-junction")) {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteJunctionNode(nodeElement.dataset.nodeId);
+        return;
+      }
+      if (event.button === 0) startWirePaint(event, nodeElement.dataset.nodeId);
+      return;
+    }
+
+    const componentElement = target.closest("[data-component-id]");
+    if (componentElement && crossoverSchematicBoard?.contains(componentElement)) {
+      event.cabioSchematicHandled = true;
+      if (event.button === 2) {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteComponent(componentElement.dataset.componentId);
+        return;
+      }
+      if (target.closest(".crossover-component-controls, .crossover-component-delete")) return;
+      startComponentDrag(event, componentElement.dataset.componentId);
+      return;
+    }
+
+    const speakerElement = target.closest("[data-speaker-design-id]");
+    if (speakerElement && crossoverSchematicBoard?.contains(speakerElement)) {
+      event.cabioSchematicHandled = true;
+      startSpeakerDrag(
+        event,
+        speakerElement.dataset.speakerDesignId,
+        speakerElement.dataset.plusNodeId,
+        speakerElement.dataset.minusNodeId,
+      );
+      return;
+    }
+
+    const moduleGroupElement = target.closest("[data-module-group-id]");
+    if (moduleGroupElement && crossoverSchematicBoard?.contains(moduleGroupElement) && event.button === 0) {
+      event.cabioSchematicHandled = true;
+      event.preventDefault();
+      event.stopPropagation();
+      wireMode = WIRE_MODE_IDLE;
+      selectedNodeId = "";
+      wireDraft = null;
+      updateWiringState();
+      const group = activeCrossoverGroup()?.crossover?.circuit?.moduleGroups?.find((item) => item.id === moduleGroupElement.dataset.moduleGroupId);
+      if (group) selectModuleGroup(group);
+      return;
+    }
+
+    const wireHit = target.closest(".crossover-wire-hit[data-wire-id]");
+    if (wireHit && crossoverSchematicBoard?.contains(wireHit) && event.button === 2) {
+      event.cabioSchematicHandled = true;
+      event.preventDefault();
+      event.stopPropagation();
+      deleteWire(wireHit.dataset.wireId);
+    }
+  }
+
+  function handleSchematicElementClick(event) {
+    const target = event.target;
+    if (!target?.closest) return;
+    const deleteButton = target.closest("[data-delete-component-id]");
+    if (deleteButton && crossoverSchematicBoard?.contains(deleteButton)) {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteComponent(deleteButton.dataset.deleteComponentId);
+      return;
+    }
+    const ungroupButton = target.closest(".crossover-module-group-ungroup");
+    if (ungroupButton && crossoverSchematicBoard?.contains(ungroupButton)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const moduleGroupId = ungroupButton.closest("[data-module-group-id]")?.dataset.moduleGroupId;
+      if (moduleGroupId) ungroupModuleGroup(moduleGroupId);
+      return;
+    }
+    const wireHit = target.closest(".crossover-wire-hit[data-wire-id]");
+    if (wireHit && crossoverSchematicBoard?.contains(wireHit)) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (shouldSuppressWireClick(wireHit.dataset.wireId)) return;
+      addWireJunction(wireHit.dataset.wireId, event, { connectFromNodeId: isWireDrawingActive() ? selectedNodeId : "" });
+    }
+  }
+
+  function handleSchematicElementContextMenu(event) {
+    const target = event.target;
+    if (!target?.closest) return;
+    const junction = target.closest(".crossover-schematic-junction[data-node-id]");
+    if (junction && crossoverSchematicBoard?.contains(junction)) {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteJunctionNode(junction.dataset.nodeId);
+      return;
+    }
+    const component = target.closest("[data-component-id]");
+    if (component && crossoverSchematicBoard?.contains(component)) {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteComponent(component.dataset.componentId);
+      return;
+    }
+    const wireHit = target.closest(".crossover-wire-hit[data-wire-id]");
+    if (wireHit && crossoverSchematicBoard?.contains(wireHit)) {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteWire(wireHit.dataset.wireId);
+    }
+  }
+
+  function handleSchematicWirePointer(event) {
+    const wireHit = event.target?.closest?.(".crossover-wire-hit[data-wire-id]");
+    if (!wireHit || !crossoverSchematicBoard?.contains(wireHit)) return;
+    lastWirePointer = { x: event.clientX, y: event.clientY };
+    highlightWireNetwork(currentWireNetworkIdsByWireId.get(wireHit.dataset.wireId) || new Set([wireHit.dataset.wireId]));
+  }
+
+  function handleSchematicWirePointerOut(event) {
+    const wireHit = event.target?.closest?.(".crossover-wire-hit[data-wire-id]");
+    if (!wireHit || !crossoverSchematicBoard?.contains(wireHit)) return;
+    lastWirePointer = { x: event.clientX, y: event.clientY };
+    scheduleWireNetworkHighlightClear();
+  }
+
+  function handleSchematicElementInput(event) {
+    const control = event.target?.closest?.("[data-component-value]");
+    if (!control || !crossoverSchematicBoard?.contains(control)) return;
+    const value = control.type === "number" ? parseNumericInputValue(control) : Number(control.value);
+    if (!Number.isFinite(value)) return;
+    applySchematicComponentValue(control.dataset.componentValue, value, control);
+  }
+
+  function handleSchematicElementWheel(event) {
+    const control = event.target?.closest?.("input[type='range'][data-component-value]");
+    if (!control || !crossoverSchematicBoard?.contains(control)) return;
+    const component = activeCrossoverGroup()?.crossover?.circuit?.components?.find((item) => item.id === control.dataset.componentValue);
+    const defaults = component ? CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[component.type] : null;
+    if (!defaults) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = Number(defaults.step) || 1;
+    const multiplier = event.shiftKey ? 10 : 1;
+    const direction = event.deltaY < 0 ? 1 : -1;
+    applySchematicComponentValue(component.id, Number(control.value) + direction * step * multiplier, control);
+  }
+
+  function applySchematicComponentValue(componentId, value, sourceControl) {
+    const component = activeCrossoverGroup()?.crossover?.circuit?.components?.find((item) => item.id === componentId);
+    if (!component) return;
+    const defaults = CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[component.type] || CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS.resistor;
+    const clamped = clampComponentValue(value, defaults);
+    const componentElement = sourceControl?.closest?.("[data-component-id]");
+    componentElement?.querySelectorAll(`[data-component-value="${cssEscape(componentId)}"]`).forEach((control) => {
+      control.value = control.type === "number"
+        ? String(roundTo(clamped, defaults.step < 0.1 ? 3 : 2))
+        : String(clamped);
+    });
+    updateComponent(componentId, { value: clamped }, { replaceHistory: true, renderControls: false });
   }
 
   function handleWireCancelPointer(event) {
@@ -375,9 +547,7 @@ export function createCrossoverSchematicController(deps) {
       wireDraft = null;
       updateWiringState();
       const emptyRenderSignature = `empty:${group.id}:${(group.crossover?.designs || []).map((design) => design.id).join(",")}`;
-      if (emptyRenderSignature !== lastRenderSignature || crossoverSchematicBoard.children.length > 0) {
-        crossoverSchematicBoard.replaceChildren();
-      }
+      if (emptyRenderSignature !== lastRenderSignature) syncSchematicBoard({ empty: true });
       lastRenderSignature = emptyRenderSignature;
       applyBoardBackground();
       return;
@@ -400,70 +570,135 @@ export function createCrossoverSchematicController(deps) {
       return;
     }
     lastRenderSignature = renderSignature;
-    crossoverSchematicBoard.replaceChildren();
 
     const height = Math.max(360, 150 + Math.max(members.length * 2, circuit.components.length, 2) * 92);
     const width = Math.max(920, 520 + circuit.components.length * 36);
     crossoverSchematicBoard.style.setProperty("--schematic-width", `${width}px`);
     crossoverSchematicBoard.style.setProperty("--schematic-height", `${height}px`);
+    syncSchematicBoard(createSchematicBoardSnapshot({ circuit, members, width, height }));
+    window.requestAnimationFrame(() => {
+      const canvas = crossoverSchematicBoard?.querySelector(".crossover-schematic-canvas");
+      const svg = crossoverSchematicBoard?.querySelector(".crossover-schematic-wires");
+      applyCamera(canvas);
+      if (materializeWireCornersFromDom(circuit.wires)) return;
+      if (canvas) renderModuleGroupBoxes(canvas, circuit);
+      applyBoardBackground();
+      if (svg) drawWires(svg, circuit.wires);
+    });
+  }
 
-    const canvas = document.createElement("div");
-    canvas.className = "crossover-schematic-canvas";
-    applyCamera(canvas);
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.classList.add("crossover-schematic-wires");
-    svg.setAttribute("aria-hidden", "true");
-    canvas.append(svg);
+  function syncSchematicBoard(detail = {}) {
+    window.dispatchEvent(new CustomEvent("cabio:crossover-schematic-board-sync", {
+      detail: {
+        empty: true,
+        camera: { x: cameraX, y: cameraY, scale: cameraScale },
+        endpoints: [],
+        speakers: [],
+        components: [],
+        junctions: [],
+        ...detail,
+      },
+    }));
+  }
 
-    canvas.append(
-      createEndpoint({
+  function createSchematicBoardSnapshot({ circuit, members, width, height }) {
+    const endpoints = [
+      schematicEndpointSnapshot({
         id: crossoverCircuitFixedNodeId("positive"),
         label: "Vin",
         symbol: "voltage",
         ...endpointPosition(circuit, crossoverCircuitFixedNodeId("positive"), 42, 62),
         accent: "var(--accent)",
       }),
-      createEndpoint({
+      schematicEndpointSnapshot({
         id: crossoverCircuitFixedNodeId("ground"),
         label: "GND",
         symbol: "ground",
         ...endpointPosition(circuit, crossoverCircuitFixedNodeId("ground"), 42, height - 88),
         accent: "var(--muted)",
       }),
-    );
-
-    members.forEach((design, index) => {
+    ];
+    const speakers = members.map((design, index) => {
       const y = 86 + index * 118;
       const plusId = crossoverCircuitDesignNodeId(design.id, "positive");
       const minusId = crossoverCircuitDesignNodeId(design.id, "negative");
       const legacyPosition = endpointPosition(circuit, `design:${design.id}`, width - 176, y);
       const speakerPosition = endpointPosition(circuit, plusId, legacyPosition.x, legacyPosition.y);
-      canvas.append(
-        createSpeakerEndpoint({
-          design,
-          plusId,
-          minusId,
-          x: speakerPosition.x,
-          y: speakerPosition.y,
-          accent: designColorForDesign(design),
-        }),
-      );
+      return {
+        designId: design.id,
+        name: design.name,
+        plusId,
+        minusId,
+        x: speakerPosition.x,
+        y: speakerPosition.y,
+        accent: designColorForDesign(design),
+        selected: selectedSpeakerIds.has(design.id) || selectedNodeId === plusId || selectedNodeId === minusId,
+        plusSelected: selectedNodeId === plusId || selectedNodeIds.has(plusId),
+        minusSelected: selectedNodeId === minusId || selectedNodeIds.has(minusId),
+      };
     });
+    return {
+      empty: false,
+      camera: { x: cameraX, y: cameraY, scale: cameraScale },
+      endpoints,
+      speakers,
+      components: (circuit.components || []).map(schematicComponentSnapshot),
+      junctions: (circuit.nodes || [])
+        .filter((node) => isJunctionNodeId(node.id))
+        .map((node) => ({
+          id: node.id,
+          x: node.x,
+          y: node.y,
+          selected: selectedNodeId === node.id || selectedNodeIds.has(node.id),
+        })),
+    };
+  }
 
-    circuit.components.forEach((component) => {
-      canvas.append(createComponent(component));
-    });
-    circuit.nodes
-      ?.filter((node) => isJunctionNodeId(node.id))
-      .forEach((node) => {
-        canvas.append(createJunctionNode(node));
-    });
+  function schematicEndpointSnapshot(endpoint) {
+    return {
+      ...endpoint,
+      selected: selectedNodeId === endpoint.id || selectedNodeIds.has(endpoint.id),
+    };
+  }
 
-    crossoverSchematicBoard.append(canvas);
-    if (materializeWireCornersFromDom(circuit.wires)) return;
-    renderModuleGroupBoxes(canvas, circuit);
-    applyBoardBackground();
-    window.requestAnimationFrame(() => drawWires(svg, circuit.wires));
+  function schematicComponentSnapshot(component) {
+    const portAId = crossoverCircuitComponentPortId(component.id, "a");
+    const portBId = crossoverCircuitComponentPortId(component.id, "b");
+    if (component.type === "wire-segment") {
+      return {
+        id: component.id,
+        type: "wire-segment",
+        x: component.x,
+        y: component.y,
+        length: Math.max(Number(component.value) || 0, WIRE_SEGMENT_MIN_LENGTH),
+        orientation: component.orientation === "vertical" ? "vertical" : "horizontal",
+        selected: selectedComponentIds.has(component.id),
+        portAId,
+        portBId,
+        portASelected: selectedNodeId === portAId || selectedNodeIds.has(portAId),
+        portBSelected: selectedNodeId === portBId || selectedNodeIds.has(portBId),
+      };
+    }
+    const defaults = CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[component.type] || CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS.resistor;
+    return {
+      id: component.id,
+      type: component.type,
+      typeLabel: componentTypeLabel(component.type),
+      x: component.x,
+      y: component.y,
+      value: component.value,
+      numberValue: roundTo(component.value, defaults.step < 0.1 ? 3 : 2),
+      valueLabel: formatComponentValue(component, defaults),
+      min: defaults.min,
+      max: defaults.max,
+      step: defaults.step,
+      unit: defaults.unit,
+      selected: selectedComponentIds.has(component.id),
+      portAId,
+      portBId,
+      portASelected: selectedNodeId === portAId || selectedNodeIds.has(portAId),
+      portBSelected: selectedNodeId === portBId || selectedNodeIds.has(portBId),
+    };
   }
 
   function syncCrossoverFilterSelect(group) {
@@ -480,28 +715,25 @@ export function createCrossoverSchematicController(deps) {
       if (selectedCrossoverDesignId) setSelectedCrossoverDesignId(group.id, "");
       selectedCrossoverDesignId = "";
     }
-    if (crossoverSchematicFilterSelect) {
-      const previousValue = crossoverSchematicFilterSelect.value;
-      const nextSelectSignature = [
-        "placeholder:Select crossover",
-        ...designs.map((design, index) => `${design.id}:${crossoverFilterOptionLabel(design, index)}`),
-        `action:${NEW_CROSSOVER_FOR_GROUP_OPTION}`,
-      ].join("|");
-      if (nextSelectSignature !== lastSelectSignature) {
-        crossoverSchematicFilterSelect.replaceChildren(
-          new Option("Select crossover", ""),
-          ...designs.map((design, index) => new Option(crossoverFilterOptionLabel(design, index), design.id)),
-          new Option("New Crossover for this Group", NEW_CROSSOVER_FOR_GROUP_OPTION),
-        );
-        lastSelectSignature = nextSelectSignature;
-      }
-      crossoverSchematicFilterSelect.value = selectedCrossoverDesignId;
-      if (previousValue !== crossoverSchematicFilterSelect.value) {
-        wireMode = WIRE_MODE_IDLE;
-        selectedNodeId = "";
-        wireDraft = null;
-      }
+    const nextSelectSignature = [
+      "placeholder:Select crossover",
+      ...designs.map((design, index) => `${design.id}:${crossoverFilterOptionLabel(design, index)}`),
+      `action:${NEW_CROSSOVER_FOR_GROUP_OPTION}`,
+    ].join("|");
+    if (nextSelectSignature !== lastSelectSignature) {
+      lastSelectSignature = nextSelectSignature;
     }
+    syncSchematicToolbar({
+      options: [
+        { value: "", label: "Select crossover" },
+        ...designs.map((design, index) => ({
+          value: design.id,
+          label: crossoverFilterOptionLabel(design, index),
+        })),
+        { value: NEW_CROSSOVER_FOR_GROUP_OPTION, label: "New Crossover for this Group" },
+      ],
+      selectedId: selectedCrossoverDesignId,
+    });
     return designs.find((design) => design.id === selectedCrossoverDesignId) || null;
   }
 
@@ -510,13 +742,22 @@ export function createCrossoverSchematicController(deps) {
     return `${index + 1}. Crossover design${stateLabel}`;
   }
 
+  function syncSchematicToolbar(detail = {}) {
+    window.dispatchEvent(new CustomEvent("cabio:crossover-schematic-toolbar-sync", {
+      detail: {
+        selectedId: selectedCrossoverDesignId,
+        toolsEnabled: Boolean(selectedCrossoverDesignId),
+        moduleGroupEnabled: Boolean(selectedCrossoverDesignId) && selectedSchematicObjectCount() >= 2,
+        ...detail,
+      },
+    }));
+  }
+
   function setSchematicToolsEnabled(enabled) {
-    [crossoverAddResistorButton, crossoverAddCapacitorButton, crossoverAddInductorButton, ...crossoverPresetButtons]
-      .filter(Boolean)
-      .forEach((button) => {
-        button.disabled = !enabled;
-      });
-    updateModuleGroupButtonState(enabled);
+    syncSchematicToolbar({
+      toolsEnabled: Boolean(enabled),
+      moduleGroupEnabled: Boolean(enabled) && selectedSchematicObjectCount() >= 2,
+    });
   }
 
   function schematicRenderSignature(group, members, circuit, selectedCrossoverDesign) {
@@ -536,140 +777,6 @@ export function createCrossoverSchematicController(deps) {
     });
   }
 
-  function createEndpoint({ id, label, symbol, x, y, accent }) {
-    const endpoint = document.createElement("button");
-    endpoint.type = "button";
-    endpoint.className = `crossover-schematic-endpoint endpoint-${symbol || "node"}`;
-    endpoint.dataset.nodeId = id;
-    endpoint.style.left = `${x}px`;
-    endpoint.style.top = `${y}px`;
-    endpoint.style.setProperty("--node-color", accent);
-    endpoint.classList.toggle("selected", selectedNodeId === id || selectedNodeIds.has(id));
-    endpoint.ariaLabel = `${label} terminal`;
-
-    const symbolShell = document.createElement("span");
-    symbolShell.className = "crossover-endpoint-symbol";
-    symbolShell.append(createEndpointSymbol(symbol));
-
-    const labelElement = document.createElement("span");
-    labelElement.className = "crossover-endpoint-label";
-    labelElement.textContent = label;
-
-    endpoint.append(symbolShell, labelElement);
-    setTooltip(endpoint, "Click or drag from this endpoint to start a wire.");
-    endpoint.addEventListener("pointerdown", (event) => startWirePaint(event, id));
-    return endpoint;
-  }
-
-  function createEndpointSymbol(symbol) {
-    const svg = svgElement("svg", {
-      class: "crossover-endpoint-symbol-svg",
-      viewBox: "0 0 54 46",
-      "aria-hidden": "true",
-    });
-    if (symbol === "ground") {
-      svg.append(
-        svgElement("path", { class: "endpoint-stroke", d: "M27 8 V22" }),
-        svgElement("path", { class: "endpoint-stroke", d: "M14 22 H40" }),
-        svgElement("path", { class: "endpoint-stroke", d: "M18 29 H36" }),
-        svgElement("path", { class: "endpoint-stroke", d: "M23 36 H31" }),
-      );
-      return svg;
-    }
-    svg.append(
-      svgElement("circle", { class: "endpoint-stroke", cx: "27", cy: "23", r: "15" }),
-      svgElement("path", { class: "endpoint-stroke", d: "M27 15 V23" }),
-      svgElement("path", { class: "endpoint-stroke", d: "M21 19 H33" }),
-      svgElement("path", { class: "endpoint-stroke endpoint-muted-stroke", d: "M21 29 H33" }),
-    );
-    return svg;
-  }
-
-  function createSpeakerEndpoint({ design, plusId, minusId, x, y, accent }) {
-    const speaker = document.createElement("article");
-    speaker.className = "crossover-schematic-speaker";
-    speaker.dataset.speakerDesignId = design.id;
-    speaker.dataset.plusNodeId = plusId;
-    speaker.dataset.minusNodeId = minusId;
-    speaker.style.left = `${x}px`;
-    speaker.style.top = `${y}px`;
-    speaker.style.setProperty("--node-color", accent);
-    speaker.classList.toggle("selected", selectedSpeakerIds.has(design.id) || selectedNodeId === plusId || selectedNodeId === minusId);
-    setTooltip(speaker, "Drag this speaker endpoint. Use the plus or minus terminal to create wires.");
-    speaker.addEventListener("pointerdown", (event) => startSpeakerDrag(event, design.id, plusId, minusId));
-
-    const name = document.createElement("div");
-    name.className = "crossover-speaker-name";
-    name.textContent = design.name;
-
-    const symbol = document.createElement("div");
-    symbol.className = "crossover-speaker-symbol";
-    symbol.append(createSpeakerSymbol());
-
-    speaker.append(
-      createSpeakerPort(plusId, "positive", "+"),
-      createSpeakerPort(minusId, "negative", "-"),
-      symbol,
-      name,
-    );
-    return speaker;
-  }
-
-  function createSpeakerPort(nodeId, pole, label) {
-    const port = document.createElement("button");
-    port.type = "button";
-    port.className = `crossover-speaker-port speaker-port-${pole}`;
-    port.dataset.nodeId = nodeId;
-    port.textContent = label;
-    port.classList.toggle("selected", selectedNodeId === nodeId);
-    port.ariaLabel = pole === "positive" ? "Speaker plus terminal" : "Speaker minus terminal";
-    setTooltip(port, `Click the speaker ${label} terminal to create a wire.`);
-    port.addEventListener("pointerdown", (event) => startWirePaint(event, nodeId));
-    return port;
-  }
-
-  function createSpeakerSymbol() {
-    const svg = svgElement("svg", {
-      class: "crossover-speaker-symbol-svg",
-      viewBox: "0 0 58 46",
-      "aria-hidden": "true",
-    });
-    svg.append(
-      svgElement("path", { class: "speaker-stroke", d: "M8 17 H19 L34 7 V39 L19 29 H8 Z" }),
-      svgElement("path", { class: "speaker-stroke", d: "M40 15 C46 20 46 26 40 31" }),
-      svgElement("path", { class: "speaker-stroke speaker-wave", d: "M46 10 C56 19 56 27 46 36" }),
-    );
-    return svg;
-  }
-
-  function createJunctionNode(node) {
-    const junction = document.createElement("button");
-    junction.type = "button";
-    junction.className = "crossover-schematic-junction";
-    junction.dataset.nodeId = node.id;
-    junction.style.left = `${node.x}px`;
-    junction.style.top = `${node.y}px`;
-    junction.classList.toggle("selected", selectedNodeId === node.id || selectedNodeIds.has(node.id));
-    junction.ariaLabel = "Wire junction";
-    setTooltip(junction, "Click or drag from this junction to continue wiring.");
-    junction.addEventListener("pointerdown", (event) => startWirePaint(event, node.id));
-    const deleteJunctionFromPointer = (event) => {
-      if (event.button !== 2) return;
-      event.preventDefault();
-      event.stopPropagation();
-      deleteJunctionNode(node.id);
-    };
-    junction.addEventListener("mousedown", deleteJunctionFromPointer);
-    junction.addEventListener("pointerdown", deleteJunctionFromPointer);
-    junction.addEventListener("auxclick", deleteJunctionFromPointer);
-    junction.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteJunctionNode(node.id);
-    });
-    return junction;
-  }
-
   function endpointPosition(circuit, id, fallbackX, fallbackY) {
     const node = circuit.nodes?.find((item) => item.id === id);
     return {
@@ -678,198 +785,10 @@ export function createCrossoverSchematicController(deps) {
     };
   }
 
-  function createComponent(component) {
-    if (component.type === "wire-segment") return createWireSegmentComponent(component);
-
-    const defaults = CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS[component.type] || CROSSOVER_CIRCUIT_COMPONENT_DEFAULTS.resistor;
-    const item = document.createElement("article");
-    item.className = `crossover-schematic-component schematic-${component.type}`;
-    item.dataset.componentId = component.id;
-    item.style.left = `${component.x}px`;
-    item.style.top = `${component.y}px`;
-    item.classList.toggle("selected", selectedComponentIds.has(component.id));
-    item.addEventListener("pointerdown", (event) => startComponentDrag(event, component.id));
-    const deleteComponentFromPointer = (event) => {
-      if (event.button !== 2) return;
-      event.preventDefault();
-      event.stopPropagation();
-      deleteComponent(component.id);
-    };
-    item.addEventListener("mousedown", deleteComponentFromPointer);
-    item.addEventListener("pointerdown", deleteComponentFromPointer);
-    item.addEventListener("auxclick", deleteComponentFromPointer);
-    item.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteComponent(component.id);
-    });
-
-    const portA = createPort(crossoverCircuitComponentPortId(component.id, "a"), "left");
-    const portB = createPort(crossoverCircuitComponentPortId(component.id, "b"), "right");
-    const preview = document.createElement("div");
-    preview.className = "crossover-component-preview";
-
-    const nameLabel = document.createElement("div");
-    nameLabel.className = "crossover-component-name";
-    nameLabel.textContent = componentTypeLabel(component.type);
-
-    const symbol = document.createElement("div");
-    symbol.className = "crossover-component-symbol";
-    symbol.append(createSchematicSymbol(component.type));
-    setTooltip(symbol, "Drag this component to position it on the schematic.");
-
-    const valueLabel = document.createElement("div");
-    valueLabel.className = "crossover-component-value";
-    valueLabel.textContent = formatComponentValue(component, defaults);
-    preview.append(nameLabel, symbol, valueLabel);
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "crossover-component-delete";
-    deleteButton.textContent = "x";
-    setTooltip(deleteButton, "Delete this component and its connected wires.");
-    deleteButton.addEventListener("click", () => deleteComponent(component.id));
-
-    const controls = document.createElement("div");
-    controls.className = "crossover-component-controls";
-    const range = document.createElement("input");
-    range.type = "range";
-    range.min = String(defaults.min);
-    range.max = String(defaults.max);
-    range.step = String(defaults.step);
-    range.value = String(component.value);
-    range.dataset.componentValue = component.id;
-    setTooltip(range, "Adjust the component value.");
-
-    const number = document.createElement("input");
-    number.type = "number";
-    enableDecimalTextInput(number);
-    number.min = String(defaults.min);
-    number.max = String(defaults.max);
-    number.step = String(defaults.step);
-    number.value = String(roundTo(component.value, defaults.step < 0.1 ? 3 : 2));
-    number.dataset.componentValue = component.id;
-    setTooltip(number, "Set the component value.");
-
-    const unit = document.createElement("span");
-    unit.textContent = defaults.unit;
-
-    const applyComponentValue = (value) => {
-      const clamped = clampComponentValue(value, defaults);
-      range.value = String(clamped);
-      number.value = String(roundTo(clamped, defaults.step < 0.1 ? 3 : 2));
-      valueLabel.textContent = formatComponentValue({ ...component, value: clamped }, defaults);
-      updateComponent(component.id, { value: clamped }, { replaceHistory: true, renderControls: false });
-    };
-    range.addEventListener("input", () => {
-      applyComponentValue(Number(range.value));
-    });
-    range.addEventListener("wheel", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const step = Number(defaults.step) || 1;
-      const multiplier = event.shiftKey ? 10 : 1;
-      const direction = event.deltaY < 0 ? 1 : -1;
-      applyComponentValue(Number(range.value) + direction * step * multiplier);
-    }, { passive: false });
-    number.addEventListener("input", () => {
-      const value = parseNumericInputValue(number);
-      if (!Number.isFinite(value)) return;
-      applyComponentValue(value);
-    });
-
-    controls.append(range, number, unit);
-    item.append(portA, preview, portB, deleteButton, controls);
-    return item;
-  }
-
-  function createWireSegmentComponent(component) {
-    const length = Math.max(Number(component.value) || 0, WIRE_SEGMENT_MIN_LENGTH);
-    const orientation = component.orientation === "vertical" ? "vertical" : "horizontal";
-    const item = document.createElement("article");
-    item.className = `crossover-schematic-component crossover-wire-segment wire-segment-${orientation}`;
-    item.dataset.componentId = component.id;
-    item.style.left = `${component.x}px`;
-    item.style.top = `${component.y}px`;
-    item.style.setProperty("--wire-segment-length", `${length}px`);
-    item.classList.toggle("selected", selectedComponentIds.has(component.id));
-    item.addEventListener("pointerdown", (event) => startComponentDrag(event, component.id));
-    const deleteComponentFromPointer = (event) => {
-      if (event.button !== 2) return;
-      event.preventDefault();
-      event.stopPropagation();
-      deleteComponent(component.id);
-    };
-    item.addEventListener("mousedown", deleteComponentFromPointer);
-    item.addEventListener("pointerdown", deleteComponentFromPointer);
-    item.addEventListener("auxclick", deleteComponentFromPointer);
-    item.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteComponent(component.id);
-    });
-
-    const line = document.createElement("div");
-    line.className = "crossover-wire-segment-line";
-    item.append(
-      line,
-      createWireSegmentPort(crossoverCircuitComponentPortId(component.id, "a"), "start"),
-      createWireSegmentPort(crossoverCircuitComponentPortId(component.id, "b"), "end"),
-    );
-    setTooltip(item, "Drag this wire segment to move it. Use either terminal to extend the wiring.");
-    return item;
-  }
-
-  function createWireSegmentPort(nodeId, position) {
-    const port = document.createElement("button");
-    port.type = "button";
-    port.className = `crossover-component-port crossover-wire-segment-port wire-port-${position}`;
-    port.dataset.nodeId = nodeId;
-    port.classList.toggle("selected", selectedNodeId === nodeId);
-    port.ariaLabel = position === "start" ? "Wire segment start terminal" : "Wire segment end terminal";
-    setTooltip(port, "Drag from this wire terminal to create another segment.");
-    port.addEventListener("pointerdown", (event) => startWirePaint(event, nodeId));
-    return port;
-  }
-
   function componentTypeLabel(type) {
     if (type === "capacitor") return "Capacitor";
     if (type === "inductor") return "Inductor";
     return "Resistor";
-  }
-
-  function createSchematicSymbol(type) {
-    const svg = svgElement("svg", {
-      class: "crossover-component-symbol-svg",
-      viewBox: "0 0 132 42",
-      preserveAspectRatio: "none",
-      "aria-hidden": "true",
-    });
-    svg.append(svgElement("path", { class: "symbol-lead", d: "M0 21 H20" }));
-    svg.append(svgElement("path", { class: "symbol-lead", d: "M112 21 H132" }));
-    if (type === "capacitor") {
-      svg.append(
-        svgElement("path", { class: "symbol-stroke", d: "M20 21 H54 M54 8 V34 M78 8 V34 M78 21 H112" }),
-      );
-    } else if (type === "inductor") {
-      svg.append(
-        svgElement("path", { class: "symbol-stroke", d: "M20 21 C20 7 38 7 38 21 C38 35 56 35 56 21 C56 7 74 7 74 21 C74 35 92 35 92 21 C92 7 110 7 112 21" }),
-      );
-    } else {
-      svg.append(
-        svgElement("polyline", {
-          class: "symbol-stroke",
-          points: "20,21 28,9 40,33 52,9 64,33 76,9 88,33 100,9 112,21",
-        }),
-      );
-    }
-    return svg;
-  }
-
-  function svgElement(tagName, attributes = {}) {
-    const element = document.createElementNS("http://www.w3.org/2000/svg", tagName);
-    Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
-    return element;
   }
 
   function formatComponentValue(component, defaults) {
@@ -887,18 +806,6 @@ export function createCrossoverSchematicController(deps) {
     return Math.min(Math.max(roundTo(stepped, step < 0.1 ? 3 : 2), min), max);
   }
 
-  function createPort(nodeId, side) {
-    const port = document.createElement("button");
-    port.type = "button";
-    port.className = `crossover-component-port port-${side}`;
-    port.dataset.nodeId = nodeId;
-    port.classList.toggle("selected", selectedNodeId === nodeId);
-    port.ariaLabel = side === "left" ? "Component input node" : "Component output node";
-    setTooltip(port, "Click one port, then another port or endpoint to create a wire.");
-    port.addEventListener("pointerdown", (event) => startWirePaint(event, nodeId));
-    return port;
-  }
-
   function handleNodeClick(nodeId) {
     if (!selectedNodeId) {
       startWireFromNode(nodeId);
@@ -914,74 +821,32 @@ export function createCrossoverSchematicController(deps) {
 
   function drawWires(svg, wires) {
     if (!svg || !crossoverSchematicBoard) return;
-    svg.replaceChildren();
     const boardRect = svg.closest(".crossover-schematic-canvas")?.getBoundingClientRect();
     if (!boardRect) return;
     const connectedWireIdsByWireId = wireNetworkIdsByWireId(wires);
     currentWireNetworkIdsByWireId = connectedWireIdsByWireId;
     preserveExistingWireHover(wires);
-    wires.forEach((wire) => {
+    const wireViews = wires.map((wire) => {
       const from = crossoverSchematicBoard.querySelector(`[data-node-id="${cssEscape(wire.from)}"]`);
       const to = crossoverSchematicBoard.querySelector(`[data-node-id="${cssEscape(wire.to)}"]`);
-      if (!from || !to) return;
+      if (!from || !to) return null;
       const fromRect = from.getBoundingClientRect();
       const toRect = to.getBoundingClientRect();
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
       const fromPoint = wireAnchorPoint(from, fromRect, boardRect);
       const toPoint = wireAnchorPoint(to, toRect, boardRect);
       const x1 = fromPoint.x;
       const y1 = fromPoint.y;
       const x2 = toPoint.x;
       const y2 = toPoint.y;
-      const wireGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
       const pathD = wireSegmentD(x1, y1, x2, y2);
-      wireGroup.classList.add("crossover-wire");
-      wireGroup.dataset.wireId = wire.id;
-      const isHovered = hoveredWireIds.has(wire.id);
-      wireGroup.classList.toggle("network-hovered", isHovered);
-      wireGroup.classList.toggle("hovered", isHovered);
-      hitLine.classList.add("crossover-wire-hit");
-      hitLine.dataset.wireId = wire.id;
-      hitLine.setAttribute("d", pathD);
-      line.classList.add("crossover-wire-line");
-      line.dataset.wireId = wire.id;
-      line.setAttribute("d", pathD);
-      const deleteWireFromPointer = (event) => {
-        if (event.button !== 2) return;
-        event.preventDefault();
-        event.stopPropagation();
-        deleteWire(wire.id);
-      };
-      const setWireHover = (event) => {
-        lastWirePointer = { x: event.clientX, y: event.clientY };
-        highlightWireNetwork(connectedWireIdsByWireId.get(wire.id) || new Set([wire.id]));
-      };
-      const clearWireHover = (event) => {
-        lastWirePointer = { x: event.clientX, y: event.clientY };
-        scheduleWireNetworkHighlightClear();
-      };
-      hitLine.addEventListener("pointerenter", setWireHover);
-      hitLine.addEventListener("pointermove", setWireHover);
-      hitLine.addEventListener("pointerleave", clearWireHover);
-      hitLine.addEventListener("mousedown", deleteWireFromPointer);
-      hitLine.addEventListener("pointerdown", deleteWireFromPointer);
-      hitLine.addEventListener("auxclick", deleteWireFromPointer);
-      hitLine.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (shouldSuppressWireClick(wire.id)) return;
-        addWireJunction(wire.id, event, { connectFromNodeId: isWireDrawingActive() ? selectedNodeId : "" });
-      });
-      hitLine.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        deleteWire(wire.id);
-      });
-      wireGroup.append(hitLine, line);
-      svg.append(wireGroup);
-    });
-    drawWireDraft(svg, boardRect);
+      return { id: wire.id, pathD, hovered: hoveredWireIds.has(wire.id) };
+    }).filter(Boolean);
+    window.dispatchEvent(new CustomEvent("cabio:crossover-schematic-wires-sync", {
+      detail: {
+        wires: wireViews,
+        wirePreviewD: wireDraftPathD(boardRect),
+      },
+    }));
   }
 
   function preserveExistingWireHover(wires) {
@@ -1084,16 +949,13 @@ export function createCrossoverSchematicController(deps) {
     return wireIdFromEventTarget(element);
   }
 
-  function drawWireDraft(svg, boardRect) {
-    if (!wireDraft?.point || !wireDraft.fromNodeId) return;
+  function wireDraftPathD(boardRect) {
+    if (!wireDraft?.point || !wireDraft.fromNodeId) return "";
     const from = crossoverSchematicBoard.querySelector(`[data-node-id="${cssEscape(wireDraft.fromNodeId)}"]`);
-    if (!from) return;
+    if (!from) return "";
     const fromPoint = wireAnchorPoint(from, from.getBoundingClientRect(), boardRect);
     const route = orthogonalWireRoutePoints(fromPoint, wireDraft.point, wireDraft.posture || wirePosture);
-    const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    preview.classList.add("crossover-wire-preview");
-    preview.setAttribute("d", wirePathD(route));
-    svg.append(preview);
+    return wirePathD(route);
   }
 
   function wireSegmentD(x1, y1, x2, y2) {
@@ -1260,52 +1122,26 @@ export function createCrossoverSchematicController(deps) {
 
   function renderModuleGroupBoxes(canvas, circuit) {
     const groups = Array.isArray(circuit?.moduleGroups) ? circuit.moduleGroups : [];
-    groups.forEach((group, index) => {
-      const bounds = moduleGroupBounds(canvas, group);
-      if (!bounds) return;
-      const box = document.createElement("div");
-      box.className = "crossover-module-group-box";
-      box.dataset.moduleGroupId = group.id;
-      box.style.left = `${bounds.left}px`;
-      box.style.top = `${bounds.top}px`;
-      box.style.width = `${bounds.width}px`;
-      box.style.height = `${bounds.height}px`;
-      box.style.setProperty("--module-group-index", String(index + 1));
-      box.classList.toggle("selected", isModuleGroupSelected(group));
-      box.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        wireMode = WIRE_MODE_IDLE;
-        selectedNodeId = "";
-        wireDraft = null;
-        updateWiringState();
-        selectModuleGroup(group);
-      });
-      const ungroupButton = document.createElement("button");
-      ungroupButton.type = "button";
-      ungroupButton.className = "crossover-module-group-ungroup";
-      ungroupButton.textContent = "x";
-      ungroupButton.ariaLabel = "Ungroup crossover module";
-      setTooltip(ungroupButton, "Remove this group without deleting its contents.");
-      ungroupButton.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      ungroupButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        ungroupModuleGroup(group.id);
-      });
-      box.append(ungroupButton);
-      canvas.append(box);
-    });
+    const moduleGroups = groups
+      .map((group, index) => {
+        const bounds = moduleGroupBounds(canvas, group);
+        if (!bounds) return null;
+        return {
+          id: group.id,
+          index: index + 1,
+          selected: isModuleGroupSelected(group),
+          ...bounds,
+        };
+      })
+      .filter(Boolean);
+    window.dispatchEvent(new CustomEvent("cabio:crossover-schematic-module-groups-sync", {
+      detail: { moduleGroups },
+    }));
   }
 
   function refreshModuleGroupBoxes() {
     const canvas = crossoverSchematicBoard?.querySelector(".crossover-schematic-canvas");
     if (!canvas) return;
-    canvas.querySelectorAll(".crossover-module-group-box").forEach((box) => box.remove());
     renderModuleGroupBoxes(canvas, activeCrossoverGroup()?.crossover?.circuit || {});
   }
 
@@ -2691,6 +2527,7 @@ export function createCrossoverSchematicController(deps) {
 
   function startBoardPan(event) {
     if (!crossoverSchematicBoard) return;
+    if (event.cabioSchematicHandled) return;
     if (!isEditableTarget(event.target)) crossoverSchematicBoard.focus?.({ preventScroll: true });
     if (isMobileLayout() && event.pointerType === "touch") {
       trackBoardTouchPointer(event);
@@ -2877,9 +2714,6 @@ export function createCrossoverSchematicController(deps) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     clearSchematicSelection();
     if (!selectionDrag.placeCornerOnClick) {
-      selectionBox = document.createElement("div");
-      selectionBox.className = "crossover-selection-box";
-      document.body.append(selectionBox);
       updateSelectionBox(event);
     }
     crossoverSchematicBoard.classList.add("is-selecting");
@@ -2932,8 +2766,7 @@ export function createCrossoverSchematicController(deps) {
 
   function clearBoardSelectionDrag() {
     selectionDrag = null;
-    selectionBox?.remove();
-    selectionBox = null;
+    syncSelectionBox(null);
     crossoverSchematicBoard?.classList.remove("is-selecting");
     document.removeEventListener("pointermove", handleBoardSelection);
     document.removeEventListener("pointerup", finishBoardSelection);
@@ -2941,12 +2774,15 @@ export function createCrossoverSchematicController(deps) {
   }
 
   function updateSelectionBox(event) {
-    if (!selectionDrag || !selectionBox) return;
+    if (!selectionDrag) return;
     const rect = selectionRectFromEvent(event);
-    selectionBox.style.left = `${rect.left}px`;
-    selectionBox.style.top = `${rect.top}px`;
-    selectionBox.style.width = `${rect.width}px`;
-    selectionBox.style.height = `${rect.height}px`;
+    syncSelectionBox(rect);
+  }
+
+  function syncSelectionBox(box) {
+    window.dispatchEvent(new CustomEvent("cabio:crossover-selection-box-sync", {
+      detail: { box },
+    }));
   }
 
   function selectionRectFromEvent(event) {
@@ -3221,8 +3057,9 @@ export function createCrossoverSchematicController(deps) {
   }
 
   function updateModuleGroupButtonState(enabled = Boolean(selectedCrossoverDesignId)) {
-    if (!crossoverCreateModuleGroupButton) return;
-    crossoverCreateModuleGroupButton.disabled = !enabled || selectedSchematicObjectCount() < 2;
+    syncSchematicToolbar({
+      moduleGroupEnabled: Boolean(enabled) && selectedSchematicObjectCount() >= 2,
+    });
   }
 
   function clampNumber(value, min, max) {
