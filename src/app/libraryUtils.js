@@ -22,6 +22,44 @@ export function filteredSortedLibraryEntries(entries, options = {}) {
     .map((item) => item.entry);
 }
 
+export function librarySearchScore(entry, query, kind = "driver") {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) return null;
+
+  const readableHaystack = searchableLibraryText(entry, kind);
+  const compactHaystack = compactSearchText(readableHaystack);
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const compactQuery = compactSearchText(normalizedQuery);
+  let score = 0;
+  const matched = [];
+
+  tokens.forEach((token) => {
+    const compactToken = compactSearchText(token);
+    if (!compactToken) return;
+    if (readableHaystack.includes(token)) {
+      score += token.length >= 4 ? 3 : 2;
+      matched.push(token);
+      return;
+    }
+    if (compactHaystack.includes(compactToken)) {
+      score += compactToken.length >= 4 ? 2 : 1;
+      matched.push(token);
+    }
+  });
+
+  if (compactQuery.length >= 3 && compactHaystack.includes(compactQuery)) {
+    score += compactQuery.length >= 6 ? 5 : 3;
+    if (!matched.includes(normalizedQuery)) matched.push(normalizedQuery);
+  }
+
+  if (!score) return null;
+  return {
+    matched,
+    score,
+    tokenCount: Math.max(tokens.length, 1),
+  };
+}
+
 export function libraryBrand(entry) {
   const name = String(entry?.name || "");
   for (const [brand, pattern] of LIBRARY_BRAND_ALIASES) {
@@ -49,6 +87,10 @@ export function slugify(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .slice(0, 80) || `driver-${Date.now()}`;
+}
+
+function compactSearchText(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 function searchableLibraryText(entry, kind) {

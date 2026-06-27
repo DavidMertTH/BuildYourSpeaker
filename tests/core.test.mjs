@@ -22,6 +22,7 @@ import { filterChainResponse, gainResponse, highPassResponse, linkwitzTransformR
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
 import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../src/core/recordingAnalysis.js";
 import { buildGoldenLayoutConfig, panelIdsFromLayoutConfig } from "../src/app/goldenLayoutConfig.js";
+import { librarySearchScore } from "../src/app/libraryUtils.js";
 import { PANEL_PRESETS } from "../src/app/presets.js";
 import { completeBox } from "../src/app/boxModel.js";
 import { completeDriverParameters } from "../src/app/driverParameters.js";
@@ -1148,6 +1149,17 @@ test("known driver library includes B&C DE250 as an HF driver entry", async () =
   assert.equal(de250.driver.recommendedCrossoverHz, 1600);
   assert.equal(de250.driver.sensitivityDb, 108.5);
   assert.equal(de250.driver.re, undefined);
+});
+
+test("known driver library search matches compact substrings", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const de250 = knownDrivers.find((entry) => entry.id === "bc-de250-8");
+  const dayton = knownDrivers.find((entry) => entry.id === "dayton-rss315hf-4");
+
+  assert.ok(librarySearchScore(de250, "bcde250", "driver"));
+  assert.ok(librarySearchScore(de250, "cde25", "driver"));
+  assert.ok(librarySearchScore(dayton, "rss315hf4", "driver"));
+  assert.ok(librarySearchScore(dayton, "315hf", "driver"));
 });
 
 test("known non-HF driver library entries are complete and internally consistent", async () => {
