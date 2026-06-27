@@ -8,9 +8,13 @@
   let selectedDriverId = "";
   let driverBrandOptions = [{ value: "", label: "Any brand" }];
   let selectedDriverBrand = "";
+  let driverFilterValue = "";
+  let driverFilterOpen = false;
 
-  function dispatchLibraryAction(action) {
-    window.dispatchEvent(new CustomEvent("cabio:library-action", { detail: { action } }));
+  $: driverFilterResults = filterDriverOptions(driverOptions, driverFilterValue);
+
+  function dispatchLibraryAction(action, detail = {}) {
+    window.dispatchEvent(new CustomEvent("cabio:library-action", { detail: { action, ...detail } }));
   }
 
   function searchOnEnter(event) {
@@ -33,12 +37,58 @@
     selectedDriverBrand = event.detail.selectedValue || "";
   }
 
+  function filterDriverOptions(options, filterValue) {
+    const tokens = String(filterValue || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    return options.filter((option) => {
+      if (!option.value) return false;
+      const label = String(option.label || "").toLowerCase();
+      return tokens.every((token) => label.includes(token));
+    });
+  }
+
+  function handleDriverFilterFocus() {
+    dispatchLibraryAction("ensure-driver-library");
+    driverFilterOpen = Boolean(driverFilterValue.trim());
+  }
+
+  function handleDriverFilterInput(event) {
+    driverFilterValue = event.currentTarget.value;
+    driverFilterOpen = Boolean(driverFilterValue.trim());
+    dispatchLibraryAction("driver-filter-input");
+  }
+
+  function handleDriverFilterKeydown(event) {
+    if (event.key === "Escape") {
+      driverFilterOpen = false;
+      event.stopPropagation();
+      return;
+    }
+    if (event.key === "Enter" && driverFilterResults.length === 1) {
+      event.preventDefault();
+      selectFilteredDriver(driverFilterResults[0].value);
+    }
+  }
+
+  function selectFilteredDriver(id) {
+    selectedDriverId = id;
+    driverFilterOpen = false;
+    dispatchLibraryAction("select-driver", { id });
+  }
+
+  function closeDriverFilterDropdown(event) {
+    if (event.target?.closest?.(".driver-library-filter-panel")) return;
+    driverFilterOpen = false;
+  }
+
   onMount(() => {
     window.addEventListener("cabio:library-select-sync", syncLibrarySelect);
     window.addEventListener("cabio:library-brand-options-sync", syncBrandOptions);
+    document.addEventListener("pointerdown", closeDriverFilterDropdown);
     return () => {
       window.removeEventListener("cabio:library-select-sync", syncLibrarySelect);
       window.removeEventListener("cabio:library-brand-options-sync", syncBrandOptions);
+      document.removeEventListener("pointerdown", closeDriverFilterDropdown);
     };
   });
 </script>
@@ -73,15 +123,43 @@
           label="Enable driver preset filters"
         />
       </summary>
-      <div class="library-filter-menu-body">
+      <div class="library-filter-menu-body driver-library-filter-panel">
         <input
           id="driverLibraryFilter"
           class="driver-known-search"
           type="search"
           placeholder="Filter known drivers by name"
-          onfocus={() => dispatchLibraryAction("ensure-driver-library")}
-          oninput={() => dispatchLibraryAction("driver-filter-input")}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="driverFilterResults"
+          aria-expanded={driverFilterOpen}
+          value={driverFilterValue}
+          onfocus={handleDriverFilterFocus}
+          oninput={handleDriverFilterInput}
+          onkeydown={handleDriverFilterKeydown}
         />
+        {#if driverFilterOpen}
+          <div id="driverFilterResults" class="driver-filter-results" role="listbox" aria-label="Filtered known drivers">
+            {#if driverFilterResults.length}
+              {#each driverFilterResults as option}
+                <button
+                  type="button"
+                  class:selected={option.value === selectedDriverId}
+                  class="driver-filter-result"
+                  role="option"
+                  aria-selected={option.value === selectedDriverId}
+                  title={option.label}
+                  onmousedown={(event) => event.preventDefault()}
+                  onclick={() => selectFilteredDriver(option.value)}
+                >
+                  <span>{option.label}</span>
+                </button>
+              {/each}
+            {:else}
+              <div class="driver-filter-empty">No matches</div>
+            {/if}
+          </div>
+        {/if}
         <select
           id="driverLibraryBrand"
           aria-label="Filter driver presets by brand"

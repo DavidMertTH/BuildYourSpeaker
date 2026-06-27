@@ -708,7 +708,7 @@ textarea {
 }
 
 .driver-finder-section {
-  gap: var(--space-4);
+  gap: var(--space-3);
   background: color-mix(in srgb, var(--surface) 86%, var(--accent) 14%);
 }
 
@@ -1130,6 +1130,14 @@ select optgroup {
   min-height: 0;
   margin-bottom: 0;
   line-height: 1.25;
+}
+
+.driver-finder-section .search-status:empty {
+  display: none;
+}
+
+.driver-finder-section #driverSearchResults {
+  margin-top: 0;
 }
 
 .search-results {
