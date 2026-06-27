@@ -76,8 +76,6 @@ export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
   if (isBoxTwoPanelLayout(visiblePanelIds)) return buildBoxTwoPanelGoldenLayoutConfig(visiblePanelIds);
   if (isBoxStackedDetailLayout(visiblePanelIds)) return buildBoxStackedDetailGoldenLayoutConfig(visiblePanelIds);
   if (isRecordingLayout(visiblePanelIds)) return buildRecordingGoldenLayoutConfig();
-  if (isCrossoverLayout(visiblePanelIds)) return buildCrossoverGoldenLayoutConfig();
-
   const columnCount = visiblePanelIds.length <= 1 ? 1 : visiblePanelIds.length <= 4 ? 2 : 3;
   const columns = Array.from({ length: columnCount }, () => []);
   visiblePanelIds.forEach((panelId, index) => {
@@ -134,11 +132,6 @@ function isBoxTwoPanelLayout(panelIds) {
 function isRecordingLayout(panelIds) {
   const measurementPanelIds = ["onAxisResponsePlot", "offAxisResponsePlot"];
   return panelIds.length === measurementPanelIds.length && measurementPanelIds.every((panelId) => panelIds.includes(panelId));
-}
-
-function isCrossoverLayout(panelIds) {
-  const crossoverPanelIds = ["crossoverSchematicPanel", "splPlot", "phasePlot", "impedancePlot"];
-  return panelIds.length === crossoverPanelIds.length && crossoverPanelIds.every((panelId) => panelIds.includes(panelId));
 }
 
 function buildDriverGoldenLayoutConfig() {
@@ -239,40 +232,6 @@ function buildRecordingGoldenLayoutConfig() {
       content: [
         componentStackConfig("onAxisResponsePlot", 50),
         componentStackConfig("offAxisResponsePlot", 50),
-      ],
-    },
-    settings: {
-      reorderEnabled: true,
-      constrainDragToContainer: true,
-      popoutWholeStack: false,
-    },
-    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
-    header: {
-      show: "top",
-      close: "hide",
-      maximise: "maximise",
-      minimise: "minimise",
-      popout: "popout",
-      tabDropdown: "tabs",
-    },
-  };
-}
-
-function buildCrossoverGoldenLayoutConfig() {
-  return {
-    root: {
-      type: "column",
-      content: [
-        componentStackConfig("crossoverSchematicPanel", 64),
-        {
-          type: "row",
-          size: "36%",
-          content: [
-            componentStackConfig("splPlot", 34),
-            componentStackConfig("phasePlot", 33),
-            componentStackConfig("impedancePlot", 33),
-          ],
-        },
       ],
     },
     settings: {

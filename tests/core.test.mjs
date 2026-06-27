@@ -21,7 +21,8 @@ import { normalizeEnclosureOptions, validateEnclosureOptions } from "../src/core
 import { filterChainResponse, gainResponse, highPassResponse, linkwitzTransformResponse, lowPassResponse, parametricEqResponse, shelvingEqResponse, subsonicResponse } from "../src/core/filters.js";
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
 import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../src/core/recordingAnalysis.js";
-import { buildGoldenLayoutConfig } from "../src/app/goldenLayoutConfig.js";
+import { buildGoldenLayoutConfig, panelIdsFromLayoutConfig } from "../src/app/goldenLayoutConfig.js";
+import { PANEL_PRESETS } from "../src/app/presets.js";
 import { completeBox } from "../src/app/boxModel.js";
 import { completeDriverParameters } from "../src/app/driverParameters.js";
 import { simulateHfDriverResponse } from "../src/app/hfDriverSimulation.js";
@@ -45,6 +46,15 @@ test("measurement layout excludes the recording workbench", () => {
   assert.equal(config.root.type, "row");
   const panelIds = config.root.content.map((stack) => stack.content[0].componentState.panelId);
   assert.deepEqual(panelIds, ["onAxisResponsePlot", "offAxisResponsePlot"]);
+});
+
+test("filter layout excludes schematic crossover workspace", () => {
+  const config = buildGoldenLayoutConfig(["crossoverSchematicPanel", "splPlot", "phasePlot", "impedancePlot"]);
+  const panelIds = panelIdsFromLayoutConfig(config).sort();
+
+  assert.deepEqual(panelIds, ["impedancePlot", "phasePlot", "splPlot"]);
+  assert.deepEqual(PANEL_PRESETS.filter.visible, ["splPlot", "phasePlot", "impedancePlot", "groupDelayPlot"]);
+  assert.equal(PANEL_PRESETS.filter.order.includes("crossover-schematic-panel"), false);
 });
 
 test("recording stimulus generator respects signal type and frequency range", () => {

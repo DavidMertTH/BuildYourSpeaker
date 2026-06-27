@@ -13,7 +13,6 @@ export function createRenderPipeline(deps) {
     commitCrossoverState,
     CROSSOVER_FAMILIES,
     CROSSOVER_ORDERS,
-    crossoverCircuitResponses,
     crossoverFamilyLabel,
     defaultMeasurementTarget,
     designColor,
@@ -31,7 +30,6 @@ export function createRenderPipeline(deps) {
     getActiveDesign,
     getState,
     getThemeColors,
-    hasActiveCrossoverDesign,
     hydrateDerivedFields,
     hydratePortLockButtons,
     hydrateRangeFields,
@@ -296,20 +294,8 @@ export function createRenderPipeline(deps) {
   
   function crossoverFiltersForDesign(design) {
     const group = crossoverGroupForDesign(design);
-    const transitions = group?.crossover?.transitions || [];
     const signalFilters = group?.crossover?.signalFilters || [];
     const filters = [];
-    transitions.forEach((transition) => {
-      if (transition.enabled === false) return;
-      const base = {
-        family: transition.family,
-        order: transition.order,
-        frequencyHz: transition.frequencyHz,
-        enabled: true,
-      };
-      if (transition.fromDesignId === design.id) filters.push({ ...base, kind: "lowpass" });
-      if (transition.toDesignId === design.id) filters.push({ ...base, kind: "highpass" });
-    });
     signalFilters.forEach((filter) => {
       if (filter.enabled === false || !signalFilterAppliesToDesign(filter, design)) return;
       filters.push({ ...filter });
@@ -383,46 +369,14 @@ export function createRenderPipeline(deps) {
   }
 
   function applyCrossoverRoutingToSimulations(simulations) {
-    const circuitResponsesByGroup = crossoverCircuitResponsesByGroup(simulations);
     return simulations.map((simulation) => {
-      const activeWithFilters = applyCrossoverToSimulation(simulation.active, crossoverFiltersForDesign(simulation.design));
-      const circuitResponse = circuitResponsesByGroup.get(crossoverGroupForDesign(simulation.design)?.id)?.get(simulation.design.id);
-      const active = circuitResponse
-        ? applyCircuitResponseToSimulation(activeWithFilters, circuitResponse)
-        : activeWithFilters;
+      const active = applyCrossoverToSimulation(simulation.active, crossoverFiltersForDesign(simulation.design));
       return {
         ...simulation,
         active,
         warnings: designWarnings(simulation.design.mode, simulation.box, active, simulation.driver),
       };
     });
-  }
-
-  function crossoverCircuitResponsesByGroup(simulations) {
-    const byGroup = new Map();
-    crossoverGroups().forEach((group) => {
-      if (!hasActiveCrossoverDesign(group.crossover)) return;
-      const memberGroupId = crossoverGroupMemberId(group);
-      const members = simulations.filter((simulation) => (simulation.design.groupId || UNGROUPED_CONFIG_GROUP_ID) === memberGroupId);
-      if (!members.length) return;
-      const responses = crossoverCircuitResponses(group.crossover?.circuit, frequencies, members.map((simulation) => ({
-        designId: simulation.design.id,
-        impedance: simulation.active.impedance,
-      })));
-      if (responses.size) byGroup.set(group.id, responses);
-    });
-    return byGroup;
-  }
-
-  function applyCircuitResponseToSimulation(active, circuitResponse) {
-    const next = applyComplexResponseToSimulation(active, circuitResponse.voltage, { crossoverCircuitActive: true });
-    if (Array.isArray(circuitResponse.inputImpedance) && circuitResponse.inputImpedance.length === frequencies.length) {
-      next.impedance = circuitResponse.inputImpedance.map((value, index) => {
-        const number = Number(value);
-        return Number.isFinite(number) && number > 0 ? number : active.impedance?.[index] ?? number;
-      });
-    }
-    return next;
   }
   
   function simulateDesignRaw(design, colorIndex = 0) {
@@ -954,42 +908,9 @@ export function createRenderPipeline(deps) {
   }
   
   function crossoverAnnotationsForPlot(simulations, plotKind) {
-    const simulationsByDesignId = new Map(simulations.map((simulation) => [simulation.design.id, simulation]));
     const annotations = [];
     crossoverGroups().forEach((group, groupIndex) => {
       const groupColor = designColor(configGroupCombinedColorIndex(groupIndex));
-      (group.crossover?.transitions || []).forEach((transition) => {
-        if (transition.enabled === false) return;
-        if (transition.showAnnotation === false) return;
-        const fromSimulation = simulationsByDesignId.get(transition.fromDesignId);
-        const toSimulation = simulationsByDesignId.get(transition.toDesignId);
-        if (!fromSimulation || !toSimulation) return;
-  
-        const frequencyHz = clampCrossoverFrequency(transition.frequencyHz);
-        const annotation = {
-          frequencyHz,
-          bandMinHz: frequencyHz / Math.SQRT2,
-          bandMaxHz: frequencyHz * Math.SQRT2,
-          color: groupColor,
-          label: `${crossoverFamilyLabel(transition.family)}${transition.order} ${formatCrossoverFrequency(frequencyHz)}`,
-          draggable: true,
-          drag: {
-            type: "transition",
-            groupId: group.id,
-            id: transition.id,
-            field: "frequencyHz",
-          },
-        };
-  
-        if (plotKind === "phase") {
-          const fromPhase = interpolatePlotSeriesValue({ x: frequencies, values: fromSimulation.active.phaseDeg }, frequencyHz);
-          const toPhase = interpolatePlotSeriesValue({ x: frequencies, values: toSimulation.active.phaseDeg }, frequencyHz);
-          const delta = wrapPhaseDifference(toPhase - fromPhase);
-          if (Number.isFinite(delta)) annotation.detail = `Delta phase ${delta.toFixed(0)} deg`;
-        }
-        annotations.push(annotation);
-      });
-
       if (plotKind !== "spl") return;
       (group.crossover?.signalFilters || []).forEach((filter) => {
         if (filter.enabled === false) return;

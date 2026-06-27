@@ -1,6 +1,5 @@
 <script>
   import PlotPanel from "./plot/PlotPanel.svelte";
-  import CrossoverSchematicPanel from "./plot/CrossoverSchematicPanel.svelte";
 
   const plotPanels = [
     { reorderId: "spl-plot", panelId: "splPlot", title: "SPL", canvasId: "splPlot" },
@@ -36,6 +35,5 @@
   {#each plotPanels as panel (panel.panelId)}
     <PlotPanel {...panel} />
   {/each}
-  <CrossoverSchematicPanel />
   <div class="plot-panel-staging" data-golden-layout-staging aria-hidden="true"></div>
 </section>

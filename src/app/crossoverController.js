@@ -83,17 +83,14 @@ export function createCrossoverController(deps) {
   }
 
   function crossoverStatusText(group, members) {
-    if (!group || members.length < 1) return "Add at least one config to design crossover filters.";
-    if (members.length < 2) return "Transitions need at least two configs. Crossover designs can be used for this single driver.";
+    if (!group || members.length < 1) return "Add at least one config to edit filters.";
     return "";
   }
 
   function updateSignalFilterAddButton(group = activeCrossoverGroup(), members = crossoverGroupMembers(group)) {
     if (!signalFilterAddButton) return;
-    const selectedType = signalFilterTypeSelect?.value || "parametric";
-    const needsMember = selectedType === "crossover-design";
-    const needsPair = selectedType === "transition";
-    signalFilterAddButton.disabled = !group || (needsMember && members.length < 1) || (needsPair && members.length < 2);
+    void members;
+    signalFilterAddButton.disabled = !group;
   }
   
   function activeCrossoverGroup() {
@@ -158,10 +155,8 @@ export function createCrossoverController(deps) {
   function renderSignalFilters(group, members) {
     window.dispatchEvent(new CustomEvent("cabio:crossover-filter-list-sync", {
       detail: group ? {
-        designs: (group.crossover?.designs || []).map((design) => crossoverDesignSnapshot(group.id, design, members)),
-        transitions: (group.crossover?.transitions || []).map((transition) => crossoverTransitionSnapshot(transition, members)),
         filters: (group.crossover?.signalFilters || []).map((filter) => signalFilterSnapshot(filter, members)),
-      } : { designs: [], transitions: [], filters: [] },
+      } : { filters: [] },
     }));
   }
 
@@ -640,14 +635,6 @@ export function createCrossoverController(deps) {
 
   function addSignalFilter(type = "parametric") {
     state = getState();
-    if (type === "crossover-design") {
-      addCrossoverDesign("two-way");
-      return;
-    }
-    if (type === "transition") {
-      addCrossoverTransition();
-      return;
-    }
     const group = activeCrossoverGroup();
     if (!group) return;
   

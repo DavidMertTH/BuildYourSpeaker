@@ -4062,7 +4062,6 @@ function applyMobilePanelVisibility() {
 }
 
 function mobilePanelHeight(panelId) {
-  if (panelId === "crossoverSchematicPanel") return "460px";
   if (panelId === "boxPreview") return "320px";
   return "300px";
 }

@@ -13,7 +13,6 @@
     { panelId: "groupDelayPlot", label: "Group delay" },
     { panelId: "horizontalPolarPlot", label: "H polar" },
     { panelId: "boxPreview", label: "Box" },
-    { panelId: "crossoverSchematicPanel", label: "Crossover" },
   ];
 
   let checkedPanelIds = new Set(graphToggles.map((toggle) => toggle.panelId));

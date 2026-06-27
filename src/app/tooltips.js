@@ -125,7 +125,6 @@ export const PANEL_TOOLTIPS = {
   groupDelayPlot: "Show or hide the group delay graph.",
   horizontalPolarPlot: "Show or hide the horizontal polar directivity graph.",
   boxPreview: "Show or hide the box preview.",
-  crossoverSchematicPanel: "Show or hide the crossover schematic editor.",
 };
 export const THEME_TOOLTIPS = {
   dark: "Use the dark interface theme.",
@@ -155,8 +154,6 @@ export const PLOT_PANEL_TOOLTIPS = {
     "Horizontal polar shows imported horizontal measurements by angle at selected frequencies.",
   boxPreview:
     "Box preview shows the estimated cabinet proportions for the active config. Use it as a quick buildability check, not as a final woodworking drawing.",
-  crossoverSchematicPanel:
-    "Crossover schematic lets you place R, C and L components and wire them between the selected group's source, ground and driver endpoints.",
 };
 export const PANEL_LABELS = {
   splPlot: "SPL",
@@ -170,7 +167,6 @@ export const PANEL_LABELS = {
   groupDelayPlot: "Group delay",
   horizontalPolarPlot: "H polar",
   boxPreview: "Box",
-  crossoverSchematicPanel: "Crossover",
 };
 export const RANGE_TOOLTIPS = {
   "box.volumeL": "Adjust the active config volume quickly.",
