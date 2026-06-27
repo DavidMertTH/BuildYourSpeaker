@@ -6,7 +6,7 @@ Build Your Speaker is a browser-based loudspeaker enclosure simulator inspired b
 
 - Node.js 20 or newer is recommended.
 - A modern browser such as Chrome, Edge, Firefox, or Safari.
-- No npm package installation is currently required. The app uses browser ES modules and a small local Node.js static server.
+- npm dependencies are required for the Svelte/Vite build.
 
 ## Installation
 
@@ -89,6 +89,19 @@ Or directly:
 ```bash
 node --test
 ```
+
+## Deploy On Render
+
+Use a Node Web Service, not a Static Site, because the app also exposes search APIs.
+
+Recommended settings:
+
+```text
+Build Command: npm ci && npm run build
+Start Command: npm start
+```
+
+The included `render.yaml` defines these settings and sets `NODE_ENV=production`, so the server serves the Vite/Svelte build from `dist`.
 
 ## Features
 

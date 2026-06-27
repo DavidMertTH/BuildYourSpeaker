@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { searchDrivers, searchPassiveRadiators } from "./src/core/driverScraper.js";
 import { searchFrequencyResponses } from "./src/core/frequencyResponseScraper.js";
@@ -112,7 +112,7 @@ function writeJson(res, statusCode, payload) {
 }
 
 async function serveStaticFile(url, res) {
-  const requested = url.pathname === "/" ? "/index.html" : url.pathname;
+  const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = normalize(join(staticRoot, requested));
 
   if (!filePath.startsWith(staticRoot)) {
@@ -121,12 +121,39 @@ async function serveStaticFile(url, res) {
     return;
   }
 
-  const body = await readFile(filePath);
+  const resolvedPath = await resolveStaticPath(filePath, requested);
+  const body = await readFile(resolvedPath);
   res.writeHead(200, {
-    "Content-Type": mime[extname(filePath)] ?? "application/octet-stream",
-    "Cache-Control": "no-store",
+    "Content-Type": mime[extname(resolvedPath)] ?? "application/octet-stream",
+    "Cache-Control": cacheControlForPath(resolvedPath),
   });
   res.end(body);
+}
+
+async function resolveStaticPath(filePath, requested) {
+  if (await isReadableFile(filePath)) return filePath;
+  const hasExtension = Boolean(extname(requested));
+  if (!hasExtension && production) {
+    const indexPath = join(staticRoot, "index.html");
+    if (await isReadableFile(indexPath)) return indexPath;
+  }
+  return filePath;
+}
+
+async function isReadableFile(filePath) {
+  try {
+    const fileStat = await stat(filePath);
+    return fileStat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+function cacheControlForPath(filePath) {
+  if (production && filePath.includes(`${join("dist", "assets")}`)) {
+    return "public, max-age=31536000, immutable";
+  }
+  return "no-store";
 }
 
 function attachFrequencyResponsesToDrivers(driverPayload = {}, responsePayload = {}, query = "") {
