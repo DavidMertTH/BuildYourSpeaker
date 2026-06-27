@@ -84,13 +84,15 @@ export function createCrossoverController(deps) {
 
   function crossoverStatusText(group, members) {
     if (!group || members.length < 1) return "Add at least one config to edit filters.";
+    if (members.length < 2) return "Transitions need at least two configs.";
     return "";
   }
 
   function updateSignalFilterAddButton(group = activeCrossoverGroup(), members = crossoverGroupMembers(group)) {
     if (!signalFilterAddButton) return;
-    void members;
-    signalFilterAddButton.disabled = !group;
+    const selectedType = signalFilterTypeSelect?.value || "parametric";
+    const needsPair = selectedType === "transition";
+    signalFilterAddButton.disabled = !group || (needsPair && members.length < 2);
   }
   
   function activeCrossoverGroup() {
@@ -155,8 +157,9 @@ export function createCrossoverController(deps) {
   function renderSignalFilters(group, members) {
     window.dispatchEvent(new CustomEvent("cabio:crossover-filter-list-sync", {
       detail: group ? {
+        transitions: (group.crossover?.transitions || []).map((transition) => crossoverTransitionSnapshot(transition, members)),
         filters: (group.crossover?.signalFilters || []).map((filter) => signalFilterSnapshot(filter, members)),
-      } : { filters: [] },
+      } : { transitions: [], filters: [] },
     }));
   }
 
@@ -621,6 +624,10 @@ export function createCrossoverController(deps) {
 
   function addSignalFilter(type = "parametric") {
     state = getState();
+    if (type === "transition") {
+      addCrossoverTransition();
+      return;
+    }
     const group = activeCrossoverGroup();
     if (!group) return;
   

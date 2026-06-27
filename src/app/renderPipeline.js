@@ -292,8 +292,20 @@ export function createRenderPipeline(deps) {
   
   function crossoverFiltersForDesign(design) {
     const group = crossoverGroupForDesign(design);
+    const transitions = group?.crossover?.transitions || [];
     const signalFilters = group?.crossover?.signalFilters || [];
     const filters = [];
+    transitions.forEach((transition) => {
+      if (transition.enabled === false) return;
+      const base = {
+        family: transition.family,
+        order: transition.order,
+        frequencyHz: transition.frequencyHz,
+        enabled: true,
+      };
+      if (transition.fromDesignId === design.id) filters.push({ ...base, kind: "lowpass" });
+      if (transition.toDesignId === design.id) filters.push({ ...base, kind: "highpass" });
+    });
     signalFilters.forEach((filter) => {
       if (filter.enabled === false || !signalFilterAppliesToDesign(filter, design)) return;
       filters.push({ ...filter });
@@ -902,9 +914,42 @@ export function createRenderPipeline(deps) {
   }
   
   function crossoverAnnotationsForPlot(simulations, plotKind) {
+    const simulationsByDesignId = new Map(simulations.map((simulation) => [simulation.design.id, simulation]));
     const annotations = [];
     crossoverGroups().forEach((group, groupIndex) => {
       const groupColor = designColor(configGroupCombinedColorIndex(groupIndex));
+      (group.crossover?.transitions || []).forEach((transition) => {
+        if (transition.enabled === false) return;
+        if (transition.showAnnotation === false) return;
+        const fromSimulation = simulationsByDesignId.get(transition.fromDesignId);
+        const toSimulation = simulationsByDesignId.get(transition.toDesignId);
+        if (!fromSimulation || !toSimulation) return;
+
+        const frequencyHz = clampCrossoverFrequency(transition.frequencyHz);
+        const annotation = {
+          frequencyHz,
+          bandMinHz: frequencyHz / Math.SQRT2,
+          bandMaxHz: frequencyHz * Math.SQRT2,
+          color: groupColor,
+          label: `${crossoverFamilyLabel(transition.family)}${transition.order} ${formatCrossoverFrequency(frequencyHz)}`,
+          draggable: true,
+          drag: {
+            type: "transition",
+            groupId: group.id,
+            id: transition.id,
+            field: "frequencyHz",
+          },
+        };
+
+        if (plotKind === "phase") {
+          const fromPhase = interpolatePlotSeriesValue({ x: frequencies, values: fromSimulation.active.phaseDeg }, frequencyHz);
+          const toPhase = interpolatePlotSeriesValue({ x: frequencies, values: toSimulation.active.phaseDeg }, frequencyHz);
+          const delta = wrapPhaseDifference(toPhase - fromPhase);
+          if (Number.isFinite(delta)) annotation.detail = `Delta phase ${delta.toFixed(0)} deg`;
+        }
+        annotations.push(annotation);
+      });
+
       if (plotKind !== "spl") return;
       (group.crossover?.signalFilters || []).forEach((filter) => {
         if (filter.enabled === false) return;

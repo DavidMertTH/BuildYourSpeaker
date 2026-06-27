@@ -4,9 +4,11 @@
   import CrossoverFilterField from "./CrossoverFilterField.svelte";
   import IconEye from "../../workspace/IconEye.svelte";
 
+  let transitions = [];
   let filters = [];
 
   function syncList(event) {
+    transitions = event.detail?.transitions || [];
     filters = event.detail?.filters || [];
   }
 
@@ -79,6 +81,17 @@
   }
 
   function handleLocalFieldInput(ownerType, item, fieldKey, value) {
+    if (ownerType === "transition") {
+      const preview = localFieldPreview(item, fieldKey, value);
+      transitions = updateLocalField(transitions, item.id, fieldKey, value);
+      if (preview.badge || preview.rangeValue) {
+        transitions = updateLocalItem(transitions, item.id, {
+          ...(preview.badge ? { badge: preview.badge } : {}),
+          ...(preview.rangeValue && item.range ? { range: { ...item.range, value: preview.rangeValue } } : {}),
+        });
+      }
+      return;
+    }
     const preview = localFieldPreview(item, fieldKey, value);
     filters = updateLocalField(filters, item.id, fieldKey, value);
     if (preview.badge || preview.rangeValue) {
@@ -98,6 +111,14 @@
       value: rangeValue,
       live: true,
     });
+    if (ownerType === "transition") {
+      transitions = updateLocalItem(transitions, item.id, {
+        badge: preview.badge,
+        range: { ...item.range, value: rangeValue },
+      });
+      transitions = updateLocalField(transitions, item.id, preview.field, preview.fieldValue);
+      return;
+    }
     filters = updateLocalItem(filters, item.id, {
       badge: preview.badge,
       range: { ...item.range, value: rangeValue },
@@ -117,6 +138,46 @@
 </script>
 
 <div id="signalFilterList" class="search-results crossover-filter-list">
+  {#each transitions as transition (transition.id)}
+    <article class:muted={transition.muted} class:invalid={transition.invalid} class="search-result crossover-transition signal-filter signal-filter-transition" data-transition-id={transition.id}>
+      <div class="search-result-title">
+        <span>Transition</span>
+        <strong class="filter-frequency-badge">{transition.badge}</strong>
+      </div>
+      <div class="crossover-transition-fields">
+        {#each transition.fields as field}
+          <CrossoverFilterField {field} ownerType="transition" ownerId={transition.id} onLocalInput={(fieldKey, value) => handleLocalFieldInput("transition", transition, fieldKey, value)} />
+        {/each}
+      </div>
+      <input
+        class="planner-range crossover-transition-range signal-filter-range"
+        type="range"
+        min={transition.range.min}
+        max={transition.range.max}
+        step={transition.range.step}
+        value={transition.range.value}
+        aria-label="Transition frequency slider"
+        title="Adjust this transition frequency live on a logarithmic scale."
+        oninput={(event) => handleRangeInput("transition", transition, event)}
+      />
+      <div class="crossover-transition-actions">
+        <button
+          type="button"
+          class:active={transition.annotationVisible}
+          class="filter-annotation-toggle"
+          aria-pressed={String(transition.annotationVisible)}
+          aria-label={`${transition.annotationVisible ? "Hide" : "Show"} SPL visualization`}
+          title={`${transition.annotationVisible ? "Hide" : "Show"} this transition's SPL graph visualization.`}
+          onclick={() => dispatchAction("toggle-transition-annotation", { transitionId: transition.id })}
+        >
+          <IconEye visible={transition.annotationVisible} />
+        </button>
+        <button type="button" title="Enable or disable this transition." onclick={() => dispatchAction("toggle-transition", { transitionId: transition.id })}>{transition.muted ? "Enable" : "Disable"}</button>
+        <button type="button" class="danger" title="Delete this transition." onclick={() => dispatchAction("delete-transition", { transitionId: transition.id })}>Delete</button>
+      </div>
+    </article>
+  {/each}
+
   {#each filters as filter (filter.id)}
     <article class:muted={filter.muted} class="search-result crossover-transition signal-filter" data-signal-filter-id={filter.id}>
       <div class="search-result-title">
