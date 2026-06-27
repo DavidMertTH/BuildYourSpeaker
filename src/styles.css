@@ -774,6 +774,28 @@ textarea {
   min-height: var(--control-height);
 }
 
+.driver-combobox {
+  position: relative;
+  min-width: 0;
+}
+
+.driver-combobox .driver-known-search {
+  padding-right: 28px;
+}
+
+.driver-combobox::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  pointer-events: none;
+  transform: translateY(-65%) rotate(45deg);
+}
+
 .driver-summary-panel {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line-soft));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-faint));
@@ -993,14 +1015,20 @@ textarea {
 }
 
 .driver-filter-results {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
   display: grid;
   gap: var(--space-1);
-  max-height: min(280px, 52vh);
+  max-height: min(340px, 56vh);
   padding: var(--space-1);
   overflow: auto;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-control);
-  background: var(--field);
+  background: var(--chrome);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.48);
 }
 
 .driver-filter-result {
@@ -1017,6 +1045,7 @@ textarea {
 }
 
 .driver-filter-result:hover,
+.driver-filter-result.active,
 .driver-filter-result.selected {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line-soft));
   background: var(--accent-subtle);
