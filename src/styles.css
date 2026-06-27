@@ -5569,7 +5569,64 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
   }
 
   .plot-toolbar {
+    display: block;
+    top: 8px;
+    right: 8px;
+    z-index: 250;
+    width: min(156px, calc(100vw - 24px));
+    min-height: 0;
+  }
+
+  .plot-toolbar .plot-toolbar-pill,
+  .plot-toolbar .plot-tool-button,
+  .plot-toolbar .plot-axis-panel {
     display: none;
+  }
+
+  .plot-toolbar .plot-toolbar-menu,
+  .plot-toolbar:hover .plot-toolbar-menu,
+  .plot-toolbar:focus-within .plot-toolbar-menu {
+    position: static;
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .plot-toolbar .plot-graph-axis-row {
+    display: block;
+    width: 100%;
+  }
+
+  .plot-toolbar .plot-panel-select {
+    width: 100%;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 24px 0 10px;
+    border: 1px solid color-mix(in srgb, var(--line-soft) 78%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--accent) 58%, var(--line-soft));
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--bar-bg) 88%, transparent);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 720;
+    letter-spacing: 0;
+    line-height: 1;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(8px);
+  }
+
+  .plot-toolbar .plot-panel-select:hover,
+  .plot-toolbar .plot-panel-select:focus {
+    border-color: color-mix(in srgb, var(--accent) 62%, var(--line-soft));
+    background: color-mix(in srgb, var(--accent) 14%, var(--bar-bg));
   }
 
   .plot-resize-handle {
