@@ -949,6 +949,28 @@ test("driver scraper extracts parameters from a direct PDF datasheet URL", async
   }
 });
 
+test("driver scraper converts unicode engineering units", () => {
+  const html = `
+    <html><title>Metric Unit Driver</title>
+    <table>
+      <tr><td>Re</td><td>6.2 ohm</td></tr>
+      <tr><td>Le</td><td>28 µH</td></tr>
+      <tr><td>Fs</td><td>38 Hz</td></tr>
+      <tr><td>Qms</td><td>3.47</td></tr>
+      <tr><td>Qes</td><td>0.51</td></tr>
+      <tr><td>Vas</td><td>0.1099 m3</td></tr>
+      <tr><td>Sd</td><td>0.053 m²</td></tr>
+      <tr><td>Xmax</td><td>2 mm</td></tr>
+      <tr><td>Mms</td><td>0.062 kg</td></tr>
+      <tr><td>Bl</td><td>9.8 Tm</td></tr>
+    </table></html>`;
+  const result = extractDriverData(html, { url: "https://example.test/metric-driver" });
+
+  assert.equal(result.driver.leMh, 0.028);
+  assert.equal(result.driver.sdCm2, 530);
+  assert.equal(result.driver.mmsG, 62);
+});
+
 test("driver scraper reads positioned PDF parameter tables", async () => {
   const labels = [
     ["Re", 700],
@@ -1126,6 +1148,23 @@ test("known driver library includes B&C DE250 as an HF driver entry", async () =
   assert.equal(de250.driver.recommendedCrossoverHz, 1600);
   assert.equal(de250.driver.sensitivityDb, 108.5);
   assert.equal(de250.driver.re, undefined);
+});
+
+test("known non-HF driver library entries are complete and internally consistent", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const required = ["re", "fs", "qms", "qes", "vasL", "sdCm2", "xmaxMm", "mmsG", "bl"];
+  const invalid = knownDrivers
+    .filter((entry) => entry.allowParameterFallback !== false && entry.category !== "hf-driver")
+    .map((entry) => {
+      const missing = required.filter((field) => !(Number(entry.driver?.[field]) > 0));
+      const issues = analyzeDriverParameters(entry.driver).issues
+        .filter((issue) => issue.severity === "error" || issue.severity === "warning")
+        .map((issue) => `${issue.key}: ${issue.message}`);
+      return { id: entry.id, missing, issues };
+    })
+    .filter((entry) => entry.missing.length || entry.issues.length);
+
+  assert.deepEqual(invalid, []);
 });
 
 test("HF driver completion does not inherit sample woofer parameters", async () => {

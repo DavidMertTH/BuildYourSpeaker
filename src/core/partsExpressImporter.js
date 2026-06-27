@@ -1,11 +1,12 @@
 import { scrapeDriverPage } from "./driverScraper.js";
 import { fetchUrl as fetch } from "./fetch.js";
+import { analyzeDriverParameters, deriveDriverParameters } from "./driver.js";
 
 const SITEMAP_URL = "https://www.parts-express.com/sitemap_pages.xml";
 const REQUEST_DELAY_MS = 180;
 const DRIVER_TERMS = /(woofer|subwoofer|driver|tweeter|midrange|full-range|fullrange|coaxial|speaker-driver|compression-driver)/i;
 const EXCLUDE_TERMS = /(amplifier|stand|mount|cable|adapter|connector|microphone|headphone|earbud|grill|grille|horn-|waveguide|replacement|kit|package|bundle|cabinet|enclosure|crossover|terminal|binding-post|foam|surround|passive-radiator|radiator|manual|bracket|plate|rack|case|battery|charger|receiver|transmitter)/i;
-const REQUIRED_FIELDS = ["fs", "qes", "qms"];
+const REQUIRED_FIELDS = ["re", "fs", "qms", "qes", "vasL", "sdCm2", "xmaxMm", "mmsG", "bl"];
 
 export async function findPartsExpressDriverUrls() {
   const xml = await fetch(SITEMAP_URL).then((response) => {
@@ -86,8 +87,11 @@ function isDriverCandidateUrl(url) {
 }
 
 function isUsableDriver(result, minFields) {
-  const keys = Object.keys(result.driver);
-  return keys.length >= minFields && REQUIRED_FIELDS.every((field) => Number.isFinite(result.driver[field]));
+  const driver = normalizeImportedDriver(result.driver);
+  const keys = Object.keys(driver);
+  const hasRequiredFields = REQUIRED_FIELDS.every((field) => Number.isFinite(driver[field]) && driver[field] > 0);
+  const hasWarnings = analyzeDriverParameters(driver).issues.some((issue) => issue.severity === "warning");
+  return keys.length >= minFields && hasRequiredFields && !hasWarnings;
 }
 
 function toDriverEntry(result) {
@@ -95,9 +99,47 @@ function toDriverEntry(result) {
     id: `parts-express-${productCodeFromUrl(result.url) || slugify(result.title)}`,
     name: cleanTitle(result.title),
     source: result.url,
-    driver: result.driver,
+    driver: normalizeImportedDriver(result.driver),
     matched: result.matched,
   };
+}
+
+function normalizeImportedDriver(input = {}) {
+  const driver = { ...input };
+  const areaWasSquareMeters = driver.sdCm2 > 0 && driver.sdCm2 < 1;
+  if (areaWasSquareMeters) driver.sdCm2 = roundValue(driver.sdCm2 * 10000);
+  if (driver.mmsG > 0 && driver.mmsG < 1 && shouldTreatMassAsKg(driver, areaWasSquareMeters)) {
+    driver.mmsG = roundValue(driver.mmsG * 1000);
+  }
+  if (driver.leMh > 20) driver.leMh = roundValue(driver.leMh / 1000);
+
+  const completed = deriveDriverParameters(driver);
+  if (!driver.mmsG && Number.isFinite(completed.mmsG) && completed.mmsG > 0) {
+    driver.mmsG = completed.mmsG;
+  }
+  if (!driver.bl && Number.isFinite(completed.bl) && completed.bl > 0) {
+    driver.bl = completed.bl;
+  }
+  return driver;
+}
+
+function shouldTreatMassAsKg(driver, areaWasSquareMeters) {
+  if (areaWasSquareMeters) return true;
+  const derivedMms = analyzeDriverParameters(driver).derived.mmsG;
+  if (!Number.isFinite(derivedMms) || derivedMms <= 0) return false;
+  const gramError = relativeError(driver.mmsG, derivedMms);
+  const kgError = relativeError(driver.mmsG * 1000, derivedMms);
+  return kgError < 0.25 && gramError > 2;
+}
+
+function relativeError(actual, expected) {
+  return Math.abs(expected - actual) / Math.max(Math.abs(actual), 1e-9);
+}
+
+function roundValue(value) {
+  if (Math.abs(value) >= 100) return Math.round(value * 10) / 10;
+  if (Math.abs(value) >= 10) return Math.round(value * 100) / 100;
+  return Math.round(value * 1000) / 1000;
 }
 
 function dedupeDrivers(drivers) {
