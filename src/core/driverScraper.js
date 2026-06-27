@@ -981,7 +981,7 @@ function parseNumber(value) {
 }
 
 function convertValue(value, unit = "", type = "") {
-  const normalizedUnit = String(unit || "").toLowerCase();
+  const normalizedUnit = normalizeUnit(unit);
   if (type === "inductance") {
     if (normalizedUnit.includes("uh") || normalizedUnit.includes("µh")) return value / 1000;
     if (normalizedUnit === "h") return value * 1000;
@@ -1012,6 +1012,15 @@ function convertValue(value, unit = "", type = "") {
     return value;
   }
   return value;
+}
+
+function normalizeUnit(unit) {
+  return String(unit || "")
+    .toLowerCase()
+    .replace(/Â/g, "")
+    .replace(/[µμ]/g, "u")
+    .replace(/²/g, "2")
+    .replace(/\s+/g, "");
 }
 
 function convertFrequency(value, unit = "") {
