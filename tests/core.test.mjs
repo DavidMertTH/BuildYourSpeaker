@@ -39,6 +39,27 @@ import { AIR_DENSITY } from "../src/core/constants.js";
 import { loadKnownDrivers, loadKnownPassiveRadiators, sampleProject } from "../src/state.js";
 
 const driver = normalizeDriver(sampleProject.driver);
+const referenceWoofer = normalizeDriver({
+  re: 5.7,
+  leMh: 1.1,
+  fs: 28,
+  qms: 5.3,
+  qes: 0.42,
+  vasL: 72,
+  sdCm2: 346,
+  xmaxMm: 6,
+  mmsG: 96,
+  bl: 15.1,
+});
+const referenceVentedBox = {
+  ...sampleProject.box,
+  volumeL: 48,
+  fb: 34,
+  portDiameterCm: 8,
+  portWidthCm: 16,
+  portHeightCm: 3,
+  portLengthCm: 21.156,
+};
 const frequencies = logFrequencyVector(10, 200, 260);
 
 test("measurement layout excludes the recording workbench", () => {
@@ -631,10 +652,11 @@ test("recommended low frequency limit protects small high-Fs drivers", () => {
     vasL: 0.02,
     xmaxMm: 0.5,
     mmsG: 0.4,
+    minFrequencyHz: 0,
   });
 
   assert.ok(recommendedLowFrequencyLimit(tweeter) >= 1000);
-  assert.equal(recommendedLowFrequencyLimit(driver), 0);
+  assert.equal(recommendedLowFrequencyLimit(driver), 55);
 });
 
 test("enclosure high-pass reduces SPL, excursion, and port velocity together", () => {
@@ -766,8 +788,8 @@ test("port velocity is high near Fb for the sample vented design", () => {
 test("vented port output sums externally without a cancellation notch above tuning", () => {
   const result = simulateVented(driver, sampleProject.box, frequencies);
   const atFb = nearestFrequencyValue(frequencies, result.spl, sampleProject.box.fb);
-  const at50 = nearestFrequencyValue(frequencies, result.spl, 50);
-  assert.ok(at50 > atFb - 2);
+  const aboveFb = nearestFrequencyValue(frequencies, result.spl, 80);
+  assert.ok(aboveFb > atFb - 2);
 });
 
 test("driver scraper extracts common Thiele-Small fields and units", () => {
@@ -1223,10 +1245,13 @@ test("passive radiator library includes imported radiators", async () => {
   assert.ok(knownPassiveRadiators.some((entry) => entry.id.startsWith("parts-express-pr-")));
 });
 
-test("sample project includes comparable enclosure designs", () => {
-  assert.ok(sampleProject.designs.length >= 2);
-  assert.ok(sampleProject.designs.some((design) => design.mode === "vented"));
-  assert.ok(sampleProject.designs.some((design) => design.mode === "sealed"));
+test("sample project defaults to one active Dayton TCP115-4 driver", () => {
+  assert.equal(sampleProject.driver.re, 3.2);
+  assert.equal(sampleProject.driver.fs, 53.8);
+  assert.equal(sampleProject.box.driverCount, 1);
+  assert.equal(sampleProject.designs.length, 1);
+  assert.equal(sampleProject.activeDesignId, sampleProject.designs[0].id);
+  assert.equal(sampleProject.designs[0].mode, "vented");
 });
 
 test("passive radiator simulation returns finite response arrays", async () => {
@@ -1282,10 +1307,10 @@ test("6th order bandpass simulation includes rear port output", () => {
 
 test("passive radiator output sums externally without a cancellation notch above tuning", async () => {
   const knownPassiveRadiators = await loadKnownPassiveRadiators();
-  const project = structuredClone(sampleProject);
+  const project = { mode: "passive", box: structuredClone(referenceVentedBox) };
   project.mode = "passive";
   project.box.passiveRadiator = { ...knownPassiveRadiators[0].passiveRadiator, count: 1 };
-  const result = simulatePassiveRadiator(driver, project.box, frequencies);
+  const result = simulatePassiveRadiator(referenceWoofer, project.box, frequencies);
   const at30 = nearestFrequencyValue(frequencies, result.spl, 30);
   const at40 = nearestFrequencyValue(frequencies, result.spl, 40);
   const at50 = nearestFrequencyValue(frequencies, result.spl, 50);
@@ -1294,10 +1319,7 @@ test("passive radiator output sums externally without a cancellation notch above
 });
 
 test("passive radiator mass-only limit matches an equivalent vented port", () => {
-  const project = structuredClone(sampleProject);
-  project.box.volumeL = 48;
-  project.box.fb = 34;
-  project.box.portDiameterCm = 8;
+  const project = { box: structuredClone(referenceVentedBox) };
   project.box.qp = 1e9;
   project.box.ql = 1e9;
   project.box.qa = 1e9;
@@ -1316,8 +1338,8 @@ test("passive radiator mass-only limit matches an equivalent vented port", () =>
     count: 1,
   };
 
-  const vented = simulateVented(driver, project.box, frequencies);
-  const passive = simulatePassiveRadiator(driver, project.box, frequencies);
+  const vented = simulateVented(referenceWoofer, project.box, frequencies);
+  const passive = simulatePassiveRadiator(referenceWoofer, project.box, frequencies);
   const maxSplDifference = Math.max(...passive.spl.map((value, index) => Math.abs(value - vented.spl[index])));
   assert.ok(maxSplDifference < 1e-4);
 });

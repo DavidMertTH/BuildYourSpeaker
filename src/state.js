@@ -14,8 +14,41 @@ const referencePassiveRadiator = {
   },
 };
 
+const defaultDriverEntry = {
+  id: "parts-express-295415",
+  name: "Dayton Audio TCP115 4 4 Treated Paper Cone Midbass Woofer 4 Ohm",
+  source: "https://www.parts-express.com/Dayton-Audio-TCP115-4-4-Treated-Paper-Cone-Midbass-Woofer-4-Ohm-295-415",
+  driver: {
+    re: 3.2,
+    leMh: 0.97,
+    fs: 53.8,
+    qms: 3.14,
+    qes: 0.4,
+    vasL: 3.115,
+    sdCm2: 50.3,
+    xmaxMm: 4,
+    mmsG: 9.9,
+    bl: 5.2,
+    minFrequencyHz: 55,
+    maxFrequencyHz: 5000,
+  },
+  matched: [
+    "Re",
+    "Le",
+    "Fs",
+    "Qms",
+    "Qes",
+    "Vas",
+    "Sd",
+    "Xmax",
+    "Mms",
+    "Bl",
+    "Usable range",
+  ],
+};
+
 const sampleBox = {
-  volumeL: 48,
+  volumeL: 4,
   driverCount: 1,
   driverWiring: "parallel",
   powerW: 10,
@@ -25,13 +58,13 @@ const sampleBox = {
   fillPercent: 0,
   qa: 80,
   ql: 7,
-  fb: 34,
+  fb: 60,
   portCount: 1,
   portShape: "round",
-  portDiameterCm: 8,
-  portWidthCm: 16,
-  portHeightCm: 3,
-  portLengthCm: 21.156,
+  portDiameterCm: 3,
+  portWidthCm: 8,
+  portHeightCm: 1.5,
+  portLengthCm: 10.248,
   portEndCorrection: 1.46,
   bandpass: {
     order: 4,
@@ -53,6 +86,7 @@ const sampleBox = {
 };
 
 const builtInDrivers = [
+  defaultDriverEntry,
   {
     id: "audiosim-reference-12",
     name: "AudioSim Reference 12",
@@ -129,7 +163,7 @@ export const knownDrivers = builtInDrivers.map(cloneEntry);
 
 export const sampleProject = {
   mode: "vented",
-  driver: knownDrivers[0].driver,
+  driver: cloneEntry(defaultDriverEntry.driver),
   box: sampleBox,
   inventory: DEFAULT_INVENTORY,
   configGroups: [
@@ -140,26 +174,15 @@ export const sampleProject = {
       showCombined: false,
     },
   ],
-  activeDesignId: "design-vented-reference",
+  activeDesignId: "design-tcp115-vented",
   designs: [
     {
-      id: "design-vented-reference",
-      name: "48 L Vented",
+      id: "design-tcp115-vented",
+      name: "TCP115-4 Vented",
       groupId: "config-group-main",
       mode: "vented",
       visible: true,
       box: sampleBox,
-    },
-    {
-      id: "design-sealed-compact",
-      name: "32 L Sealed",
-      groupId: "config-group-main",
-      mode: "sealed",
-      visible: true,
-      box: {
-        ...sampleBox,
-        volumeL: 32,
-      },
     },
   ],
 };
@@ -176,7 +199,7 @@ export async function loadKnownDrivers() {
       import("./data/partsExpressDrivers.js"),
       loadDriverFrequencyResponses(),
     ]).then(([{ partsExpressDrivers }, frequencyResponses]) => (
-      [...builtInDrivers, ...partsExpressDrivers].map((entry) => ({
+      uniqueDriverEntries([...builtInDrivers, ...partsExpressDrivers]).map((entry) => ({
         ...cloneEntry(entry),
         frequencyResponseMatches: frequencyResponses[entry.id] || entry.frequencyResponseMatches || [],
       }))
@@ -207,4 +230,14 @@ export function cloneProject(project) {
 
 function cloneEntry(entry) {
   return JSON.parse(JSON.stringify(entry));
+}
+
+function uniqueDriverEntries(entries) {
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const key = entry.id || entry.name;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
