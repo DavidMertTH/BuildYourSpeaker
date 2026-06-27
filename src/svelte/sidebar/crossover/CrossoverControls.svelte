@@ -3,6 +3,7 @@
   import CrossoverFilterList from "./CrossoverFilterList.svelte";
 
   const signalFilterTypes = [
+    { value: "transition", label: "Transition" },
     { value: "gain", label: "Gain" },
     { value: "parametric", label: "Parametric EQ" },
     { value: "lowpass", label: "Lowpass" },
