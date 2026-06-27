@@ -2478,16 +2478,17 @@ textarea:focus {
 }
 
 .golden-layout-host .lm_content {
-  border: 1px solid var(--line-soft);
+  border: 0;
   background: var(--surface-soft);
 }
 
 .golden-layout-host .lm_header {
   height: 18px;
   overflow: visible;
-  border: 1px solid var(--line-soft);
-  border-bottom: 0;
-  background: var(--chrome-2);
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--chrome);
   color: var(--text);
 }
 
@@ -2500,9 +2501,10 @@ textarea:focus {
   align-items: center;
   height: 18px;
   padding: 0 17px 0 7px;
-  border-right: 1px solid var(--line-soft);
+  border: 0;
+  border-bottom: 2px solid transparent;
   border-radius: var(--radius-tab-top);
-  background: color-mix(in srgb, var(--text) 4%, transparent);
+  background: transparent;
   color: var(--muted);
   font-size: 9px;
   font-weight: 700;
@@ -2511,7 +2513,8 @@ textarea:focus {
 }
 
 .golden-layout-host .lm_tab.lm_active {
-  background: var(--surface-soft);
+  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--text);
 }
 
@@ -2585,6 +2588,14 @@ textarea:focus {
 .golden-layout-host .lm_splitter:hover,
 .golden-layout-host .lm_splitter.lm_dragging {
   background: color-mix(in srgb, var(--accent) 34%, var(--workspace-bg));
+}
+
+.golden-layout-host .lm_stack:hover,
+.golden-layout-host .lm_item:hover,
+.golden-layout-host .lm_content:hover {
+  border-color: transparent;
+  box-shadow: none;
+  outline: 0;
 }
 
 .golden-layout-host .plot-panel {
