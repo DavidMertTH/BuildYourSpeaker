@@ -130,17 +130,6 @@ export const knownDrivers = builtInDrivers.map(cloneEntry);
 export const sampleProject = {
   mode: "vented",
   driver: knownDrivers[0].driver,
-  activeDriverGroupId: "group-main",
-  driverGroups: [
-    {
-      id: "group-main",
-      name: "Main drivers",
-      driver: knownDrivers[0].driver,
-      count: 1,
-      wiring: "parallel",
-      chamberId: "main",
-    },
-  ],
   box: sampleBox,
   inventory: DEFAULT_INVENTORY,
   configGroups: [

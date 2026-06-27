@@ -273,7 +273,7 @@ export function normalizeSignalFilter(filter = {}) {
 
 export function normalizeSignalFilterTarget(target) {
   const value = String(target || SIGNAL_FILTER_TARGET_GROUP);
-  if (value === SIGNAL_FILTER_TARGET_GROUP || value.startsWith("design:") || value.startsWith("driverGroup:")) return value;
+  if (value === SIGNAL_FILTER_TARGET_GROUP || value.startsWith("design:")) return value;
   return SIGNAL_FILTER_TARGET_GROUP;
 }
 

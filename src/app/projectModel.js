@@ -5,7 +5,7 @@ import { completeDriverParameters } from "./driverParameters.js";
 import { UNGROUPED_CONFIG_GROUP_ID, UNGROUPED_MEASUREMENT_GROUP_ID } from "./constants.js";
 import { completeBox } from "./boxModel.js";
 import { normalizeGroupCrossover } from "./crossoverModel.js";
-import { createConfigGroupId, createDriverGroupId, createMeasurementGroupId } from "./idUtils.js";
+import { createConfigGroupId, createMeasurementGroupId } from "./idUtils.js";
 
 export function normalizeProjectState(project, options = {}) {
   const nextState = cloneProject(project);
@@ -16,15 +16,10 @@ export function normalizeProjectState(project, options = {}) {
   nextState.configGroups = normalizeConfigGroups(nextState.configGroups);
   nextState.ungroupedCrossover = normalizeGroupCrossover(nextState.ungroupedCrossover);
   const defaultConfigGroupId = nextState.configGroups[0]?.id || UNGROUPED_CONFIG_GROUP_ID;
-  nextState.driverGroups = normalizeDriverGroups(nextState, fallbackBox);
-  if (!nextState.driverGroups.some((group) => group.id === nextState.activeDriverGroupId)) {
-    nextState.activeDriverGroupId = nextState.driverGroups[0]?.id;
-  }
-  syncProjectDriverFromActiveGroup(nextState);
-  syncBoxDriverArrayFromActiveGroup(nextState);
-  const fallbackDriver = completeDriverParameters(sampleProject.driver, nextState.driver);
-  const fallbackDriverGroups = cloneProject(nextState.driverGroups);
-  const fallbackActiveDriverGroupId = nextState.activeDriverGroupId;
+  const fallbackDriver = completeDriverParameters(sampleProject.driver, legacyProjectDriver(nextState));
+  nextState.driver = fallbackDriver;
+  delete nextState.driverGroups;
+  delete nextState.activeDriverGroupId;
 
   if (!Array.isArray(nextState.designs)) {
     nextState.designs = [
@@ -36,8 +31,6 @@ export function normalizeProjectState(project, options = {}) {
         visible: true,
         graphVisible: true,
         driver: cloneProject(fallbackDriver),
-        driverGroups: cloneProject(fallbackDriverGroups),
-        activeDriverGroupId: fallbackActiveDriverGroupId,
         box: fallbackBox,
       },
     ];
@@ -47,17 +40,11 @@ export function normalizeProjectState(project, options = {}) {
     nextState.designs = nextState.designs.map((design, index) => {
       const mode = design.mode || fallbackMode;
       const box = completeBox(design.box || fallbackBox);
-      const driver = completeDriverParameters(sampleProject.driver, design.driver || fallbackDriver);
-      const driverGroups = normalizeDriverGroups({ ...nextState, driver, driverGroups: design.driverGroups || fallbackDriverGroups }, box);
-      const activeDriverGroupId = driverGroups.some((group) => group.id === design.activeDriverGroupId)
-        ? design.activeDriverGroupId
-        : driverGroups[0]?.id;
+      const driver = completeDriverParameters(sampleProject.driver, legacyProjectDriver(design, fallbackDriver));
       const designForNaming = {
         mode,
         box,
         driver,
-        driverGroups,
-        activeDriverGroupId,
       };
       return {
         id: design.id || `design-${index + 1}`,
@@ -68,8 +55,6 @@ export function normalizeProjectState(project, options = {}) {
         graphVisible: design.graphVisible !== false,
         color: isKnownPaletteColor(design.color) ? design.color : "",
         driver,
-        driverGroups,
-        activeDriverGroupId,
         box,
       };
     });
@@ -148,28 +133,11 @@ export function normalizeDesignConfigGroupId(design, groups) {
   return groups[0]?.id || UNGROUPED_CONFIG_GROUP_ID;
 }
 
-export function normalizeDriverGroups(project, fallbackBox = completeBox(project.box || sampleProject.box)) {
-  const sourceGroups = Array.isArray(project.driverGroups) && project.driverGroups.length
-    ? project.driverGroups
-    : [
-        {
-          id: "group-main",
-          name: "Main drivers",
-          driver: project.driver || sampleProject.driver,
-          count: fallbackBox.driverCount || 1,
-          wiring: fallbackBox.driverWiring || "parallel",
-          chamberId: "main",
-        },
-      ];
-
-  return sourceGroups.map((group, index) => ({
-    id: group.id || createDriverGroupId(),
-    name: String(group.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
-    driver: completeDriverParameters(sampleProject.driver, group.driver || project.driver || sampleProject.driver),
-    count: Math.max(1, Math.min(16, Math.round(Number(group.count) || 1))),
-    wiring: group.wiring === "series" ? "series" : "parallel",
-    chamberId: group.chamberId || "main",
-  }));
+function legacyProjectDriver(project, fallbackDriver = sampleProject.driver) {
+  const activeGroup = Array.isArray(project?.driverGroups)
+    ? project.driverGroups.find((group) => group.id === project.activeDriverGroupId) || project.driverGroups[0]
+    : null;
+  return project?.driver || activeGroup?.driver || fallbackDriver;
 }
 
 export function getActiveDesign(project) {
@@ -181,47 +149,9 @@ export function applyActiveDesignToProject(project) {
   if (!design) return project;
   project.mode = design.mode;
   project.box = completeBox(design.box);
-  project.driver = completeDriverParameters(sampleProject.driver, design.driver || project.driver || sampleProject.driver);
-  project.driverGroups = normalizeDriverGroups({ ...project, driverGroups: design.driverGroups || project.driverGroups, driver: project.driver }, project.box);
-  project.activeDriverGroupId = project.driverGroups.some((group) => group.id === design.activeDriverGroupId)
-    ? design.activeDriverGroupId
-    : project.driverGroups[0]?.id;
-  syncProjectDriverFromActiveGroup(project);
-  syncBoxDriverArrayFromActiveGroup(project);
-  return project;
-}
-
-export function getActiveDriverGroup(project) {
-  return project.driverGroups?.find((group) => group.id === project.activeDriverGroupId) || project.driverGroups?.[0];
-}
-
-export function syncProjectDriverFromActiveGroup(project) {
-  const group = getActiveDriverGroup(project);
-  project.driver = completeDriverParameters(sampleProject.driver, group?.driver || project.driver || sampleProject.driver);
-  return project;
-}
-
-export function syncActiveDriverGroupFromProject(project) {
-  const group = getActiveDriverGroup(project);
-  if (group) group.driver = completeDriverParameters(sampleProject.driver, project.driver);
-  return project;
-}
-
-export function syncActiveDriverGroupArrayFromBox(project) {
-  const group = getActiveDriverGroup(project);
-  if (!group) return project;
-  const box = completeBox(project.box);
-  group.count = box.driverCount;
-  group.wiring = box.driverWiring;
-  return project;
-}
-
-export function syncBoxDriverArrayFromActiveGroup(project) {
-  const group = getActiveDriverGroup(project);
-  if (!group) return project;
-  project.box = completeBox(project.box);
-  project.box.driverCount = Math.max(1, Math.min(16, Math.round(Number(group.count) || 1)));
-  project.box.driverWiring = group.wiring === "series" ? "series" : "parallel";
+  project.driver = completeDriverParameters(sampleProject.driver, legacyProjectDriver(design, project.driver || sampleProject.driver));
+  delete project.driverGroups;
+  delete project.activeDriverGroupId;
   return project;
 }
 
@@ -235,8 +165,8 @@ export function syncActiveDesignFromProject(project, options = {}) {
   design.mode = project.mode;
   design.box = completeBox(project.box);
   design.driver = completeDriverParameters(sampleProject.driver, project.driver);
-  design.driverGroups = cloneProject(project.driverGroups || []);
-  design.activeDriverGroupId = project.activeDriverGroupId;
+  delete design.driverGroups;
+  delete design.activeDriverGroupId;
   if (shouldUpdateName) {
     design.name = options.designNameFromDriver?.(options.designDriverForName?.(design)) || design.name || "Custom driver";
   }

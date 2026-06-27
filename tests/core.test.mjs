@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { deflateRawSync } from "node:zlib";
-import { analyzeDriverParameters, combineDriverGroups, combineIdenticalDrivers, deriveDriverParameters, normalizeDriver } from "../src/core/driver.js";
+import { analyzeDriverParameters, combineIdenticalDrivers, deriveDriverParameters, normalizeDriver } from "../src/core/driver.js";
 import { logFrequencyVector, nearestFrequencyValue } from "../src/core/frequency.js";
 import { closedAlignment, simulateSealed, targetClosedVolumeLiters } from "../src/core/sealedBox.js";
 import {
@@ -184,35 +184,6 @@ test("two identical drivers need double sealed volume for the same Qtc", () => {
   const singleVolume = targetClosedVolumeLiters(driver, 0.707);
   const arrayVolume = targetClosedVolumeLiters(combineIdenticalDrivers(driver, 2, "parallel"), 0.707);
   assert.ok(Math.abs(arrayVolume / singleVolume - 2) < 1e-6);
-});
-
-test("driver groups aggregate identical shared-box drivers like a driver array", () => {
-  const grouped = combineDriverGroups([
-    { id: "left", name: "Left", driver: sampleProject.driver, count: 1, wiring: "parallel" },
-    { id: "right", name: "Right", driver: sampleProject.driver, count: 1, wiring: "parallel" },
-  ], sampleProject.driver);
-  const array = combineIdenticalDrivers(driver, 2, "parallel");
-
-  assert.equal(grouped.count, 2);
-  assert.equal(grouped.groups.length, 2);
-  assert.equal(grouped.re.toFixed(6), array.re.toFixed(6));
-  assert.equal(grouped.sd.toFixed(6), array.sd.toFixed(6));
-  assert.equal(grouped.vas.toFixed(6), array.vas.toFixed(6));
-  assert.equal(grouped.fs.toFixed(6), array.fs.toFixed(6));
-  assert.equal(grouped.qts.toFixed(6), array.qts.toFixed(6));
-});
-
-test("single driver group preserves group metadata and wiring", () => {
-  const grouped = combineDriverGroups([
-    { id: "bass", name: "Bass pair", driver: sampleProject.driver, count: 2, wiring: "series" },
-  ], sampleProject.driver);
-  const array = combineIdenticalDrivers(driver, 2, "series");
-
-  assert.equal(grouped.count, 2);
-  assert.equal(grouped.wiring, "series");
-  assert.equal(grouped.groups[0].id, "bass");
-  assert.equal(grouped.re.toFixed(6), array.re.toFixed(6));
-  assert.equal(grouped.sd.toFixed(6), array.sd.toFixed(6));
 });
 
 test("sealed impedance peak appears near Fc", () => {

@@ -64,7 +64,6 @@ export const CONTROL_TOOLTIPS = {
   driverSearchButton: "Search for driver specifications or scrape the pasted URL.",
   passiveRadiatorSearchInput: "Search by P-Radiator model name or paste a direct datasheet/product-page URL.",
   passiveRadiatorSearchButton: "Search for P-Radiator specifications or scrape the pasted URL.",
-  addDriverGroupButton: "Add another active driver group to the shared enclosure model.",
   importExportButton: "Open project import and export tools.",
   closeImportExportDialog: "Close the import and export dialog.",
   passiveRadiatorSelect: "Choose a known or custom P-Radiator for passive mode.",

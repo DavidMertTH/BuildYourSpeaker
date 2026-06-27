@@ -1,4 +1,4 @@
-import { analyzeDriverParameters, combineDriverGroups, combineIdenticalDrivers, normalizeDriver, validateDriver } from "../core/driver.js";
+import { analyzeDriverParameters, combineIdenticalDrivers, normalizeDriver, validateDriver } from "../core/driver.js";
 import { logFrequencyVector, nearestFrequencyValue } from "../core/frequency.js";
 import { simulateSealed } from "../core/sealedBox.js";
 import { normalizePortShape, portLengthFromTuning, portLengthFromTuningOptions, simulateVented, tuningFromPortLength, tuningFromPortLengthOptions } from "../core/ventedBox.js";
@@ -107,14 +107,8 @@ import { getPath, setPath } from "./objectPath.js";
 import {
   applyActiveDesignToProject,
   getActiveDesign as getActiveDesignFromProject,
-  getActiveDriverGroup as getActiveDriverGroupFromProject,
-  normalizeDriverGroups,
   normalizeProjectState as normalizeProjectModelState,
   syncActiveDesignFromProject as syncActiveDesignModelFromProject,
-  syncActiveDriverGroupArrayFromBox,
-  syncActiveDriverGroupFromProject,
-  syncBoxDriverArrayFromActiveGroup,
-  syncProjectDriverFromActiveGroup,
 } from "./projectModel.js";
 import { createEyeIcon, createTrashIcon } from "../ui/icons.js";
 import { createPlotViewController, interpolatePlotSeriesValue, positiveMagnitudeRange } from "./plotViewController.js";
@@ -138,12 +132,10 @@ import {
   createCrossoverDesignId,
   createCrossoverTransitionId,
   createDesignId,
-  createDriverGroupId,
   createMeasurementGroupId,
   createSignalFilterId,
   uniqueConfigGroupName,
   uniqueDesignName,
-  uniqueDriverGroupName,
   uniqueMeasurementGroupName,
 } from "./idUtils.js";
 let builtInDriverLibrary = knownDrivers;
@@ -221,8 +213,6 @@ const {
   driverLibraryFilterEnabled,
   driverLibraryBrand,
   driverLibraryDiameter,
-  driverGroupList,
-  addDriverGroupButton,
   passiveRadiatorSelect,
   passiveRadiatorLibraryFilter,
   passiveRadiatorLibrarySort,
@@ -1378,8 +1368,6 @@ function bindEvents() {
 
   window.addEventListener("cabio:config-bar-request", () => renderConfigBar());
   window.addEventListener("cabio:config-action", handleConfigAction);
-  window.addEventListener("cabio:driver-group-action", handleDriverGroupAction);
-
   window.addEventListener("cabio:library-action", handleLibraryAction);
   window.addEventListener("cabio:crossover-control-action", handleCrossoverControlAction);
   window.addEventListener("cabio:project-action", handleProjectAction);
@@ -1823,43 +1811,6 @@ function handleConfigAction(event) {
   }
 }
 
-function handleDriverGroupAction(event) {
-  const action = event.detail?.action;
-  const groupId = event.detail?.groupId;
-  if (action === "add") {
-    addDriverGroup();
-    return;
-  }
-  if (action === "activate") {
-    activateDriverGroup(groupId);
-    return;
-  }
-  if (action === "duplicate") {
-    duplicateDriverGroup(groupId);
-    return;
-  }
-  if (action === "remove") {
-    deleteDriverGroup(groupId);
-    return;
-  }
-  if (action === "update-name") {
-    updateDriverGroup(groupId, { name: event.detail.value.trim() || event.detail.fallback || "Driver group" });
-    return;
-  }
-  if (action === "select-driver") {
-    updateDriverGroupDriver(groupId, event.detail.driverId);
-    return;
-  }
-  if (action === "update-count") {
-    const value = Number(event.detail.value);
-    if (Number.isFinite(value)) updateDriverGroup(groupId, { count: value });
-    return;
-  }
-  if (action === "update-wiring") {
-    updateDriverGroup(groupId, { wiring: event.detail.value === "series" ? "series" : "parallel" });
-  }
-}
-
 function handleProjectAction(event) {
   const action = event.detail?.action;
   if (action === "open-import-export") {
@@ -1983,7 +1934,6 @@ function applyEditableValue(project, fieldPath, value) {
       project.box.highPassHz = value;
       project.box.highPassOrder = Number(project.box.highPassOrder) > 0 ? project.box.highPassOrder : 2;
     }
-    syncActiveDriverGroupFromProject(project);
     syncActiveDesignFromProject(project);
     return;
   }
@@ -2010,7 +1960,6 @@ function applyEditableValue(project, fieldPath, value) {
   if (fieldPath === "box.driverCount" || fieldPath === "box.driverWiring") {
     setPath(project, fieldPath, value);
     project.box = completeBox(project.box);
-    syncActiveDriverGroupArrayFromBox(project);
     syncActiveDesignFromProject(project);
     return;
   }
@@ -2188,10 +2137,6 @@ function getActiveDesign(project = state) {
   return getActiveDesignFromProject(project);
 }
 
-function getActiveDriverGroup(project = state) {
-  return getActiveDriverGroupFromProject(project);
-}
-
 function syncActiveDesignFromProject(project) {
   return syncActiveDesignModelFromProject(project, {
     designNameFromBox,
@@ -2215,21 +2160,16 @@ function createDesignFromCurrentProject() {
   const nextState = cloneProject(state);
   const activeDesign = getActiveDesign(nextState);
   const nextDriver = completeDriverParameters(sampleProject.driver, nextState.driver);
-  const nextDriverGroups = cloneProject(nextState.driverGroups || []);
   const design = {
     id: createDesignId(),
     name: uniqueDesignName(nextState.designs, designNameFromDriver(designDriverForName({
       driver: nextDriver,
-      driverGroups: nextDriverGroups,
-      activeDriverGroupId: nextState.activeDriverGroupId,
     }))),
     groupId: activeDesign?.groupId ?? nextState.configGroups[0]?.id ?? UNGROUPED_CONFIG_GROUP_ID,
     mode: nextState.mode,
     visible: true,
     graphVisible: true,
     driver: nextDriver,
-    driverGroups: nextDriverGroups,
-    activeDriverGroupId: nextState.activeDriverGroupId,
     box: completeBox(nextState.box),
   };
   nextState.designs.push(design);
@@ -2377,87 +2317,12 @@ function setDesignColor(designId, color) {
   commitState(nextState, { hydrate: true });
 }
 
-function addDriverGroup() {
-  const nextState = cloneProject(state);
-  const source = getActiveDriverGroup(nextState);
-  const group = {
-    id: createDriverGroupId(),
-    name: uniqueDriverGroupName(nextState.driverGroups, "Driver group"),
-    driver: completeDriverParameters(sampleProject.driver, source?.driver || nextState.driver),
-    count: 1,
-    wiring: source?.wiring || "parallel",
-    chamberId: "main",
-  };
-  nextState.driverGroups.push(group);
-  nextState.activeDriverGroupId = group.id;
-  syncProjectDriverFromActiveGroup(nextState);
-  syncActiveDesignFromProject(nextState);
-  commitState(nextState, { hydrate: true });
-}
-
-function activateDriverGroup(groupId) {
-  if (!state.driverGroups.some((group) => group.id === groupId)) return;
-  const nextState = cloneProject(state);
-  nextState.activeDriverGroupId = groupId;
-  syncProjectDriverFromActiveGroup(nextState);
-  syncActiveDesignFromProject(nextState);
-  commitState(nextState, { hydrate: true });
-}
-
-function duplicateDriverGroup(groupId) {
-  const nextState = cloneProject(state);
-  const source = nextState.driverGroups.find((group) => group.id === groupId);
-  if (!source) return;
-  const group = {
-    ...cloneProject(source),
-    id: createDriverGroupId(),
-    name: uniqueDriverGroupName(nextState.driverGroups, `${source.name} copy`),
-  };
-  nextState.driverGroups.push(group);
-  nextState.activeDriverGroupId = group.id;
-  syncProjectDriverFromActiveGroup(nextState);
-  syncActiveDesignFromProject(nextState);
-  commitState(nextState, { hydrate: true });
-}
-
-function deleteDriverGroup(groupId) {
-  if (state.driverGroups.length <= 1) return;
-  const nextState = cloneProject(state);
-  nextState.driverGroups = nextState.driverGroups.filter((group) => group.id !== groupId);
-  if (!nextState.driverGroups.some((group) => group.id === nextState.activeDriverGroupId)) {
-    nextState.activeDriverGroupId = nextState.driverGroups[0].id;
-  }
-  syncProjectDriverFromActiveGroup(nextState);
-  syncActiveDesignFromProject(nextState);
-  commitState(nextState, { hydrate: true });
-}
-
-function updateDriverGroup(groupId, patch) {
-  const nextState = cloneProject(state);
-  const group = nextState.driverGroups.find((item) => item.id === groupId);
-  if (!group) return;
-  Object.assign(group, patch);
-  if (group.id === nextState.activeDriverGroupId) {
-    syncProjectDriverFromActiveGroup(nextState);
-    syncBoxDriverArrayFromActiveGroup(nextState);
-  }
-  syncActiveDesignFromProject(nextState);
-  commitState(nextState, { hydrate: true });
-}
-
-function updateDriverGroupDriver(groupId, driverId) {
-  const selected = driverLibrary.find((driver) => driver.id === driverId);
-  if (!selected) return;
-  updateDriverGroup(groupId, { driver: driverParametersFromLibraryEntry(selected) });
-}
-
 function renderDesignControls() {
   hydrateDesignControls();
 }
 
 function hydrateDesignControls() {
   renderConfigBar();
-  renderDriverGroups();
   renderCrossoverControls();
 }
 
@@ -2689,9 +2554,8 @@ function createRecordingRun(settings) {
 
 function recordingDriverName(project = state) {
   const activeDesign = getActiveDesign(project);
-  const activeGroup = getActiveDriverGroup(project);
-  const driver = activeDesign ? designDriverForName(activeDesign) : activeGroup?.driver || project.driver;
-  return driverNameForParameters(driver) || activeDesign?.name || activeGroup?.name || "Custom driver";
+  const driver = activeDesign ? designDriverForName(activeDesign) : project.driver;
+  return driverNameForParameters(driver) || activeDesign?.name || "Custom driver";
 }
 
 function formatRecordingRunTimestamp(date) {
@@ -3172,22 +3036,6 @@ function formatFrequencyValue(value) {
   return `${roundTo(number, 1)} Hz`;
 }
 
-function renderDriverGroups() {
-  window.dispatchEvent(new CustomEvent("cabio:driver-groups-sync", {
-    detail: {
-      activeGroupId: state.activeDriverGroupId,
-      driverOptions: driverLibrary.map((entry) => ({ id: entry.id, name: entry.name })),
-      groups: state.driverGroups.map((group) => ({
-        id: group.id,
-        name: group.name,
-        count: group.count,
-        wiring: group.wiring,
-        selectedDriverId: driverLibrary.find((entry) => driverMatches(group.driver, entry.driver))?.id || "",
-      })),
-    },
-  }));
-}
-
 function renameActiveDesign(rawName) {
   const name = rawName.trim();
   if (!name) {
@@ -3583,8 +3431,7 @@ function normalizedDesignName(name, design) {
 }
 
 function designDriverForName(design = {}) {
-  const activeGroup = design.driverGroups?.find((group) => group.id === design.activeDriverGroupId) || design.driverGroups?.[0];
-  return completeDriverForMetadata(activeGroup?.driver || design.driver || state?.driver || sampleProject.driver);
+  return completeDriverForMetadata(design.driver || state?.driver || sampleProject.driver);
 }
 
 function driverNameForParameters(driver) {
@@ -3723,7 +3570,6 @@ function applyKnownDriver(driverEntry) {
   const nextState = cloneProject(state);
   nextState.driver = driverParametersFromLibraryEntry(driverEntry);
   const removedDriverGroups = removeDriverMeasurementGroups(nextState);
-  syncActiveDriverGroupFromProject(nextState);
   syncActiveDesignFromProject(nextState);
   renameActiveDesignForDriver(nextState, driverEntry.name);
   commitState(nextState, { hydrate: true });
@@ -4716,11 +4562,6 @@ function arrayDriverForBox(box, driver = normalizeDriver(state.driver)) {
 
 function driverForProject(project = state) {
   if (isHfDriverInput(project.driver)) return completeDriverForSimulation(project.driver);
-  if (project.driverGroups?.length) {
-    const activeGroup = project.driverGroups.find((group) => group.id === project.activeDriverGroupId) || project.driverGroups[0];
-    if (isHfDriverInput(activeGroup?.driver)) return completeDriverForSimulation(activeGroup.driver);
-    return combineDriverGroups(project.driverGroups, project.driver);
-  }
   return arrayDriverForBox(project.box, completeDriverForSimulation(project.driver));
 }
 
@@ -4728,11 +4569,6 @@ function driverForDesign(design, box = completeBox(design.box)) {
   const sourceDriver = design.driver || state.driver;
   if (isHfDriverInput(sourceDriver)) return completeDriverForSimulation(sourceDriver);
   const driver = completeDriverForSimulation(sourceDriver);
-  if (design.driverGroups?.length) {
-    const activeGroup = design.driverGroups.find((group) => group.id === design.activeDriverGroupId) || design.driverGroups[0];
-    if (isHfDriverInput(activeGroup?.driver)) return completeDriverForSimulation(activeGroup.driver);
-    return combineDriverGroups(design.driverGroups, driver);
-  }
   return arrayDriverForBox(box, driver);
 }
 

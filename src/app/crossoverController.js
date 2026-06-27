@@ -271,13 +271,12 @@ export function createCrossoverController(deps) {
     const options = [
       { value: SIGNAL_FILTER_TARGET_GROUP, label: "Group" },
       ...members.map((design) => ({ value: `design:${design.id}`, label: `Config: ${design.name}` })),
-      ...uniqueDriverGroupsForMembers(members).map((group) => ({ value: `driverGroup:${group.id}`, label: `Driver: ${group.name}` })),
     ];
     return {
       kind: "select",
       key: "target",
       label: "Target",
-      tooltip: "Choose whether this filter applies to the whole group, one config, or configs using a driver group.",
+      tooltip: "Choose whether this filter applies to the whole group or one config.",
       value: options.some((option) => option.value === filter.target) ? filter.target : SIGNAL_FILTER_TARGET_GROUP,
       options,
     };
@@ -565,19 +564,6 @@ export function createCrossoverController(deps) {
       return `${roundTo(khz, khz >= 10 ? 1 : 2)} kHz`;
     }
     return `${roundTo(frequency, frequency >= 100 ? 0 : 1)} Hz`;
-  }
-  
-  function uniqueDriverGroupsForMembers(members) {
-    const seen = new Set();
-    const groups = [];
-    members.forEach((design) => {
-      (design.driverGroups || []).forEach((group) => {
-        if (!group?.id || seen.has(group.id)) return;
-        seen.add(group.id);
-        groups.push(group);
-      });
-    });
-    return groups;
   }
   
   function crossoverFamilyLabel(family) {

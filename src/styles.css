@@ -1259,71 +1259,6 @@ select optgroup {
   color: #ffb020;
 }
 
-.driver-group-card {
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  background: var(--surface-faint);
-  cursor: pointer;
-}
-
-.driver-group-card.active {
-  border-color: var(--accent);
-  background: var(--accent-subtle);
-}
-
-.driver-group-card-header,
-.driver-group-actions,
-.driver-group-fields {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.driver-group-card-header input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 26px;
-  padding: 0 7px;
-  font-size: 12px;
-}
-
-.driver-group-actions button {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  min-width: 26px;
-  min-height: 26px;
-  padding: 0;
-}
-
-.driver-group-fields {
-  align-items: stretch;
-}
-
-.driver-group-row {
-  flex: 1 1 0;
-  min-width: 0;
-  gap: var(--space-2);
-  font-size: 11px;
-}
-
-.driver-group-row.wide {
-  width: 100%;
-}
-
-.driver-group-row input,
-.driver-group-row select {
-  width: 100%;
-  min-width: 0;
-  min-height: var(--control-height-small);
-  font-size: 12px;
-}
-
 .planner-settings {
   margin: 8px 0 10px;
   padding: 10px 11px 11px;
@@ -4759,7 +4694,6 @@ textarea,
 .config-chip-menu-panel,
 .config-chip-menu-panel > button,
 .project-dialog,
-.driver-group-card,
 .measurement-group-card,
 .measurement-chip,
 .measurement-staged-card,
@@ -4803,7 +4737,6 @@ textarea,
 .config-menu-button,
 .config-group-header button,
 .config-group-chip button,
-.driver-group-actions button,
 .measurement-chip-actions button,
 .measurement-group-chip button,
 .measurement-staged-actions button,

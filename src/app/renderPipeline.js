@@ -133,8 +133,6 @@ export function createRenderPipeline(deps) {
       visible: false,
       graphVisible: false,
       driver: cloneProject(state.driver),
-      driverGroups: cloneProject(state.driverGroups || []),
-      activeDriverGroupId: state.activeDriverGroupId,
       box: cloneProject(state.box),
     };
   }
@@ -307,10 +305,6 @@ export function createRenderPipeline(deps) {
     const target = normalizeSignalFilterTarget(filter.target);
     if (target === SIGNAL_FILTER_TARGET_GROUP) return true;
     if (target.startsWith("design:")) return target.slice("design:".length) === design.id;
-    if (target.startsWith("driverGroup:")) {
-      const groupId = target.slice("driverGroup:".length);
-      return (design.driverGroups || []).some((group) => group.id === groupId);
-    }
     return true;
   }
   
@@ -1017,7 +1011,6 @@ export function createRenderPipeline(deps) {
       const designId = target.slice("design:".length);
       return simulations.find((simulation) => simulation.design.id === designId)?.design.name || "Config";
     }
-    if (target.startsWith("driverGroup:")) return "Driver group";
     return "Group";
   }
   

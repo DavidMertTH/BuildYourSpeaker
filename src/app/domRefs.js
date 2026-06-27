@@ -35,8 +35,6 @@ export function collectDomRefs(documentRef = document) {
     driverLibraryFilterEnabled: documentRef.querySelector("#driverLibraryFilterEnabled"),
     driverLibraryBrand: documentRef.querySelector("#driverLibraryBrand"),
     driverLibraryDiameter: documentRef.querySelector("#driverLibraryDiameter"),
-    driverGroupList: documentRef.querySelector("#driverGroupList"),
-    addDriverGroupButton: documentRef.querySelector("#addDriverGroupButton"),
     passiveRadiatorSelect: documentRef.querySelector("#passiveRadiatorSelect"),
     passiveRadiatorLibraryFilter: documentRef.querySelector("#passiveRadiatorLibraryFilter"),
     passiveRadiatorLibrarySort: documentRef.querySelector("#passiveRadiatorLibrarySort"),

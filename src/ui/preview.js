@@ -196,7 +196,7 @@ function rebuildModel(preview, state, theme) {
   const dims = enclosureDimensions(state);
 
   addCabinet(preview.model, dims, theme, mode);
-  addDrivers(preview.model, dims, driverGroupsForPreview(state), theme);
+  addDrivers(preview.model, dims, driversForPreview(state), theme);
 
   if (mode === "vented") addVentedPorts(preview.model, dims, box, theme);
   if (mode === "passive") addPassiveRadiators(preview.model, dims, box, theme);
@@ -217,27 +217,24 @@ function addCabinet(group, dims, theme, mode) {
   group.add(edges(new THREE.BoxGeometry(dims.w, dims.h, dims.d), theme.line, 1.35));
 }
 
-function addDrivers(group, dims, driverGroups, theme) {
-  const drivers = flattenDriverGroups(driverGroups);
+function addDrivers(group, dims, drivers, theme) {
   if (!drivers.length) return;
 
   const layout = driverLayout(dims, drivers.length);
-  const naturalRadii = drivers.map((item) => Math.max(item.group.diameterCm / 2, 1));
+  const naturalRadii = drivers.map((item) => Math.max(item.diameterCm / 2, 1));
   const maxNaturalRadius = Math.max(...naturalRadii, 1);
   const radiusScale = Math.min(1, layout.maxRadius / maxNaturalRadius);
-  const groupColors = [theme.accent, theme.accent2, theme.text, theme.muted];
   const z = dims.d / 2 + 0.85;
 
   drivers.forEach((item, index) => {
     const { x, y } = driverPosition(layout, index);
     const minimumRadius = Math.min(2.2, layout.maxRadius);
     const radius = clamp(naturalRadii[index] * radiusScale, minimumRadius, layout.maxRadius);
-    const color = groupColors[item.groupIndex % groupColors.length];
     addDisc(group, radius, new THREE.Vector3(x, y, z), theme.field, theme.line, 0.78);
-    addDisc(group, radius * 0.56, new THREE.Vector3(x, y, z + 0.35), color, theme.line, 0.92);
+    addDisc(group, radius * 0.56, new THREE.Vector3(x, y, z + 0.35), theme.accent, theme.line, 0.92);
   });
 
-  addLabel(group, driverSummaryLabel(driverGroups, drivers), new THREE.Vector3(-dims.w * 0.22, dims.h / 2 + 4, z + 2), theme.text);
+  addLabel(group, driverSummaryLabel(stateDriverCount(drivers), drivers[0]?.diameterCm), new THREE.Vector3(-dims.w * 0.22, dims.h / 2 + 4, z + 2), theme.text);
 }
 
 function addVentedPorts(group, dims, box, theme) {
@@ -510,39 +507,11 @@ function volumeForState(state) {
   return Math.max(Number(state.box?.volumeL) || 1, 1);
 }
 
-function driverGroupsForPreview(state) {
-  const rawGroups = Array.isArray(state.driverGroups) && state.driverGroups.length
-    ? state.driverGroups
-    : [{
-        id: "driver-main",
-        name: "Driver",
-        driver: state.driver || {},
-        count: state.box?.driverCount || 1,
-      }];
-
-  const fallbackDriver = state.driver || {};
-  return rawGroups
-    .map((group, index) => {
-      const driver = group?.driver || (index === 0 ? fallbackDriver : {});
-      const count = clampInt(group?.count ?? (index === 0 ? state.box?.driverCount : 1), 1, 16);
-      return {
-        id: group?.id || `driver-group-${index + 1}`,
-        name: String(group?.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
-        driver,
-        count,
-        diameterCm: driverDiameterCmFromDriver(driver || fallbackDriver),
-      };
-    })
-    .filter((group) => group.count > 0);
-}
-
-function flattenDriverGroups(driverGroups) {
+function driversForPreview(state) {
   const drivers = [];
-  driverGroups.forEach((group, groupIndex) => {
-    for (let copy = 0; copy < group.count; copy += 1) {
-      drivers.push({ group, groupIndex, copy });
-    }
-  });
+  const count = clampInt(state.box?.driverCount || 1, 1, 16);
+  const diameterCm = driverDiameterCmFromDriver(state.driver || {});
+  for (let copy = 0; copy < count; copy += 1) drivers.push({ copy, diameterCm });
   return drivers;
 }
 
@@ -576,18 +545,12 @@ function driverPosition(layout, index) {
   return { x, y };
 }
 
-function driverSummaryLabel(driverGroups, drivers) {
-  if (driverGroups.length === 1) {
-    const group = driverGroups[0];
-    return `${group.count}x ${formatNumber(group.diameterCm, 1)} cm ${shortLabel(group.name, 16)}`;
-  }
-  return `${drivers.length} active drivers / ${driverGroups.length} groups`;
+function stateDriverCount(drivers) {
+  return Math.max(1, drivers.length);
 }
 
-function shortLabel(value, maxLength) {
-  const text = String(value || "").trim();
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, Math.max(0, maxLength - 1))}.`;
+function driverSummaryLabel(count, diameterCm) {
+  return `${count}x ${formatNumber(diameterCm, 1)} cm driver`;
 }
 
 function driverDiameterCmFromDriver(driver) {
@@ -617,17 +580,13 @@ function modelSignature(state, theme) {
   const box = state.box || {};
   const passive = box.passiveRadiator || {};
   const bandpass = box.bandpass || {};
-  const driverGroups = driverGroupsForPreview(state).map((group) => ({
-    id: group.id,
-    name: group.name,
-    count: group.count,
-    sdCm2: group.driver?.sdCm2,
-    diameterCm: group.diameterCm,
-  }));
+  const drivers = driversForPreview(state);
   return JSON.stringify({
     mode: state.mode,
     volumeL: box.volumeL,
-    driverGroups,
+    driverCount: drivers.length,
+    driverSdCm2: state.driver?.sdCm2,
+    driverDiameterCm: drivers[0]?.diameterCm,
     portShape: box.portShape,
     portDiameterCm: box.portDiameterCm,
     portWidthCm: box.portWidthCm,

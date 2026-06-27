@@ -34,20 +34,12 @@ export function createSignalFilterId() {
   return createId("signal-filter");
 }
 
-export function createDriverGroupId() {
-  return createId("driver-group");
-}
-
 export function createMeasurementGroupId() {
   return createId("measurement-group");
 }
 
 export function uniqueDesignName(designs, baseName) {
   return uniqueName(designs.map((design) => design.name), baseName);
-}
-
-export function uniqueDriverGroupName(groups, baseName) {
-  return uniqueName(groups.map((group) => group.name), baseName);
 }
 
 export function uniqueConfigGroupName(groups, baseName) {
