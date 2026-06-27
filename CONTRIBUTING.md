@@ -1,5 +1,15 @@
 # Contributing
 
+## Branch Workflow
+
+- `main` contains release versions only.
+- `dev` contains the newest runnable version and is the default integration branch.
+- Create each new feature or larger fix on its own feature branch from `dev`.
+- Codex-created feature branches should use the `codex/` prefix unless a different name is requested.
+- Merge completed feature branches into `dev` first.
+- Merge `dev` into `main` only for release handoff.
+- Run the relevant checks before merging into `dev` or `main`.
+
 ## Development Checks
 
 Run the test suite before handing off code changes:
