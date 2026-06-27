@@ -1,6 +1,11 @@
-import "./vendor/golden-layout/golden-layout.min.js";
+import * as goldenLayoutModule from "./vendor/golden-layout/golden-layout.min.js";
 import { mount } from "svelte";
 import CabioApp from "./svelte/CabioApp.svelte";
+
+const goldenLayoutNamespace = globalThis.goldenLayout || goldenLayoutModule.default || goldenLayoutModule;
+if (!globalThis.goldenLayout && goldenLayoutNamespace?.GoldenLayout) {
+  globalThis.goldenLayout = goldenLayoutNamespace;
+}
 
 mount(CabioApp, {
   target: document.querySelector("#app"),
