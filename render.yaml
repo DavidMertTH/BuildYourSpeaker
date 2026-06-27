@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: build-your-speaker
+    name: buildyourspeaker
     env: node
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
