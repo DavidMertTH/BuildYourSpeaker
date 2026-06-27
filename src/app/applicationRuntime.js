@@ -80,7 +80,7 @@ import { legacyPlotHeight, legacyPlotWidth, normalizePlotSize, readSavedLayout, 
 import { readJsonStorage, readStringStorage, removeStorageItem, writeJsonStorage, writeStringStorage } from "./storage.js";
 import { collectDomRefs } from "./domRefs.js";
 import { initializeNumericInputs, isNumericInput, parseNumericInputValue } from "./numericInputs.js";
-import { driverMatches, filteredSortedLibraryEntries, libraryBrand, libraryEntriesWithSelection, passiveRadiatorMatches, slugify } from "./libraryUtils.js";
+import { driverMatches, filteredSortedLibraryEntries, libraryBrand, libraryEntriesWithSelection, librarySearchScore, passiveRadiatorMatches, slugify } from "./libraryUtils.js";
 import { customLibraryEntries, mergeLibraryEntries, readCustomLibrary, uniqueLibraryId } from "./libraryStore.js";
 import { completeBox, passiveRadiatorAreaFromDiameter, passiveRadiatorDiameterFromArea, portOptionsFromBox } from "./boxModel.js";
 import {
@@ -3453,24 +3453,20 @@ async function searchKnownDriverResults(query) {
   await ensureDriverLibraryLoaded();
   const normalizedQuery = String(query || "").trim().toLowerCase();
   if (!normalizedQuery || isHttpUrl(normalizedQuery)) return [];
-  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
   return driverLibrary
     .map((entry) => {
-      const haystack = [
-        entry.name,
-        entry.source,
-        libraryBrand(entry, "driver"),
-        nominalDiameterLabel(entry),
-      ].filter(Boolean).join(" ").toLowerCase();
-      const score = tokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0);
-      if (!score) return null;
+      const searchMatch = librarySearchScore({
+        ...entry,
+        name: [entry.name, nominalDiameterLabel(entry)].filter(Boolean).join(" "),
+      }, normalizedQuery, "driver");
+      if (!searchMatch) return null;
       return {
         title: entry.name,
         url: "Known driver library",
         driver: entry.driver,
-        matched: ["known driver", `${score}/${tokens.length} name tokens`],
+        matched: ["known driver", `${searchMatch.matched.length}/${searchMatch.tokenCount} query parts`],
         libraryEntryId: entry.id,
-        score,
+        score: searchMatch.score,
       };
     })
     .filter(Boolean)
