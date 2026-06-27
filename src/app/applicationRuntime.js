@@ -2421,6 +2421,7 @@ async function hydrateRecordingDeviceOptions(options = {}) {
 }
 
 function setRecordingDeviceOptions(select, options, selectedValue) {
+  if (!select?.id) return;
   const activeValue = selectedValue || "default";
   const seen = new Set();
   const uniqueOptions = options.filter((option) => {

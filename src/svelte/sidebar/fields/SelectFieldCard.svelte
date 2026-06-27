@@ -22,10 +22,11 @@
   }
 
   function syncOptions(event) {
-    if (event.detail?.id !== id) return;
-    renderedOptions = event.detail.options || options;
+    const detail = event.detail || {};
+    if (!id || detail.id !== id) return;
+    renderedOptions = detail.options || options;
     queueMicrotask(() => {
-      if (selectElement) selectElement.value = event.detail.selectedValue || "";
+      if (selectElement) selectElement.value = detail.selectedValue || "";
     });
   }
 
