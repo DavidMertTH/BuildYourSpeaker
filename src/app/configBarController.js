@@ -43,312 +43,71 @@ export function createConfigBarController(deps) {
 
   function renderConfigBar() {
     state = getState();
-    const openDesignId = document.querySelector(".config-chip-menu.open")?.dataset.designId || "";
-    configBarList.replaceChildren();
-    state.configGroups.forEach((group, index) => {
-      configBarList.append(createConfigGroupBlock(group, index));
-    });
-    configBarList.append(createUngroupedConfigBlock());
-    if (openDesignId) restoreOpenConfigChipMenu(openDesignId);
+    window.dispatchEvent(new CustomEvent("cabio:config-bar-sync", {
+      detail: configBarSnapshot(),
+    }));
     updateMobileToolbarOffset();
     window.requestAnimationFrame(updateMobileToolbarOffset);
   }
-  
-  function createConfigGroupBlock(group, index) {
-    const groupBlock = document.createElement("article");
-    groupBlock.className = "config-group-block";
-    groupBlock.dataset.groupId = group.id;
-    setTooltip(groupBlock, "Configs in this group.");
-  
-    const header = document.createElement("div");
-    header.className = "config-group-header";
-    header.append(...createConfigGroupControls(group, index));
-  
-    const chips = createConfigChipDropZone(group.id);
-    state.designs
-      .map((design, designIndex) => ({ design, index: designIndex }))
-      .filter(({ design }) => design.groupId === group.id)
-      .forEach(({ design, index: designIndex }) => chips.append(createConfigChip(design, designIndex)));
-  
-    groupBlock.append(header, chips);
-    return groupBlock;
+
+  function configBarSnapshot() {
+    const groupOptions = state.configGroups.map((group) => ({ id: group.id, name: group.name }));
+    return {
+      ungroupedGroupId: UNGROUPED_CONFIG_GROUP_ID,
+      groupOptions,
+      palette: designPalette(),
+      groups: [
+        ...state.configGroups.map((group, index) => configGroupSnapshot(group, index)),
+        ungroupedGroupSnapshot(),
+      ],
+    };
   }
-  
-  function createUngroupedConfigBlock() {
-    const groupBlock = document.createElement("article");
-    groupBlock.className = "config-group-block config-group-block-ungrouped";
-    groupBlock.dataset.groupId = UNGROUPED_CONFIG_GROUP_ID;
-    setTooltip(groupBlock, "Configs without a group.");
-  
-    const header = document.createElement("div");
-    header.className = "config-group-header";
-    const label = document.createElement("span");
-    label.className = "config-group-static-label";
-    label.textContent = "No group";
-    header.append(label);
-  
-    const chips = createConfigChipDropZone(UNGROUPED_CONFIG_GROUP_ID);
-    state.designs
-      .map((design, designIndex) => ({ design, index: designIndex }))
-      .filter(({ design }) => !design.groupId)
-      .forEach(({ design, index: designIndex }) => chips.append(createConfigChip(design, designIndex)));
-  
-    groupBlock.append(header, chips);
-    return groupBlock;
+
+  function configGroupSnapshot(group, index) {
+    const groupColor = designColor(configGroupCombinedColorIndex(index));
+    return {
+      id: group.id,
+      name: group.name,
+      isUngrouped: false,
+      showCombined: group.showCombined === true,
+      combinedRendered: isConfigGroupCombinedRendered(group),
+      combinedColor: groupColor,
+      combinedText: readableTextColor(groupColor),
+      designs: state.designs
+        .map((design, designIndex) => ({ design, index: designIndex }))
+        .filter(({ design }) => design.groupId === group.id)
+        .map(({ design, index: designIndex }) => configDesignSnapshot(design, designIndex)),
+    };
   }
-  
-  function createConfigChipDropZone(groupId) {
-    const chips = document.createElement("div");
-    chips.className = "config-group-chips";
-    chips.dataset.configGroupId = groupId || UNGROUPED_CONFIG_GROUP_ID;
-    chips.dataset.emptyLabel = groupId ? "Empty" : "No configs";
-    return chips;
+
+  function ungroupedGroupSnapshot() {
+    return {
+      id: UNGROUPED_CONFIG_GROUP_ID,
+      name: "No group",
+      isUngrouped: true,
+      designs: state.designs
+        .map((design, designIndex) => ({ design, index: designIndex }))
+        .filter(({ design }) => !design.groupId)
+        .map(({ design, index: designIndex }) => configDesignSnapshot(design, designIndex)),
+    };
   }
-  
-  function restoreOpenConfigChipMenu(designId) {
-    const menu = configBarList.querySelector(`.config-chip-menu[data-design-id="${cssEscape(designId)}"]`);
-    const button = menu?.querySelector(".config-menu-button");
-    if (!menu || !button) return;
-    menu.classList.add("open");
-    button.ariaExpanded = "true";
-    requestAnimationFrame(() => positionConfigChipMenu(menu));
-    window.setTimeout(() => positionConfigChipMenu(menu), 80);
-  }
-  
-  function createConfigGroupControls(group, groupIndex) {
-    const name = document.createElement("input");
-    name.type = "text";
-    name.value = group.name;
-    name.ariaLabel = "Config group name";
-    setTooltip(name, "Rename this config group.");
-    name.addEventListener("click", (event) => event.stopPropagation());
-    name.addEventListener("keydown", (event) => event.stopPropagation());
-    name.addEventListener("change", () => updateConfigGroup(group.id, { name: name.value.trim() || group.name }));
-  
-    const combined = document.createElement("button");
-    combined.type = "button";
-    combined.className = "config-group-combined-toggle";
-    combined.classList.toggle("active", group.showCombined === true);
-    combined.classList.toggle("rendered", isConfigGroupCombinedRendered(group));
-    const groupColor = designColor(configGroupCombinedColorIndex(groupIndex));
-    combined.style.setProperty("--config-group-combined-color", groupColor);
-    combined.style.setProperty("--config-group-combined-text", readableTextColor(groupColor));
-    combined.textContent = "Σ";
-    combined.ariaLabel = `${group.showCombined === true ? "Hide" : "Show"} combined group curve`;
-    setTooltip(combined, "Show or hide the acoustically summed curve for this group.");
-    combined.addEventListener("click", (event) => {
-      event.stopPropagation();
-      updateConfigGroup(group.id, { showCombined: group.showCombined !== true });
-    });
-  
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "x";
-    remove.ariaLabel = `Remove ${group.name}`;
-    setTooltip(remove, "Remove this group and move its configs to the next group.");
-    remove.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteConfigGroup(group.id);
-    });
-  
-    return [name, combined, remove];
-  }
-  
-  function createConfigChip(design, index) {
-    const chip = document.createElement("div");
-    chip.className = "config-chip";
-    chip.tabIndex = 0;
-    chip.role = "button";
-    chip.draggable = true;
-    chip.dataset.designId = design.id;
-    chip.dataset.configGroupId = design.groupId || UNGROUPED_CONFIG_GROUP_ID;
-    chip.classList.toggle("active", design.id === state.activeDesignId);
-    chip.classList.toggle("muted", design.visible === false);
-    chip.classList.toggle("graph-hidden", design.graphVisible === false);
+
+  function configDesignSnapshot(design, index) {
     const driverName = designNameFromDriver(designDriverForName(design));
-    const chipDisplayName = String(driverName || design.name || "Config").replace(/\s+/g, " ").trim();
-    chip.dataset.shortName = compactDesignName({ name: chipDisplayName }, chipDisplayName);
-    chip.dataset.fullName = chipDisplayName;
-    setTooltip(chip, "Select this config for editing.");
-    chip.addEventListener("click", (event) => {
-      if (chip.dataset.justDragged === "true") {
-        delete chip.dataset.justDragged;
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      if (event.target.closest("button, input, select, textarea, label, .config-chip-menu")) return;
-      activateDesign(design.id);
-    });
-    chip.addEventListener("keydown", (event) => {
-      if (event.target !== chip || !["Enter", " "].includes(event.key)) return;
-      event.preventDefault();
-      activateDesign(design.id);
-    });
-  
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = design.visible !== false;
-    checkbox.ariaLabel = `${design.visible === false ? "Activate" : "Deactivate"} ${design.name}`;
-    setTooltip(checkbox, "Activate or deactivate this config.");
-    checkbox.addEventListener("click", (event) => event.stopPropagation());
-    checkbox.addEventListener("change", () => setDesignVisibility(design.id, checkbox.checked));
-  
-    const swatch = document.createElement("span");
-    swatch.className = "legend-swatch";
-    swatch.style.background = designColorForDesign(design, index);
-    setTooltip(swatch, "Graph color for this config.");
-  
-    const name = design.id === state.activeDesignId ? document.createElement("input") : document.createElement("span");
-    name.className = "config-name";
-    if (design.id === state.activeDesignId) {
-      name.type = "text";
-      name.value = design.name;
-      name.ariaLabel = "Active config name";
-      setTooltip(name, "Rename the active config.");
-      name.addEventListener("click", (event) => event.stopPropagation());
-      name.addEventListener("keydown", (event) => {
-        event.stopPropagation();
-        if (event.key === "Enter") name.blur();
-        if (event.key === "Escape") {
-          name.value = design.name;
-          name.blur();
-        }
-      });
-      name.addEventListener("change", () => renameActiveDesign(name.value));
-    } else {
-      name.textContent = design.name;
-    }
-  
-    const visibility = createConfigVisibilityToggle(design);
-  
-    const menu = createConfigChipMenu(design, index);
-  
-    const nameRunner = document.createElement("span");
-    nameRunner.className = "config-name-runner";
-    nameRunner.ariaHidden = "true";
-    nameRunner.title = chipDisplayName;
-    const runnerText = document.createElement("span");
-    runnerText.className = "config-name-runner-text";
-    runnerText.textContent = `${chipDisplayName} \u00a0\u00a0 ${chipDisplayName}`;
-    nameRunner.append(runnerText);
-  
-    chip.append(checkbox, visibility, swatch, name, nameRunner, menu);
-    return chip;
-  }
-  
-  function createConfigVisibilityToggle(design) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "config-visibility-toggle";
-    button.classList.toggle("active", design.graphVisible !== false);
-    button.ariaLabel = `${design.graphVisible === false ? "Show" : "Hide"} ${design.name} curve`;
-    button.setAttribute("aria-pressed", String(design.graphVisible !== false));
-    setTooltip(button, "Show or hide only this config's individual graph curve.");
-    button.append(createEyeIcon(design.graphVisible !== false));
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      setDesignGraphVisibility(design.id, design.graphVisible === false);
-    });
-    return button;
-  }
-  
-  function createConfigChipMenu(design, index) {
-    const menu = document.createElement("div");
-    menu.className = "config-chip-menu";
-    menu.dataset.designId = design.id;
-    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
-    menu.addEventListener("click", (event) => event.stopPropagation());
-  
-    const menuButton = document.createElement("button");
-    menuButton.type = "button";
-    menuButton.className = "config-menu-button";
-    menuButton.ariaLabel = `${design.name} config menu`;
-    menuButton.ariaExpanded = "false";
-    menuButton.textContent = "\u22ee";
-    setTooltip(menuButton, "Config actions.");
-  
-    const panel = document.createElement("div");
-    panel.className = "config-chip-menu-panel";
-  
-    const groupLabel = document.createElement("label");
-    groupLabel.className = "config-menu-field";
-    const groupText = document.createElement("span");
-    groupText.textContent = "Group";
-    const groupSelect = document.createElement("select");
-    groupSelect.ariaLabel = `${design.name} group`;
-    const noGroupOption = document.createElement("option");
-    noGroupOption.value = UNGROUPED_CONFIG_GROUP_ID;
-    noGroupOption.textContent = "No group";
-    groupSelect.append(noGroupOption);
-    state.configGroups.forEach((group) => {
-      const option = document.createElement("option");
-      option.value = group.id;
-      option.textContent = group.name;
-      groupSelect.append(option);
-    });
-    groupSelect.value = design.groupId || UNGROUPED_CONFIG_GROUP_ID;
-    groupSelect.addEventListener("change", () => {
-      assignDesignToConfigGroup(design.id, groupSelect.value);
-      menu.classList.remove("open");
-    });
-    groupLabel.append(groupText, groupSelect);
-  
-    const colorBlock = document.createElement("div");
-    colorBlock.className = "config-menu-field";
-    const colorText = document.createElement("span");
-    colorText.textContent = "Color";
-    const colorGrid = document.createElement("div");
-    colorGrid.className = "config-color-grid";
-    const autoColor = designColor(index);
-    const autoButton = document.createElement("button");
-    autoButton.type = "button";
-    autoButton.className = "config-color-swatch";
-    autoButton.classList.toggle("active", !design.color);
-    autoButton.style.background = `linear-gradient(135deg, ${autoColor} 0 45%, transparent 45% 55%, ${autoColor} 55%)`;
-    autoButton.ariaLabel = "Use automatic color";
-    setTooltip(autoButton, "Use automatic color from the palette.");
-    autoButton.addEventListener("click", () => {
-      setDesignColor(design.id, "");
-      menu.classList.remove("open");
-    });
-    colorGrid.append(autoButton);
-    designPalette().forEach((color) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "config-color-swatch";
-      button.classList.toggle("active", designColorForDesign(design, index) === color && Boolean(design.color));
-      button.style.background = color;
-      button.ariaLabel = `Set color ${color}`;
-      button.addEventListener("click", () => {
-        setDesignColor(design.id, color);
-        menu.classList.remove("open");
-      });
-      colorGrid.append(button);
-    });
-    colorBlock.append(colorText, colorGrid);
-  
-    const duplicate = document.createElement("button");
-    duplicate.type = "button";
-    duplicate.textContent = "Duplicate";
-    duplicate.addEventListener("click", () => {
-      duplicateDesign(design.id);
-      menu.classList.remove("open");
-    });
-  
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Delete";
-    remove.className = "danger";
-    setTooltip(remove, "Delete this config.");
-    remove.addEventListener("click", () => {
-      deleteDesign(design.id);
-      menu.classList.remove("open");
-    });
-  
-    panel.append(groupLabel, colorBlock, duplicate, remove);
-    menu.append(menuButton, panel);
-    return menu;
+    const displayName = String(driverName || design.name || "Config").replace(/\s+/g, " ").trim();
+    return {
+      id: design.id,
+      name: design.name,
+      groupId: design.groupId || "",
+      active: design.id === state.activeDesignId,
+      visible: design.visible !== false,
+      graphVisible: design.graphVisible !== false,
+      color: designColorForDesign(design, index),
+      autoColor: designColor(index),
+      customColor: Boolean(design.color),
+      shortName: compactDesignName({ name: displayName }, displayName),
+      fullName: displayName,
+    };
   }
   
   function handleConfigChipDragStart(event) {

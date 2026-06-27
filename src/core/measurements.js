@@ -59,10 +59,15 @@ export function normalizeFrequencyResponse(input = {}) {
     recordingGroupId: normalizeMeasurementGroupId(input.recordingGroupId),
     plane: input.plane === "vertical" ? "vertical" : "horizontal",
     angleDeg: normalizeAngle(input.angleDeg),
+    color: normalizeResponseColor(input.color),
     visible: input.visible !== false,
     importedAt: input.importedAt || "",
     points,
   };
+}
+
+function normalizeResponseColor(color) {
+  return typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "";
 }
 
 export function normalizeFrequencyResponseCandidate(input = {}) {
@@ -107,12 +112,20 @@ export function normalizeMeasurementGroups(input = []) {
 }
 
 export function normalizeRecordingSettings(input = {}) {
+  const frequencyStartHz = clampNumber(input.frequencyStartHz ?? input.startHz, 1, 20000, 20);
+  const frequencyEndHz = clampNumber(input.frequencyEndHz ?? input.endHz, Math.max(20, frequencyStartHz * 1.01), 24000, 20000);
+  const repetitions = Math.round(clampNumber(input.repetitions ?? input.averaging, 1, 8, 1));
   return {
     microphone: String(input.microphone || "default"),
+    outputDeviceId: String(input.outputDeviceId || input.speaker || "default"),
     signal: ["noise", "sweep"].includes(input.signal) ? input.signal : "sweep",
     levelDb: clampNumber(input.levelDb, 35, 105, 75),
     durationSec: clampNumber(input.durationSec, 1, 60, 8),
-    averaging: clampNumber(input.averaging, 1, 32, 4),
+    repetitions,
+    averaging: repetitions,
+    sampleRate: Math.round(clampNumber(input.sampleRate, 44100, 96000, 48000)),
+    frequencyStartHz,
+    frequencyEndHz,
   };
 }
 

@@ -34,6 +34,26 @@ export function drawBoxPreview(canvas, state) {
   renderPreview(preview);
 }
 
+export function zoomBoxPreview(canvas, factor) {
+  const preview = previews.get(canvas);
+  if (!preview) return false;
+  preview.distance = clamp(preview.distance * factor, 80, 280);
+  updateCamera(preview);
+  renderPreview(preview);
+  return true;
+}
+
+export function resetBoxPreview(canvas) {
+  const preview = previews.get(canvas);
+  if (!preview) return false;
+  preview.signature = "";
+  preview.rotation = { x: -0.18, y: 0.75 };
+  preview.distance = 160;
+  updateCamera(preview);
+  renderPreview(preview);
+  return true;
+}
+
 function ensurePreview(canvas) {
   let preview = previews.get(canvas);
   if (preview) return preview;

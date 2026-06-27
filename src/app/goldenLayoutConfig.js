@@ -73,6 +73,8 @@ export function buildGoldenLayoutConfig(panelIds = PANEL_IDS) {
   const uniquePanelIds = [...new Set(panelIds)].filter((panelId) => PANEL_IDS.includes(panelId));
   const visiblePanelIds = uniquePanelIds.length ? uniquePanelIds : [PANEL_IDS[0]];
   if (isDriverLayout(visiblePanelIds)) return buildDriverGoldenLayoutConfig();
+  if (isBoxTwoPanelLayout(visiblePanelIds)) return buildBoxTwoPanelGoldenLayoutConfig(visiblePanelIds);
+  if (isBoxStackedDetailLayout(visiblePanelIds)) return buildBoxStackedDetailGoldenLayoutConfig(visiblePanelIds);
   if (isRecordingLayout(visiblePanelIds)) return buildRecordingGoldenLayoutConfig();
   if (isCrossoverLayout(visiblePanelIds)) return buildCrossoverGoldenLayoutConfig();
 
@@ -116,8 +118,21 @@ function isDriverLayout(panelIds) {
   return panelIds.length === driverPanelIds.length && driverPanelIds.every((panelId) => panelIds.includes(panelId));
 }
 
+function isBoxStackedDetailLayout(panelIds) {
+  const detailPanelIds = panelIds.filter((panelId) => panelId !== "splPlot");
+  return panelIds.length === 3
+    && panelIds.includes("splPlot")
+    && detailPanelIds.every((panelId) => ["excursionPlot", "portPlot", "prExcursionPlot"].includes(panelId));
+}
+
+function isBoxTwoPanelLayout(panelIds) {
+  return panelIds.length === 2 && panelIds.includes("splPlot") && (
+    panelIds.includes("excursionPlot") || panelIds.includes("portPlot")
+  );
+}
+
 function isRecordingLayout(panelIds) {
-  const recordingPanelIds = ["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot", "horizontalPolarPlot", "splPlot"];
+  const recordingPanelIds = ["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot"];
   return panelIds.length === recordingPanelIds.length && recordingPanelIds.every((panelId) => panelIds.includes(panelId));
 }
 
@@ -159,34 +174,78 @@ function buildDriverGoldenLayoutConfig() {
   };
 }
 
-function buildRecordingGoldenLayoutConfig() {
+function buildBoxStackedDetailGoldenLayoutConfig(panelIds) {
+  const detailPanelIds = panelIds.filter((panelId) => panelId !== "splPlot");
   return {
     root: {
       type: "row",
       content: [
-        componentStackConfig("recordingPanel", 62),
+        componentStackConfig("splPlot", 68),
         {
           type: "column",
-          size: "38%",
+          size: "32%",
+          content: detailPanelIds.map((panelId) => componentStackConfig(panelId, 100 / detailPanelIds.length)),
+        },
+      ],
+    },
+    settings: {
+      reorderEnabled: true,
+      constrainDragToContainer: true,
+      popoutWholeStack: false,
+    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
+    header: {
+      show: "top",
+      close: "hide",
+      maximise: "maximise",
+      minimise: "minimise",
+      popout: "popout",
+      tabDropdown: "tabs",
+    },
+  };
+}
+
+function buildBoxTwoPanelGoldenLayoutConfig(panelIds) {
+  const secondaryPanelId = panelIds.find((panelId) => panelId !== "splPlot") || "excursionPlot";
+  return {
+    root: {
+      type: "row",
+      content: [
+        componentStackConfig("splPlot", 68),
+        componentStackConfig(secondaryPanelId, 32),
+      ],
+    },
+    settings: {
+      reorderEnabled: true,
+      constrainDragToContainer: true,
+      popoutWholeStack: false,
+    },
+    dimensions: { ...GOLDEN_LAYOUT_DIMENSIONS },
+    header: {
+      show: "top",
+      close: "hide",
+      maximise: "maximise",
+      minimise: "minimise",
+      popout: "popout",
+      tabDropdown: "tabs",
+    },
+  };
+}
+
+function buildRecordingGoldenLayoutConfig() {
+  return {
+    root: {
+      type: "column",
+      content: [
+        {
+          type: "row",
+          size: "42%",
           content: [
-            {
-              type: "row",
-              size: "50%",
-              content: [
-                componentStackConfig("onAxisResponsePlot", 50),
-                componentStackConfig("offAxisResponsePlot", 50),
-              ],
-            },
-            {
-              type: "row",
-              size: "50%",
-              content: [
-                componentStackConfig("horizontalPolarPlot", 50),
-                componentStackConfig("splPlot", 50),
-              ],
-            },
+            componentStackConfig("onAxisResponsePlot", 50),
+            componentStackConfig("offAxisResponsePlot", 50),
           ],
         },
+        componentStackConfig("recordingPanel", 58),
       ],
     },
     settings: {

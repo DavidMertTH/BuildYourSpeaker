@@ -21,6 +21,14 @@ If you downloaded the project as a ZIP file, extract it and open a terminal in t
 
 ## Run Locally
 
+On Windows PowerShell, the easiest option is:
+
+```powershell
+.\start.ps1 -Open
+```
+
+The script uses `node` from your PATH when available, and falls back to the bundled Codex Node.js runtime when running inside Codex. If the app is already running, it prints the existing local URL instead of starting a duplicate server. It uses `127.0.0.1` because some Windows setups resolve `localhost` slowly in PowerShell.
+
 Start the local server:
 
 ```bash
@@ -92,12 +100,11 @@ node --test
 - Selectable graph views, with separate graphs for port velocity and passive radiator excursion.
 - Built-in driver and passive radiator data.
 - Driver search that can scrape candidate T/S parameters from public web pages.
-- Auto planning tools for buildable sealed, vented, and passive radiator candidates.
 
 ## Usage Notes
 
 - Use the `Driver` tab to enter or load driver parameters.
-- Use the `Planning` tab to change enclosure type, volume, tuning, passive radiator settings, and auto plan constraints.
+- Use the `Planning` tab to change enclosure type, volume, tuning, and passive radiator settings.
 - Use config pills to compare variants and switch the active design.
 - On mobile, use the graph dropdown to choose the single visible graph.
 - Always verify scraped driver parameters against the original source before building a real enclosure.

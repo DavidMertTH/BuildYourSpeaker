@@ -1,7 +1,5 @@
 export const DEFAULT_INVENTORY = {
   driverCount: 1,
-  preference: "balanced",
-  alignment: "auto",
   constraints: {
     hasMaxVolume: true,
     maxVolumeL: 75,
@@ -36,8 +34,6 @@ export function normalizeInventory(input = {}) {
     ...DEFAULT_INVENTORY,
     ...input,
     driverCount: Math.max(1, Math.round(positiveOrDefault(input.driverCount, DEFAULT_INVENTORY.driverCount))),
-    preference: normalizePreference(input.preference),
-    alignment: normalizeAlignment(input.alignment),
     constraints: {
       hasMaxVolume: constraints.hasMaxVolume !== false,
       maxVolumeL: positiveOrDefault(constraints.maxVolumeL, DEFAULT_INVENTORY.constraints.maxVolumeL),
@@ -58,54 +54,6 @@ export function normalizeInventory(input = {}) {
       bendAllowed: portFabrication.bendAllowed !== false,
     },
   };
-}
-
-export function maxBuildableVolumeLiters(inventory) {
-  const { constraints } = normalizeInventory(inventory);
-  if (constraints.hasMaxVolume) return constraints.maxVolumeL;
-  return Number.POSITIVE_INFINITY;
-}
-
-export function maxEnvelopeVolumeLiters(inventory) {
-  const { constraints } = normalizeInventory(inventory);
-  const wallCm = constraints.materialThicknessMm / 10;
-  const internalWidth = Math.max(0, constraints.maxWidthCm - wallCm * 2);
-  const internalHeight = Math.max(0, constraints.maxHeightCm - wallCm * 2);
-  const internalDepth = Math.max(0, constraints.maxDepthCm - wallCm * 2);
-  return (internalWidth * internalHeight * internalDepth) / 1000;
-}
-
-export function estimateBoxDimensions(volumeL, inventory) {
-  const { constraints } = normalizeInventory(inventory);
-  const wallCm = constraints.materialThicknessMm / 10;
-  const targetRatio = { width: 0.72, height: 1, depth: 0.78 };
-  const scale = Math.cbrt((volumeL * 1000) / (targetRatio.width * targetRatio.height * targetRatio.depth));
-  const internal = {
-    widthCm: targetRatio.width * scale,
-    heightCm: targetRatio.height * scale,
-    depthCm: targetRatio.depth * scale,
-  };
-  const external = {
-    widthCm: internal.widthCm + wallCm * 2,
-    heightCm: internal.heightCm + wallCm * 2,
-    depthCm: internal.depthCm + wallCm * 2,
-  };
-  const fits =
-    !constraints.hasMaxVolume ||
-    (volumeL <= constraints.maxVolumeL &&
-      external.widthCm <= constraints.maxWidthCm &&
-      external.heightCm <= constraints.maxHeightCm &&
-      external.depthCm <= constraints.maxDepthCm);
-
-  return { internal, external, fits };
-}
-
-function normalizePreference(value) {
-  return ["compact", "balanced", "deep", "loud"].includes(value) ? value : "balanced";
-}
-
-function normalizeAlignment(value) {
-  return ["auto", "sealed", "vented", "passive", "bandpass"].includes(value) ? value : "auto";
 }
 
 function positiveOrDefault(value, fallback) {

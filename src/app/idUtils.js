@@ -26,6 +26,10 @@ export function createCrossoverCircuitJunctionId() {
   return createId("crossover-junction");
 }
 
+export function createCrossoverModuleGroupId() {
+  return createId("crossover-module-group");
+}
+
 export function createSignalFilterId() {
   return createId("signal-filter");
 }

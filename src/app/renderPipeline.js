@@ -1,4 +1,5 @@
 import { UNGROUPED_CROSSOVER_GROUP_ID } from "./constants.js";
+import { isHfDriver, simulateHfDriverResponse } from "./hfDriverSimulation.js";
 
 export function createRenderPipeline(deps) {
   const {
@@ -56,7 +57,6 @@ export function createRenderPipeline(deps) {
     roundTo,
     selectMatchingDriver,
     selectMatchingPassiveRadiator,
-    setTooltip,
     shortMeasurementName,
     signalFilterTypeLabel,
     SIGNAL_FILTER_TARGET_GROUP,
@@ -85,6 +85,7 @@ export function createRenderPipeline(deps) {
     document.body.dataset.bandpassOrder = String(completedBox.bandpass.order);
     document.body.dataset.portShape = completedBox.portShape;
     modeButtons.forEach((button) => button.classList.toggle("active", button.dataset.mode === state.mode));
+    window.dispatchEvent(new CustomEvent("cabio:box-mode-sync", { detail: { mode: state.mode } }));
   
     const activeDesign = getActiveDesign();
     applyActiveConfigAccent(activeDesign);
@@ -96,7 +97,10 @@ export function createRenderPipeline(deps) {
     const activeSimulation = activeDesign
       ? allDesignSimulations.find((simulation) => simulation.design.id === activeDesign.id) || finalizeDesignSimulation(simulateDesignRaw(activeDesign, designColorIndex(activeDesign.id)))
       : finalizeDesignSimulation(simulateDesignRaw(currentProjectDraftDesign(), 0));
-    const warnings = [...validateDriver(activeSimulation.driver), ...activeSimulation.warnings];
+    const warnings = [
+      ...(isHfDriver(activeSimulation.driver) ? [] : validateDriver(activeSimulation.driver)),
+      ...activeSimulation.warnings,
+    ];
   
     const animatePlots = Boolean(options.animatePlots);
     updatePlotFitLayout();
@@ -428,6 +432,19 @@ export function createRenderPipeline(deps) {
   function simulateDesignRaw(design, colorIndex = 0) {
     const box = completeBox(design.box);
     const simulationDriver = simulateDesignDriver(design, box);
+    if (isHfDriver(simulationDriver)) {
+      const active = simulateHfDriverResponse(simulationDriver, frequencies);
+      return {
+        design,
+        box,
+        driver: simulationDriver,
+        colorIndex: Math.max(colorIndex, 0),
+        sealed: active,
+        active,
+        warnings: [],
+        hfDriver: true,
+      };
+    }
     const sealed = simulateSealed(simulationDriver, box, frequencies);
     const rawActive =
       design.mode === "vented"
@@ -453,6 +470,7 @@ export function createRenderPipeline(deps) {
   }
   
   function designWarnings(mode, box, active, driver) {
+    if (isHfDriver(driver) || active?.kind === "hf-driver") return [];
     const warnings = validateEnclosureOptions(box, mode);
     const maxExcursion = Math.max(...active.excursionMm);
     const excursionRatio = maxExcursionRatio(active.excursionMm, driver.xmax * 1000);
@@ -490,38 +508,13 @@ export function createRenderPipeline(deps) {
     return warnings;
   }
   
-  function renderMetrics(driver, activeSimulation, warnings) {
-    if (!document.querySelector("#qtsMetric")) return;
-    const { active, sealed, box, design } = activeSimulation;
-    document.querySelector("#qtsMetric").textContent = driver.qts.toFixed(3);
-    document.querySelector("#sealedMetric").textContent = `${sealed.alignment.fc.toFixed(1)} Hz / ${sealed.alignment.qtc.toFixed(2)}`;
-    if (design.mode === "vented") {
-      const tuning = Number.isFinite(active.port.tuning) ? `${active.port.tuning.toFixed(1)} Hz / ` : "";
-      const countLabel = `${box.portCount || 1}x `;
-      const geometryLabel =
-        box.portShape === "rectangular"
-          ? `${Number(box.portWidthCm).toFixed(1)} x ${Number(box.portHeightCm).toFixed(1)} cm`
-          : `${Number(box.portDiameterCm).toFixed(1)} cm dia`;
-      const maxPortVelocity = Math.max(...active.portVelocity);
-      document.querySelector("#portMetric").textContent = `${tuning}${countLabel}${geometryLabel} / ${(active.port.physicalLength * 100).toFixed(1)} cm / ${maxPortVelocity.toFixed(1)} m/s`;
-    } else if (design.mode === "bandpass") {
-      const front = active.bandpass.frontPort;
-      const suffix = box.bandpass.order === 6 ? ` / rear ${Number(active.bandpass.rearPort.tuning).toFixed(1)} Hz` : "";
-      const maxPortVelocity = Math.max(...active.portVelocity, ...(active.rearPortVelocity || []));
-      document.querySelector("#portMetric").textContent = `${box.bandpass.order}th / front ${box.bandpass.frontPortCount || 1}x ${Number(front.tuning).toFixed(1)} Hz${suffix} / ${maxPortVelocity.toFixed(1)} m/s`;
-    } else if (design.mode === "passive") {
-      document.querySelector("#portMetric").textContent = `${box.passiveRadiator.count} PR / ${Number(box.passiveRadiator.fs).toFixed(1)} Hz`;
-    } else {
-      document.querySelector("#portMetric").textContent = `alpha ${sealed.alignment.alpha.toFixed(2)}`;
-    }
-    document.querySelector("#warningMetric").textContent = warnings.length ? warnings.slice(0, 2).join(", ") : "none";
-  }
+  function renderMetrics() {}
   
   function renderPlots(simulations, activeSimulation, options = {}) {
     const colors = getThemeColors();
     const xMin = frequencies[0];
     const xMax = frequencies[frequencies.length - 1];
-    const xmaxMm = activeSimulation.driver.xmax * 1000;
+    const xmaxMm = isHfDriver(activeSimulation.driver) ? NaN : activeSimulation.driver.xmax * 1000;
     const portVelocityLimit = positiveOrNull(state.inventory?.constraints?.maxPortVelocityMs) ?? 20;
     const passiveRadiatorLimit = positiveOrNull(activeSimulation.box.passiveRadiator?.xmaxMm);
     const physicalSimulations = simulations.filter((simulation) => !simulation.groupCombined);
@@ -532,26 +525,37 @@ export function createRenderPipeline(deps) {
         .filter((response) => Math.abs(Number(response.angleDeg) || 0) < 0.001)
         .map((response, index) => frequencyResponseSeries(response, colors, index)),
     ];
+    const offAxisReferenceResponses = measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) < 0.001);
+    const offAxisAngledResponses = measurementResponses
+      .filter((response) => Math.abs(Number(response.angleDeg) || 0) >= 0.001);
     const offAxisResponseSeries = [
-      ...measurementResponses
-        .filter((response) => Math.abs(Number(response.angleDeg) || 0) >= 0.001)
-        .map((response, index) => frequencyResponseSeries(response, colors, index)),
+      ...offAxisReferenceResponses.map((response, index) => ({
+        ...frequencyResponseSeries(response, colors, index),
+        width: 2.6,
+        opacity: 0.96,
+      })),
+      ...offAxisAngledResponses.map((response, index) => frequencyResponseSeries(response, colors, index + offAxisReferenceResponses.length)),
     ];
     const horizontalPolarSeries = measurementPolarSeries(measurementResponses, colors, "horizontal");
     const impedanceSeries = physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.impedance, colors));
     const excursionSeries = [
-      ...physicalSimulations.map((simulation) => designSeries(simulation, simulation.active.excursionMm, colors)),
-      { name: "Xmax", x: frequencies, values: frequencies.map(() => xmaxMm), color: colors.text, width: 1 },
+      ...physicalSimulations
+        .filter((simulation) => !isHfDriver(simulation.driver))
+        .map((simulation) => designSeries(simulation, simulation.active.excursionMm, colors)),
     ];
+    if (Number.isFinite(xmaxMm) && xmaxMm > 0) {
+      excursionSeries.push({ name: "Xmax", x: frequencies, values: frequencies.map(() => xmaxMm), color: colors.text, width: 1 });
+    }
     const portSeries = physicalSimulations
       .map((simulation) => {
-        if (simulation.design.mode === "vented" || simulation.design.mode === "bandpass") return designSeries(simulation, portVelocityValuesForSimulation(simulation), colors);
+        if (!isHfDriver(simulation.driver) && (simulation.design.mode === "vented" || simulation.design.mode === "bandpass")) return designSeries(simulation, portVelocityValuesForSimulation(simulation), colors);
         return null;
       })
       .filter(Boolean);
     const prExcursionSeries = physicalSimulations
       .map((simulation) => {
-        if (simulation.design.mode === "passive") return designSeries(simulation, simulation.active.passiveRadiatorExcursionMm, colors);
+        if (!isHfDriver(simulation.driver) && simulation.design.mode === "passive") return designSeries(simulation, simulation.active.passiveRadiatorExcursionMm, colors);
         return null;
       })
       .filter(Boolean);
@@ -711,7 +715,7 @@ export function createRenderPipeline(deps) {
   
     const recordingSeries = recordingPlotSeries(colors);
     const recordingRange = autoRange(recordingSeries.flatMap((series) => series.values));
-    drawPlot(document.querySelector("#recordingPlot"), {
+    drawPlot(document.querySelector("#recordingPlot"), applyPlotView("recordingPlot", {
       title: "Recording",
       yLabel: "dB SPL",
       xMin,
@@ -720,7 +724,7 @@ export function createRenderPipeline(deps) {
       yMax: recordingRange[1],
       emptyMessage: "No recording data yet.",
       series: recordingSeries,
-    }, plotOptions);
+    }), plotOptions);
   
     updatePlotControlValues();
   
@@ -772,7 +776,7 @@ export function createRenderPipeline(deps) {
   }
   
   function frequencyResponseSeries(response, colors, index = 0) {
-    const color = colors.palette[(index + 3) % colors.palette.length];
+    const color = response.color || colors.palette[(index + 3) % colors.palette.length];
     const compactName = shortMeasurementName(response);
     const angleLabel = formatMeasurementAngleCompact(response);
     const values = filteredMeasurementMagnitudeValues(response);
@@ -831,47 +835,19 @@ export function createRenderPipeline(deps) {
   }
   
   function updateOffAxisResponseLegend(series) {
-    const panel = document.querySelector('[data-panel="offAxisResponsePlot"]');
-    if (!panel) return;
-  
-    let legend = panel.querySelector(".plot-series-legend");
-    if (!series.length) {
-      legend?.remove();
-      return;
-    }
-  
-    if (!legend) {
-      legend = document.createElement("div");
-      legend.className = "plot-series-legend";
-      panel.append(legend);
-    }
-  
-    legend.replaceChildren(...series.slice(0, 8).map((item) => {
-      const row = document.createElement("div");
-      row.className = "plot-series-legend-row";
-      setTooltip(row, item.fullName || item.name);
-  
-      const swatch = document.createElement("span");
-      swatch.className = "plot-series-legend-swatch";
-      swatch.style.background = item.color;
-  
-      const angle = document.createElement("strong");
-      angle.textContent = item.angleLabel || "";
-  
-      const name = document.createElement("span");
-      name.textContent = item.compactName || item.name;
-  
-      row.append(swatch, angle, name);
-      return row;
+    window.dispatchEvent(new CustomEvent("cabio:plot-series-legend-sync", {
+      detail: {
+        panelId: "offAxisResponsePlot",
+        series: series.slice(0, 8).map((item) => ({
+          name: item.name,
+          fullName: item.fullName,
+          compactName: item.compactName,
+          angleLabel: item.angleLabel,
+          color: item.color,
+        })),
+        hiddenCount: Math.max(0, series.length - 8),
+      },
     }));
-  
-    if (series.length > 8) {
-      const more = document.createElement("div");
-      more.className = "plot-series-legend-more";
-      more.textContent = `+${series.length - 8}`;
-      setTooltip(more, `${series.length - 8} more off-axis curves hidden from the compact legend.`);
-      legend.append(more);
-    }
   }
   
   function measurementPolarSeries(responses, colors, plane = "horizontal") {
@@ -1103,10 +1079,10 @@ export function createRenderPipeline(deps) {
       const factor = 2 ** (1 / (2 * q));
       return { bandMinHz: frequencyHz / factor, bandMaxHz: frequencyHz * factor };
     }
-    if (filter.type === "low-shelf" || filter.type === "subsonic") {
+    if (filter.type === "lowpass" || filter.type === "subsonic") {
       return { bandMinHz: 0, bandMaxHz: frequencyHz };
     }
-    if (filter.type === "high-shelf") {
+    if (filter.type === "highpass") {
       return { bandMinHz: frequencyHz, bandMaxHz: Number.MAX_SAFE_INTEGER };
     }
     if (filter.type === "linkwitz-transform") {
@@ -1128,12 +1104,12 @@ export function createRenderPipeline(deps) {
   
   function signalFilterAnnotationDetail(filter, target, simulations) {
     const targetLabel = signalFilterTargetLabel(target, simulations);
-    if (filter.type === "parametric" || filter.type === "low-shelf" || filter.type === "high-shelf") {
+    if (filter.type === "gain" || filter.type === "parametric") {
       const gain = Number(filter.gainDb) || 0;
       const gainLabel = `${gain >= 0 ? "+" : ""}${roundTo(gain, 1)} dB`;
       return `${gainLabel} / ${targetLabel}`;
     }
-    if (filter.type === "subsonic") {
+    if (filter.type === "lowpass" || filter.type === "highpass" || filter.type === "subsonic") {
       return `${crossoverFamilyLabel(filter.family)}${filter.order || 4} / ${targetLabel}`;
     }
     if (filter.type === "linkwitz-transform") {
@@ -1145,8 +1121,9 @@ export function createRenderPipeline(deps) {
   function shortSignalFilterTypeLabel(type) {
     return {
       parametric: "PEQ",
-      "low-shelf": "Low shelf",
-      "high-shelf": "High shelf",
+      gain: "Gain",
+      lowpass: "LP",
+      highpass: "HP",
       subsonic: "Subsonic",
     }[type] || signalFilterTypeLabel(type);
   }

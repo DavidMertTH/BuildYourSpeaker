@@ -46,6 +46,7 @@ export function lowPassResponse(frequency, lowPassHz, orderInput = 2) {
 
 export function crossoverFilterResponse(frequency, filter = {}) {
   if (filter.enabled === false) return C(1);
+  if (filter.type === "gain") return gainResponse(filter.gainDb);
   if (filter.type === "parametric") return parametricEqResponse(frequency, filter.frequencyHz, filter.gainDb, filter.q);
   if (filter.type === "low-shelf") return shelvingEqResponse(frequency, filter.frequencyHz, filter.gainDb, "low");
   if (filter.type === "high-shelf") return shelvingEqResponse(frequency, filter.frequencyHz, filter.gainDb, "high");
@@ -54,7 +55,7 @@ export function crossoverFilterResponse(frequency, filter = {}) {
   }
   if (filter.type === "subsonic") return subsonicResponse(frequency, filter.frequencyHz, filter.order, filter.family);
 
-  const kind = filter.kind === "lowpass" ? "lowpass" : "highpass";
+  const kind = filter.type === "lowpass" || filter.kind === "lowpass" ? "lowpass" : "highpass";
   const frequencyHz = Number(filter.frequencyHz);
   const order = normalizeHighPassOrder(filter.order);
   if (!Number.isFinite(frequencyHz) || frequencyHz <= 0 || order <= 0) return C(1);
@@ -92,6 +93,10 @@ export function parametricEqResponse(frequency, frequencyHz, gainDb = 0, qInput 
   const s = C(0, currentFrequency / f0);
   const s2 = s.mul(s);
   return s2.add(s.mul(a / q)).add(1).div(s2.add(s.mul(1 / (a * q))).add(1));
+}
+
+export function gainResponse(gainDb = 0) {
+  return C(10 ** ((Number(gainDb) || 0) / 20));
 }
 
 export function shelvingEqResponse(frequency, frequencyHz, gainDb = 0, shelf = "low") {

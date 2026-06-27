@@ -3,8 +3,10 @@ import { cloneProject, sampleProject } from "../state.js";
 import { roundTo } from "./format.js";
 
 export function completeDriverParameters(fallbackDriver = {}, driver = {}) {
-  const nextDriver = { ...cloneProject(fallbackDriver), ...cloneProject(driver || {}) };
+  const resolvedFallback = driver?.allowParameterFallback === false ? {} : fallbackDriver;
+  const nextDriver = { ...cloneProject(resolvedFallback), ...cloneProject(driver || {}) };
   Object.entries(nextDriver).forEach(([key, value]) => {
+    if (typeof value === "boolean") return;
     const numericValue = Number(value);
     if (Number.isFinite(numericValue)) nextDriver[key] = numericValue;
   });

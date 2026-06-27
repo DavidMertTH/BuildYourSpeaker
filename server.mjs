@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer as createHttpServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { searchDrivers, searchPassiveRadiators } from "./src/core/driverScraper.js";
@@ -7,6 +7,9 @@ import { searchFrequencyResponses } from "./src/core/frequencyResponseScraper.js
 const root = process.cwd();
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST ?? "0.0.0.0";
+const production = process.env.NODE_ENV === "production";
+const staticRoot = production ? join(root, "dist") : root;
+const vite = production ? null : await createViteMiddleware();
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -16,74 +19,23 @@ const mime = {
   ".svg": "image/svg+xml",
 };
 
-createServer(async (req, res) => {
+createHttpServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 
-    if (url.pathname === "/api/driver-search") {
-      try {
-        const query = url.searchParams.get("q");
-        const [driverSearch, responseSearch] = await Promise.allSettled([
-          searchDrivers(query),
-          searchFrequencyResponses(query),
-        ]);
-        if (driverSearch.status === "rejected") throw driverSearch.reason;
-        const result = attachFrequencyResponsesToDrivers(
-          driverSearch.value,
-          responseSearch.status === "fulfilled" ? responseSearch.value : { results: [] },
-          query,
-        );
-        if (responseSearch.status === "rejected") {
-          result.frequencyResponseError = responseSearch.reason?.message || "Frequency response search failed";
+    if (await handleApiRequest(url, res)) return;
+
+    if (vite) {
+      vite.middlewares(req, res, () => {
+        if (!res.writableEnded) {
+          res.writeHead(404);
+          res.end("Not found");
         }
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(result));
-      } catch (error) {
-        res.writeHead(error.statusCode || 502, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: error.message || "Driver search failed", directUrl: Boolean(error.directUrl) }));
-      }
+      });
       return;
     }
 
-    if (url.pathname === "/api/passive-radiator-search") {
-      try {
-        const result = await searchPassiveRadiators(url.searchParams.get("q"));
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(result));
-      } catch (error) {
-        res.writeHead(error.statusCode || 502, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: error.message || "P-Radiator search failed", directUrl: Boolean(error.directUrl) }));
-      }
-      return;
-    }
-
-    if (url.pathname === "/api/frequency-response-search") {
-      try {
-        const result = await searchFrequencyResponses(url.searchParams.get("q"));
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(result));
-      } catch (error) {
-        res.writeHead(error.statusCode || 502, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: error.message || "Frequency response search failed" }));
-      }
-      return;
-    }
-
-    const requested = url.pathname === "/" ? "/index.html" : url.pathname;
-    const filePath = normalize(join(root, requested));
-
-    if (!filePath.startsWith(root)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-
-    const body = await readFile(filePath);
-    res.writeHead(200, {
-      "Content-Type": mime[extname(filePath)] ?? "application/octet-stream",
-      "Cache-Control": "no-store",
-    });
-    res.end(body);
+    await serveStaticFile(url, res);
   } catch {
     res.writeHead(404);
     res.end("Not found");
@@ -94,6 +46,88 @@ createServer(async (req, res) => {
     console.log(`AudioSim also accepts LAN connections on port ${port}`);
   }
 });
+
+async function createViteMiddleware() {
+  const { createServer } = await import("vite");
+  return createServer({
+    root,
+    appType: "spa",
+    server: {
+      middlewareMode: true,
+      hmr: {
+        server: null,
+      },
+    },
+  });
+}
+
+async function handleApiRequest(url, res) {
+  if (url.pathname === "/api/driver-search") {
+    try {
+      const query = url.searchParams.get("q");
+      const [driverSearch, responseSearch] = await Promise.allSettled([
+        searchDrivers(query),
+        searchFrequencyResponses(query),
+      ]);
+      if (driverSearch.status === "rejected") throw driverSearch.reason;
+      const result = attachFrequencyResponsesToDrivers(
+        driverSearch.value,
+        responseSearch.status === "fulfilled" ? responseSearch.value : { results: [] },
+        query,
+      );
+      if (responseSearch.status === "rejected") {
+        result.frequencyResponseError = responseSearch.reason?.message || "Frequency response search failed";
+      }
+      writeJson(res, 200, result);
+    } catch (error) {
+      writeJson(res, error.statusCode || 502, { error: error.message || "Driver search failed", directUrl: Boolean(error.directUrl) });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/passive-radiator-search") {
+    try {
+      writeJson(res, 200, await searchPassiveRadiators(url.searchParams.get("q")));
+    } catch (error) {
+      writeJson(res, error.statusCode || 502, { error: error.message || "P-Radiator search failed", directUrl: Boolean(error.directUrl) });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/frequency-response-search") {
+    try {
+      writeJson(res, 200, await searchFrequencyResponses(url.searchParams.get("q")));
+    } catch (error) {
+      writeJson(res, error.statusCode || 502, { error: error.message || "Frequency response search failed" });
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function writeJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+
+async function serveStaticFile(url, res) {
+  const requested = url.pathname === "/" ? "/index.html" : url.pathname;
+  const filePath = normalize(join(staticRoot, requested));
+
+  if (!filePath.startsWith(staticRoot)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+
+  const body = await readFile(filePath);
+  res.writeHead(200, {
+    "Content-Type": mime[extname(filePath)] ?? "application/octet-stream",
+    "Cache-Control": "no-store",
+  });
+  res.end(body);
+}
 
 function attachFrequencyResponsesToDrivers(driverPayload = {}, responsePayload = {}, query = "") {
   const frequencyResponses = Array.isArray(responsePayload.results) ? responsePayload.results : [];

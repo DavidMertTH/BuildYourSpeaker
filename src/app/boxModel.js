@@ -41,9 +41,9 @@ export function completeBox(box = {}) {
   nextBox.bandpass = normalizeCompleteBandpass(nextBox);
   nextBox.portCount = Math.max(1, Math.min(12, Math.round(Number(nextBox.portCount) || 1)));
   nextBox.portShape = normalizePortShape(nextBox.portShape);
-  nextBox.portDiameterCm = Math.max(0.5, Number(nextBox.portDiameterCm) || sampleProject.box.portDiameterCm);
-  nextBox.portWidthCm = Math.max(0.5, Number(nextBox.portWidthCm) || sampleProject.box.portWidthCm);
-  nextBox.portHeightCm = Math.max(0.2, Number(nextBox.portHeightCm) || sampleProject.box.portHeightCm);
+  nextBox.portDiameterCm = Math.max(0.1, Number(nextBox.portDiameterCm) || sampleProject.box.portDiameterCm);
+  nextBox.portWidthCm = Math.max(0.1, Number(nextBox.portWidthCm) || sampleProject.box.portWidthCm);
+  nextBox.portHeightCm = Math.max(0.1, Number(nextBox.portHeightCm) || sampleProject.box.portHeightCm);
   nextBox.driverCount = Math.max(1, Math.min(16, Math.round(Number(nextBox.driverCount) || 1)));
   nextBox.driverWiring = nextBox.driverWiring === "series" ? "series" : "parallel";
   nextBox.highPassHz = Math.max(0, Number(nextBox.highPassHz) || 0);

@@ -13,6 +13,10 @@ export function createPlotViewController({
   let plotPanDrag = null;
 
   function resetPlotView(plotId) {
+    const activeElement = document.activeElement;
+    if (activeElement?.dataset?.plotAxisInput?.startsWith(`${plotId}.`)) {
+      activeElement.blur();
+    }
     delete plotViews[plotId];
     render();
   }

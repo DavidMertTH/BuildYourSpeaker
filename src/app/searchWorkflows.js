@@ -1,18 +1,30 @@
 export function createSearchWorkflows(deps) {
-  let plannerCandidates = [];
+  const setUiText = deps.setUiText || ((target, text) => {
+    const id = typeof target === "string" ? target : target?.id;
+    if (!id) return;
+    window.__cabioTextSync = {
+      ...(window.__cabioTextSync || {}),
+      [id]: String(text ?? ""),
+    };
+    window.dispatchEvent(new CustomEvent("cabio:text-sync", {
+      detail: { id, text: String(text ?? "") },
+    }));
+  });
+  const setDriverSearchStatus = (text) => setUiText(deps.driverSearchStatus, text);
+  const setPassiveRadiatorSearchStatus = (text) => setUiText(deps.passiveRadiatorSearchStatus, text);
 
   async function searchDriverSpecs() {
     const query = deps.driverSearchInput.value.trim();
     if (!query) {
-      deps.driverSearchStatus.textContent = "Enter a driver model, manufacturer, or datasheet URL.";
+      setDriverSearchStatus("Enter a driver model, manufacturer, or datasheet URL.");
       return;
     }
 
     deps.driverSearchButton.disabled = true;
     const directUrl = isHttpUrl(query);
-    const knownDriverResults = directUrl ? [] : deps.searchKnownDriverResults?.(query) || [];
-    deps.driverSearchStatus.textContent = directUrl ? "Reading datasheet and response sources..." : "Searching known drivers and the web...";
-    deps.driverSearchResults.replaceChildren();
+    const knownDriverResults = directUrl ? [] : await (deps.searchKnownDriverResults?.(query) || []);
+    setDriverSearchStatus(directUrl ? "Reading datasheet and response sources..." : "Searching known drivers and the web...");
+    deps.renderDriverSearchResults([], [], query);
     if (knownDriverResults.length) {
       deps.renderDriverSearchResults(knownDriverResults, [], query);
     }
@@ -45,13 +57,13 @@ export function createSearchWorkflows(deps) {
         statusParts.push(`${frequencyResults.length} response candidate${frequencyResults.length === 1 ? "" : "s"} found${parsedCount ? `, ${parsedCount} importable` : ""}; added only when you apply a driver.`);
       }
       if (driverPayload.frequencyResponseError) statusParts.push(`Response search failed: ${driverPayload.frequencyResponseError}.`);
-      deps.driverSearchStatus.textContent = statusParts.join(" ");
+      setDriverSearchStatus(statusParts.join(" "));
     } catch (error) {
       if (knownDriverResults.length) {
         deps.renderDriverSearchResults(knownDriverResults, [], query);
-        deps.driverSearchStatus.textContent = `${knownDriverResults.length} known driver match${knownDriverResults.length === 1 ? "" : "es"} found. Web search failed: ${error.message || "Search failed."}`;
+        setDriverSearchStatus(`${knownDriverResults.length} known driver match${knownDriverResults.length === 1 ? "" : "es"} found. Web search failed: ${error.message || "Search failed."}`);
       } else {
-        deps.driverSearchStatus.textContent = error.message || "Search failed.";
+        setDriverSearchStatus(error.message || "Search failed.");
       }
     } finally {
       deps.driverSearchButton.disabled = false;
@@ -61,14 +73,14 @@ export function createSearchWorkflows(deps) {
   async function searchPassiveRadiatorSpecs() {
     const query = deps.passiveRadiatorSearchInput.value.trim();
     if (!query) {
-      deps.passiveRadiatorSearchStatus.textContent = "Enter a P-Radiator model, manufacturer, or datasheet URL.";
+      setPassiveRadiatorSearchStatus("Enter a P-Radiator model, manufacturer, or datasheet URL.");
       return;
     }
 
     deps.passiveRadiatorSearchButton.disabled = true;
     const directUrl = isHttpUrl(query);
-    deps.passiveRadiatorSearchStatus.textContent = directUrl ? "Reading P-Radiator datasheet URL..." : "Searching web for P-Radiator parameters...";
-    deps.passiveRadiatorSearchResults.replaceChildren();
+    setPassiveRadiatorSearchStatus(directUrl ? "Reading P-Radiator datasheet URL..." : "Searching web for P-Radiator parameters...");
+    deps.renderPassiveRadiatorSearchResults([]);
 
     try {
       const response = await fetch(`/api/passive-radiator-search?q=${encodeURIComponent(query)}`);
@@ -76,97 +88,21 @@ export function createSearchWorkflows(deps) {
       if (!response.ok) throw new Error(payload.error || `Search failed with HTTP ${response.status}`);
       deps.renderPassiveRadiatorSearchResults(payload.results || []);
       if (payload.results?.length) {
-        deps.passiveRadiatorSearchStatus.textContent = payload.imageOnlyPdf
+        setPassiveRadiatorSearchStatus(payload.imageOnlyPdf
           ? `PDF has no selectable text. Values found from "${payload.fallbackQuery || "an alternate source"}"; verify before applying.`
           : payload.directUrl
             ? "P-Radiator datasheet parsed. Verify the values before applying."
-            : `${payload.results.length} candidate${payload.results.length === 1 ? "" : "s"} found. Verify before applying.`;
+            : `${payload.results.length} candidate${payload.results.length === 1 ? "" : "s"} found. Verify before applying.`);
       } else {
-        deps.passiveRadiatorSearchStatus.textContent = payload.directUrl
+        setPassiveRadiatorSearchStatus(payload.directUrl
           ? "No usable P-Radiator parameter set found at this URL."
-          : "No usable P-Radiator parameter set found.";
+          : "No usable P-Radiator parameter set found.");
       }
     } catch (error) {
-      deps.passiveRadiatorSearchStatus.textContent = error.message || "P-Radiator search failed.";
+      setPassiveRadiatorSearchStatus(error.message || "P-Radiator search failed.");
     } finally {
       deps.passiveRadiatorSearchButton.disabled = false;
     }
-  }
-
-  function planEnclosureDesigns() {
-    const state = deps.getState();
-    plannerCandidates = deps.planDesigns(deps.driverForProject(), { ...state.inventory, alignment: state.mode }, state.box);
-    if (plannerCandidates[0]) {
-      applyPlannerCandidate(plannerCandidates[0]);
-    }
-    renderPlannerResults(plannerCandidates);
-    deps.plannerStatus.textContent = plannerCandidates.length
-      ? `${plannerCandidates[0].name} applied to the active config.`
-      : "No buildable design candidates found. Try more volume, longer ports, or a lower velocity target.";
-  }
-
-  function renderPlannerResults(candidates) {
-    deps.plannerResults.replaceChildren();
-
-    candidates.forEach((candidate) => {
-      const item = document.createElement("article");
-      item.className = "search-result";
-      deps.setTooltip(item, "Auto plan candidate for the active config.");
-
-      const titleRow = document.createElement("div");
-      titleRow.className = "search-result-title";
-
-      const title = document.createElement("span");
-      const score = document.createElement("span");
-      score.className = "candidate-score";
-      score.textContent = Math.round(candidate.score);
-      title.append(score, `  ${candidate.name}`);
-
-      const applyButton = document.createElement("button");
-      applyButton.type = "button";
-      applyButton.textContent = candidate.applied ? "Applied" : "Use";
-      applyButton.disabled = Boolean(candidate.applied);
-      deps.setTooltip(applyButton, candidate.applied ? "This candidate is currently applied." : "Apply this candidate to the active config.");
-      applyButton.addEventListener("click", () => {
-        applyPlannerCandidate(candidate);
-        plannerCandidates = plannerCandidates.map((item) => ({
-          ...item,
-          applied: item === candidate,
-        }));
-        renderPlannerResults(plannerCandidates);
-        deps.plannerStatus.textContent = `${candidate.name} applied to the active config.`;
-      });
-
-      titleRow.append(title, applyButton);
-
-      const meta = document.createElement("div");
-      meta.className = "search-result-meta";
-      meta.textContent = candidate.notes.join(" - ");
-
-      const dimensions = candidate.dimensions?.external;
-      const fields = document.createElement("div");
-      fields.className = "search-result-fields";
-      const sizeText = dimensions
-        ? `External ${dimensions.widthCm.toFixed(1)} x ${dimensions.heightCm.toFixed(1)} x ${dimensions.depthCm.toFixed(1)} cm`
-        : "";
-      const warningText = candidate.warnings.length ? `Warnings: ${candidate.warnings.join(", ")}` : "No planner warnings";
-      fields.textContent = [sizeText, warningText].filter(Boolean).join(" - ");
-
-      item.append(titleRow, meta, fields);
-      deps.plannerResults.append(item);
-    });
-  }
-
-  function applyPlannerCandidate(candidate) {
-    const nextState = deps.cloneProject(deps.getState());
-    nextState.mode = candidate.mode;
-    nextState.box = deps.completeBox(candidate.box);
-    deps.syncActiveDesignFromProject(nextState);
-    deps.commitState(nextState, { hydrate: true });
-    plannerCandidates = plannerCandidates.map((item) => ({
-      ...item,
-      applied: item === candidate,
-    }));
   }
 
   function applyDriverCandidate(result) {
@@ -186,11 +122,11 @@ export function createSearchWorkflows(deps) {
       driver: nextDriver,
     });
     deps.applyKnownDriver(libraryEntry);
-    deps.driverSearchResults.replaceChildren();
+    deps.renderDriverSearchResults([], [], "");
     const responseText = responseImport.added
       ? ` ${responseImport.added} frequency response ${responseImport.added === 1 ? "entry" : "entries"} added to Measurement${responseImport.parsed ? `; ${responseImport.parsed} plotted` : ""}.`
       : "";
-    deps.driverSearchStatus.textContent = `${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known driver.${responseText}`;
+    setDriverSearchStatus(`${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known driver.${responseText}`);
   }
 
   function applyPassiveRadiatorCandidate(result) {
@@ -204,7 +140,7 @@ export function createSearchWorkflows(deps) {
       passiveRadiator: nextPassiveRadiator,
     });
     deps.applyKnownPassiveRadiator(libraryEntry);
-    deps.passiveRadiatorSearchStatus.textContent = `${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known P-Radiator.`;
+    setPassiveRadiatorSearchStatus(`${fieldCount} parameter${fieldCount === 1 ? "" : "s"} applied and added to Known P-Radiator.`);
   }
 
   return {
@@ -212,7 +148,6 @@ export function createSearchWorkflows(deps) {
     applyPassiveRadiatorCandidate,
     isHttpUrl,
     normalizeDirectUrl,
-    planEnclosureDesigns,
     searchDriverSpecs,
     searchPassiveRadiatorSpecs,
   };

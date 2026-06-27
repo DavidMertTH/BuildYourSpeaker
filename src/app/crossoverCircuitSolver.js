@@ -124,6 +124,7 @@ function hasRoutableCircuit(circuit) {
 }
 
 function componentImpedance(component, frequency) {
+  if (component.type === "wire-segment") return C(1e-6);
   const value = Math.max(Number(component.value) || 0, 1e-12);
   const omega = Math.max(2 * Math.PI * Number(frequency), 1e-12);
   if (component.type === "capacitor") return C(0, -1 / (omega * value * 1e-6));

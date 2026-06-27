@@ -11,7 +11,6 @@ export function createCrossoverController(deps) {
     createCrossoverCircuitWireId,
     commitState,
     createCrossoverTransitionId,
-    createEyeIcon,
     createSignalFilterId,
     CROSSOVER_FAMILIES,
     CROSSOVER_FREQUENCY_MAX_HZ,
@@ -22,13 +21,10 @@ export function createCrossoverController(deps) {
     crossoverCircuitComponentPortId,
     crossoverCircuitDesignNodeId,
     crossoverCircuitFixedNodeId,
-    crossoverGroupSelect,
-    crossoverMemberList,
     crossoverSliderValueToFrequency,
     crossoverStatus,
     DEFAULT_CROSSOVER_FREQUENCY_HZ,
     designColorForDesign,
-    enableDecimalTextInput,
     getActiveCrossoverGroupId,
     getActiveDesign,
     getState,
@@ -40,22 +36,21 @@ export function createCrossoverController(deps) {
     roundTo,
     setActiveCrossoverGroupId,
     setSelectedCrossoverDesignId = () => {},
-    setTooltip,
     SIGNAL_FILTER_DEFAULTS,
     SIGNAL_FILTER_TARGET_GROUP,
     SIGNAL_FILTER_TYPES,
     signalFilterAddButton,
-    signalFilterList,
     signalFilterTypeSelect,
     SUBSONIC_PRESETS,
   } = deps;
 
   let state = getState();
   const crossoverDesignPresetSelections = new Map();
+  window.addEventListener("cabio:crossover-filter-list-request", () => renderCrossoverControls());
+  window.addEventListener("cabio:crossover-filter-action", handleCrossoverFilterAction);
 
   function renderCrossoverControls() {
     state = getState();
-    if (!crossoverGroupSelect || !crossoverMemberList || !signalFilterList) return;
   
     const groups = crossoverGroups();
     const fallbackGroupId = fallbackCrossoverGroupId();
@@ -63,31 +58,34 @@ export function createCrossoverController(deps) {
       setActiveCrossoverGroupId(fallbackGroupId);
     }
   
-    crossoverGroupSelect.replaceChildren();
-    crossoverGroups().forEach((group) => {
-      const option = document.createElement("option");
-      option.value = group.id;
-      option.textContent = group.name;
-      crossoverGroupSelect.append(option);
-    });
-    crossoverGroupSelect.value = getActiveCrossoverGroupId();
-  
     const group = activeCrossoverGroup();
     const members = crossoverGroupMembers(group);
-    renderCrossoverMembers(members);
+    syncCrossoverControls(groups, group, members);
     renderSignalFilters(group, members);
   
     updateSignalFilterAddButton(group, members);
-  
-    if (crossoverStatus) {
-      if (!group || members.length < 1) {
-        crossoverStatus.textContent = "Add at least one config to design crossover filters.";
-      } else if (members.length < 2) {
-        crossoverStatus.textContent = "Transitions need at least two configs. Crossover designs can be used for this single driver.";
-      } else {
-        crossoverStatus.textContent = "";
-      }
-    }
+  }
+
+  function syncCrossoverControls(groups, group, members) {
+    window.dispatchEvent(new CustomEvent("cabio:crossover-controls-sync", {
+      detail: {
+        activeGroupId: getActiveCrossoverGroupId(),
+        groups: groups.map((item) => ({ id: item.id, name: item.name })),
+        members: members.map((design) => ({
+          id: design.id,
+          name: design.name,
+          active: design.id === state.activeDesignId,
+          color: designColorForDesign(design),
+        })),
+        status: crossoverStatusText(group, members),
+      },
+    }));
+  }
+
+  function crossoverStatusText(group, members) {
+    if (!group || members.length < 1) return "Add at least one config to design crossover filters.";
+    if (members.length < 2) return "Transitions need at least two configs. Crossover designs can be used for this single driver.";
+    return "";
   }
 
   function updateSignalFilterAddButton(group = activeCrossoverGroup(), members = crossoverGroupMembers(group)) {
@@ -157,150 +155,344 @@ export function createCrossoverController(deps) {
     return project.configGroups.find((item) => item.id === group.id) || null;
   }
   
-  function renderCrossoverMembers(members) {
-    crossoverMemberList.replaceChildren();
-    members.forEach((design) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "crossover-member";
-      item.classList.toggle("active", design.id === state.activeDesignId);
-      item.style.setProperty("--member-color", designColorForDesign(design));
-      item.textContent = design.name;
-      setTooltip(item, "Select this config for editing.");
-      item.addEventListener("click", () => activateDesign(design.id));
-      crossoverMemberList.append(item);
-    });
-  }
-  
   function renderSignalFilters(group, members) {
-    if (!signalFilterList) return;
-    signalFilterList.replaceChildren();
-    if (!group) return;
-  
-    const crossoverDesigns = group.crossover?.designs || [];
-    crossoverDesigns.forEach((design) => {
-      signalFilterList.append(createCrossoverDesignCard(design, members, group.id));
-    });
-  
-    const transitions = group.crossover?.transitions || [];
-    transitions.forEach((transition) => {
-      signalFilterList.append(createCrossoverTransitionCard(transition, members));
-    });
-  
-    const filters = group.crossover?.signalFilters || [];
-    filters.forEach((filter) => {
-      const item = document.createElement("article");
-      item.className = "search-result crossover-transition signal-filter";
-      item.dataset.signalFilterId = filter.id;
-  
-      const title = document.createElement("div");
-      title.className = "search-result-title";
-      const label = document.createElement("span");
-      label.textContent = signalFilterTypeLabel(filter.type);
-      const frequency = document.createElement("strong");
-      frequency.className = "filter-frequency-badge";
-      frequency.textContent = signalFilterFrequencyLabel(filter);
-      title.append(label, frequency);
-  
-      const fields = document.createElement("div");
-      fields.className = "crossover-transition-fields";
-      fields.append(signalFilterTargetField(filter, members));
-      signalFilterParameterFields(filter).forEach((field) => fields.append(field));
-  
-      const range = signalFilterRange(filter, item);
-      const actions = document.createElement("div");
-      actions.className = "crossover-transition-actions";
-  
-      const annotationToggle = createFilterAnnotationToggle(filter, () => toggleSignalFilterAnnotation(filter.id));
-  
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.textContent = filter.enabled === false ? "Enable" : "Disable";
-      setTooltip(toggle, "Enable or disable this signal filter.");
-      toggle.addEventListener("click", () => toggleSignalFilter(filter.id));
-  
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "Delete";
-      remove.className = "danger";
-      setTooltip(remove, "Delete this signal filter.");
-      remove.addEventListener("click", () => deleteSignalFilter(filter.id));
-  
-      actions.append(annotationToggle, toggle, remove);
-      item.classList.toggle("muted", filter.enabled === false);
-      item.append(title, fields);
-      if (range) item.append(range);
-      item.append(actions);
-      signalFilterList.append(item);
-    });
+    window.dispatchEvent(new CustomEvent("cabio:crossover-filter-list-sync", {
+      detail: group ? {
+        designs: (group.crossover?.designs || []).map((design) => crossoverDesignSnapshot(group.id, design, members)),
+        transitions: (group.crossover?.transitions || []).map((transition) => crossoverTransitionSnapshot(transition, members)),
+        filters: (group.crossover?.signalFilters || []).map((filter) => signalFilterSnapshot(filter, members)),
+      } : { designs: [], transitions: [], filters: [] },
+    }));
   }
 
-  function createCrossoverDesignCard(design, members, groupId) {
-    const item = document.createElement("article");
-    item.className = "search-result crossover-transition signal-filter signal-filter-design";
-    item.dataset.crossoverDesignId = design.id;
-
-    const title = document.createElement("div");
-    title.className = "search-result-title";
-    const label = document.createElement("span");
-    label.textContent = "Crossover design";
-    const status = document.createElement("strong");
-    status.className = "filter-frequency-badge";
-    status.textContent = design.enabled === false ? "Bypassed" : "Schematic";
-    title.append(label, status);
-
-    const presetControls = createCrossoverDesignPresetControls(groupId, design, members);
-
-    const actions = document.createElement("div");
-    actions.className = "crossover-transition-actions";
-
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.textContent = design.enabled === false ? "Enable" : "Disable";
-    setTooltip(toggle, "Enable or disable this schematic crossover routing.");
-    toggle.addEventListener("click", () => toggleCrossoverDesign(design.id));
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Delete";
-    remove.className = "danger";
-    setTooltip(remove, "Delete this crossover design.");
-    remove.addEventListener("click", () => deleteCrossoverDesign(design.id));
-
-    actions.append(toggle, remove);
-    item.classList.toggle("muted", design.enabled === false);
-    item.append(title);
-    if (presetControls) item.append(presetControls);
-    item.append(actions);
-    return item;
-  }
-
-  function createCrossoverDesignPresetControls(groupId, design, members) {
+  function crossoverDesignSnapshot(groupId, design, members) {
     const presetOptions = crossoverDesignPresetOptions(members);
-    if (!presetOptions.length) return null;
+    return {
+      id: design.id,
+      groupId,
+      muted: design.enabled === false,
+      badge: design.enabled === false ? "Bypassed" : "Schematic",
+      presetOptions,
+      selectedPresetId: selectedCrossoverDesignPresetId(design.id, presetOptions),
+    };
+  }
 
-    const row = document.createElement("div");
-    row.className = "crossover-design-preset-row";
+  function crossoverTransitionSnapshot(transition, members) {
+    const from = members.find((design) => design.id === transition.fromDesignId);
+    const to = members.find((design) => design.id === transition.toDesignId);
+    return {
+      id: transition.id,
+      muted: transition.enabled === false,
+      invalid: !from || !to,
+      annotationVisible: transition.showAnnotation !== false,
+      badge: frequencyLabel(transition.frequencyHz),
+      fields: [
+        crossoverSelectFieldSnapshot(transition, members, "fromDesignId", "From", "Low-pass config."),
+        crossoverSelectFieldSnapshot(transition, members, "toDesignId", "To", "High-pass config."),
+        crossoverNumberFieldSnapshot(transition, "frequencyHz", "Freq", "Crossover frequency."),
+        crossoverFamilyFieldSnapshot(transition),
+        crossoverOrderFieldSnapshot(transition),
+      ],
+      range: {
+        kind: "frequency",
+        min: "0",
+        max: String(CROSSOVER_SLIDER_STEPS),
+        step: "1",
+        value: String(crossoverFrequencyToSliderValue(transition.frequencyHz)),
+      },
+    };
+  }
 
-    const select = document.createElement("select");
-    select.ariaLabel = "Crossover wiring preset";
-    presetOptions.forEach((preset) => select.append(new Option(preset.label, preset.id)));
-    select.value = selectedCrossoverDesignPresetId(design.id, presetOptions);
-    setTooltip(select, "Choose a starter schematic for the current driver count.");
-    select.addEventListener("input", () => setCrossoverDesignPresetSelection(design.id, select.value));
-    select.addEventListener("change", () => setCrossoverDesignPresetSelection(design.id, select.value));
+  function signalFilterSnapshot(filter, members) {
+    return {
+      id: filter.id,
+      type: filter.type,
+      label: signalFilterTypeLabel(filter.type),
+      muted: filter.enabled === false,
+      annotationVisible: filter.type === "gain" ? null : filter.showAnnotation !== false,
+      badge: signalFilterFrequencyLabel(filter),
+      fields: [
+        signalFilterTargetFieldSnapshot(filter, members),
+        ...signalFilterParameterFieldSnapshots(filter),
+      ],
+      range: signalFilterRangeSnapshot(filter),
+    };
+  }
 
-    const apply = document.createElement("button");
-    apply.type = "button";
-    apply.textContent = "Apply";
-    setTooltip(apply, "Apply this starter schematic to the crossover design.");
-    apply.addEventListener("click", () => {
-      setCrossoverDesignPresetSelection(design.id, select.value);
-      applyCrossoverDesignPreset(groupId, design.id, select.value);
-    });
+  function crossoverSelectFieldSnapshot(source, members, key, label, tooltip) {
+    const options = members.map((design) => ({ value: design.id, label: design.name }));
+    return {
+      kind: "select",
+      key,
+      label,
+      tooltip,
+      value: options.some((option) => option.value === source[key]) ? source[key] : options[0]?.value || "",
+      options,
+    };
+  }
 
-    row.append(select, apply);
-    return row;
+  function crossoverNumberFieldSnapshot(source, key, label, tooltip) {
+    return {
+      kind: "number",
+      key,
+      label,
+      tooltip,
+      min: String(CROSSOVER_FREQUENCY_MIN_HZ),
+      max: String(CROSSOVER_FREQUENCY_MAX_HZ),
+      step: "1",
+      value: String(roundTo(clampCrossoverFrequency(source[key]), 1)),
+    };
+  }
+
+  function crossoverFamilyFieldSnapshot(source) {
+    return {
+      kind: "select",
+      key: "family",
+      label: "Family",
+      tooltip: "Filter family.",
+      value: CROSSOVER_FAMILIES.includes(source.family) ? source.family : "linkwitz-riley",
+      options: [
+        { value: "linkwitz-riley", label: "Linkwitz-Riley" },
+        { value: "butterworth", label: "Butterworth" },
+      ],
+    };
+  }
+
+  function crossoverOrderFieldSnapshot(source) {
+    return {
+      kind: "select",
+      key: "order",
+      label: "Order",
+      tooltip: "Filter slope.",
+      value: String(CROSSOVER_ORDERS.includes(Number(source.order)) ? Number(source.order) : 4),
+      options: [
+        { value: "2", label: "2nd" },
+        { value: "4", label: "4th" },
+      ],
+    };
+  }
+
+  function signalFilterTargetFieldSnapshot(filter, members) {
+    const options = [
+      { value: SIGNAL_FILTER_TARGET_GROUP, label: "Group" },
+      ...members.map((design) => ({ value: `design:${design.id}`, label: `Config: ${design.name}` })),
+      ...uniqueDriverGroupsForMembers(members).map((group) => ({ value: `driverGroup:${group.id}`, label: `Driver: ${group.name}` })),
+    ];
+    return {
+      kind: "select",
+      key: "target",
+      label: "Target",
+      tooltip: "Choose whether this filter applies to the whole group, one config, or configs using a driver group.",
+      value: options.some((option) => option.value === filter.target) ? filter.target : SIGNAL_FILTER_TARGET_GROUP,
+      options,
+    };
+  }
+
+  function signalFilterParameterFieldSnapshots(filter) {
+    if (filter.type === "gain") {
+      return [
+        signalFilterNumberFieldSnapshot(filter, "gainDb", "Gain", "Output gain in dB.", { min: -24, max: 24, step: 0.1 }),
+      ];
+    }
+    if (filter.type === "linkwitz-transform") {
+      return [
+        signalFilterNumberFieldSnapshot(filter, "sourceFrequencyHz", "Src Hz", "Current system resonance frequency.", { min: 1, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
+        signalFilterNumberFieldSnapshot(filter, "sourceQ", "Src Q", "Current system Q.", { min: 0.1, max: 4, step: 0.01 }),
+        signalFilterNumberFieldSnapshot(filter, "targetFrequencyHz", "Target Hz", "Target resonance frequency after Linkwitz Transform.", { min: 1, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
+        signalFilterNumberFieldSnapshot(filter, "targetQ", "Target Q", "Target system Q after Linkwitz Transform.", { min: 0.1, max: 4, step: 0.01 }),
+      ];
+    }
+    const fields = [
+      signalFilterNumberFieldSnapshot(filter, "frequencyHz", "Freq", "Filter frequency.", { min: CROSSOVER_FREQUENCY_MIN_HZ, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
+    ];
+    if (filter.type === "parametric") {
+      fields.push(
+        signalFilterNumberFieldSnapshot(filter, "gainDb", "Gain", "Filter gain in dB.", { min: -24, max: 24, step: 0.1 }),
+        signalFilterNumberFieldSnapshot(filter, "q", "Q", "Filter Q / bandwidth.", { min: 0.1, max: 20, step: 0.01 }),
+      );
+    }
+    if (filter.type === "lowpass" || filter.type === "highpass") fields.push(signalFilterFamilyFieldSnapshot(filter), signalFilterOrderFieldSnapshot(filter));
+    if (filter.type === "subsonic") fields.unshift(signalFilterSubsonicPresetFieldSnapshot(filter));
+    if (filter.type === "subsonic") fields.push(signalFilterFamilyFieldSnapshot(filter), signalFilterOrderFieldSnapshot(filter));
+    return fields;
+  }
+
+  function signalFilterSubsonicPresetFieldSnapshot(filter) {
+    return {
+      kind: "select",
+      key: "preset",
+      label: "Preset",
+      tooltip: "Choose a subsonic / rumble protection preset.",
+      value: Object.hasOwn(SUBSONIC_PRESETS, filter.preset) ? filter.preset : "custom",
+      options: Object.entries(SUBSONIC_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
+    };
+  }
+
+  function signalFilterNumberFieldSnapshot(filter, key, label, tooltip, options = {}) {
+    return {
+      kind: "number",
+      key,
+      label,
+      tooltip,
+      min: String(options.min ?? ""),
+      max: String(options.max ?? ""),
+      step: String(options.step ?? 1),
+      value: String(roundTo(Number(filter[key]) || 0, Number(options.step) < 1 ? 2 : 1)),
+    };
+  }
+
+  function signalFilterFamilyFieldSnapshot(filter) {
+    return {
+      kind: "select",
+      key: "family",
+      label: "Family",
+      tooltip: filter.type === "subsonic" ? "Subsonic high-pass family." : "Filter response family.",
+      value: CROSSOVER_FAMILIES.includes(filter.family) ? filter.family : "butterworth",
+      options: [
+        { value: "butterworth", label: "Butterworth" },
+        { value: "linkwitz-riley", label: "Linkwitz-Riley" },
+      ],
+    };
+  }
+
+  function signalFilterOrderFieldSnapshot(filter) {
+    return {
+      kind: "select",
+      key: "order",
+      label: "Order",
+      tooltip: filter.type === "subsonic" ? "Subsonic filter slope." : "Filter slope.",
+      value: String(CROSSOVER_ORDERS.includes(Number(filter.order)) ? Number(filter.order) : 4),
+      options: [
+        { value: "2", label: "2nd" },
+        { value: "4", label: "4th" },
+      ],
+    };
+  }
+
+  function signalFilterRangeSnapshot(filter) {
+    if (filter.type === "gain") {
+      return {
+        kind: "gain",
+        field: "gainDb",
+        min: "-24",
+        max: "24",
+        step: "0.1",
+        value: String(Number(filter.gainDb) || 0),
+        ariaLabel: "Gain level slider",
+        tooltip: "Adjust this gain filter level live.",
+      };
+    }
+    if (!["parametric", "lowpass", "highpass", "subsonic"].includes(filter.type)) return null;
+    return {
+      kind: "frequency",
+      field: "frequencyHz",
+      min: "0",
+      max: String(CROSSOVER_SLIDER_STEPS),
+      step: "1",
+      value: String(crossoverFrequencyToSliderValue(filter.frequencyHz)),
+      ariaLabel: "Signal filter frequency slider",
+      tooltip: "Adjust this filter frequency live on a logarithmic scale.",
+    };
+  }
+
+  function handleCrossoverFilterAction(event) {
+    const detail = event.detail || {};
+    if (detail.action === "set-design-preset") {
+      setCrossoverDesignPresetSelection(detail.designId, detail.presetId);
+      return;
+    }
+    if (detail.action === "apply-design-preset") {
+      setCrossoverDesignPresetSelection(detail.designId, detail.presetId);
+      applyCrossoverDesignPreset(detail.groupId, detail.designId, detail.presetId);
+      return;
+    }
+    if (detail.action === "toggle-design") return toggleCrossoverDesign(detail.designId);
+    if (detail.action === "delete-design") return deleteCrossoverDesign(detail.designId);
+    if (detail.action === "toggle-transition") return toggleCrossoverTransition(detail.transitionId);
+    if (detail.action === "delete-transition") return deleteCrossoverTransition(detail.transitionId);
+    if (detail.action === "toggle-transition-annotation") return toggleCrossoverTransitionAnnotation(detail.transitionId);
+    if (detail.action === "toggle-filter") return toggleSignalFilter(detail.filterId);
+    if (detail.action === "delete-filter") return deleteSignalFilter(detail.filterId);
+    if (detail.action === "toggle-filter-annotation") return toggleSignalFilterAnnotation(detail.filterId);
+    if (detail.action === "update-field") return updateCrossoverFilterField(detail);
+    if (detail.action === "update-range") return updateCrossoverFilterRange(detail);
+  }
+
+  function updateCrossoverFilterField(detail) {
+    if (detail.ownerType === "transition") {
+      const patch = crossoverTransitionFieldPatch(detail);
+      if (patch) updateCrossoverTransitionFields(detail.ownerId, patch, detail.live ? { live: true } : { animatePlots: true, renderControls: true });
+      return;
+    }
+    if (detail.ownerType === "filter") {
+      const patch = signalFilterFieldPatch(detail.ownerId, detail.field, detail.value);
+      if (patch) updateSignalFilterFields(detail.ownerId, patch, detail.live ? { live: true } : { animatePlots: true, renderControls: true });
+    }
+  }
+
+  function updateCrossoverFilterRange(detail) {
+    if (detail.ownerType === "transition") {
+      const value = crossoverSliderValueToFrequency(detail.value);
+      updateCrossoverTransitionFields(detail.ownerId, { frequencyHz: value }, { live: true });
+      return;
+    }
+    const group = activeCrossoverGroup();
+    const filter = group?.crossover?.signalFilters?.find((item) => item.id === detail.ownerId);
+    if (!filter) return;
+    if (filter.type === "gain") {
+      updateSignalFilterFields(detail.ownerId, { gainDb: Number(detail.value) || 0 }, { live: true });
+      return;
+    }
+    updateSignalFilterFields(detail.ownerId, {
+      frequencyHz: crossoverSliderValueToFrequency(detail.value),
+      ...(filter.type === "subsonic" ? { preset: "custom" } : {}),
+    }, { live: true });
+  }
+
+  function crossoverTransitionFieldPatch(detail) {
+    if (!detail.ownerId || !detail.field) return null;
+    if (detail.field === "frequencyHz") {
+      const parsed = parseNumericInputValue(detail.value);
+      if (!Number.isFinite(parsed)) return null;
+      return { frequencyHz: clampCrossoverFrequency(parsed) };
+    }
+    if (detail.field === "family") return { family: detail.value };
+    if (detail.field === "order") return { order: Number(detail.value) };
+    if (detail.field !== "fromDesignId" && detail.field !== "toDesignId") return null;
+    const group = activeCrossoverGroup();
+    const members = crossoverGroupMembers(group);
+    const transition = group?.crossover?.transitions?.find((item) => item.id === detail.ownerId);
+    if (!transition) return null;
+    const patch = { [detail.field]: detail.value };
+    const otherKey = detail.field === "fromDesignId" ? "toDesignId" : "fromDesignId";
+    if (patch[detail.field] === transition[otherKey]) {
+      const replacement = members.find((design) => design.id !== patch[detail.field]);
+      if (replacement) patch[otherKey] = replacement.id;
+    }
+    return patch;
+  }
+
+  function signalFilterFieldPatch(filterId, field, value) {
+    if (!filterId || !field) return null;
+    const group = activeCrossoverGroup();
+    const filter = group?.crossover?.signalFilters?.find((item) => item.id === filterId);
+    if (!filter) return null;
+    if (field === "target" || field === "family") {
+      return { [field]: value, ...(filter.type === "subsonic" && field === "family" ? { preset: "custom" } : {}) };
+    }
+    if (field === "order") return { order: Number(value), ...(filter.type === "subsonic" ? { preset: "custom" } : {}) };
+    if (field === "preset") {
+      const preset = SUBSONIC_PRESETS[value] || SUBSONIC_PRESETS.custom;
+      return {
+        preset: value,
+        ...(Number.isFinite(preset.frequencyHz) ? { frequencyHz: preset.frequencyHz } : {}),
+        ...(preset.family ? { family: preset.family } : {}),
+        ...(Number.isFinite(preset.order) ? { order: preset.order } : {}),
+      };
+    }
+    const parsed = parseNumericInputValue(value);
+    if (!Number.isFinite(parsed)) return null;
+    return { [field]: parsed, ...(filter.type === "subsonic" && field === "frequencyHz" ? { preset: "custom" } : {}) };
   }
 
   function selectedCrossoverDesignPresetId(designId, presetOptions) {
@@ -348,243 +540,12 @@ export function createCrossoverController(deps) {
     return presets;
   }
   
-  function createCrossoverTransitionCard(transition, members) {
-    const from = members.find((design) => design.id === transition.fromDesignId);
-    const to = members.find((design) => design.id === transition.toDesignId);
-  
-    const item = document.createElement("article");
-    item.className = "search-result crossover-transition signal-filter signal-filter-transition";
-    item.dataset.transitionId = transition.id;
-  
-    const title = document.createElement("div");
-    title.className = "search-result-title";
-    const label = document.createElement("span");
-    label.textContent = "Transition";
-    const frequency = document.createElement("strong");
-    frequency.className = "filter-frequency-badge";
-    frequency.textContent = frequencyLabel(transition.frequencyHz);
-    title.append(label, frequency);
-  
-    const fields = document.createElement("div");
-    fields.className = "crossover-transition-fields";
-    fields.append(
-      crossoverTransitionSelectField(transition, members, "fromDesignId", "From", "Low-pass config."),
-      crossoverTransitionSelectField(transition, members, "toDesignId", "To", "High-pass config."),
-      crossoverTransitionNumberField(transition, "frequencyHz", "Freq", "Crossover frequency."),
-      crossoverTransitionFamilyField(transition),
-      crossoverTransitionOrderField(transition),
-    );
-  
-    const range = document.createElement("input");
-    range.className = "planner-range crossover-transition-range signal-filter-range";
-    range.type = "range";
-    range.min = "0";
-    range.max = String(CROSSOVER_SLIDER_STEPS);
-    range.step = "1";
-    range.value = String(crossoverFrequencyToSliderValue(transition.frequencyHz));
-    range.ariaLabel = "Crossover frequency slider";
-    setTooltip(range, "Adjust this crossover frequency live on a logarithmic scale.");
-    range.addEventListener("input", () => {
-      const value = crossoverSliderValueToFrequency(range.value);
-      const numberInput = item.querySelector('input[data-crossover-field="frequencyHz"]');
-      if (numberInput) numberInput.value = String(roundTo(value, value >= 1000 ? 0 : 1));
-      const badge = item.querySelector(".filter-frequency-badge");
-      if (badge) badge.textContent = frequencyLabel(value);
-      updateCrossoverTransitionFields(transition.id, { frequencyHz: value }, { live: true });
-    });
-  
-    const actions = document.createElement("div");
-    actions.className = "crossover-transition-actions";
-  
-    const annotationToggle = createFilterAnnotationToggle(transition, () => toggleCrossoverTransitionAnnotation(transition.id));
-  
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.textContent = transition.enabled === false ? "Enable" : "Disable";
-    setTooltip(toggle, "Enable or disable this transition.");
-    toggle.addEventListener("click", () => toggleCrossoverTransition(transition.id));
-  
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Delete";
-    remove.className = "danger";
-    setTooltip(remove, "Delete this transition.");
-    remove.addEventListener("click", () => deleteCrossoverTransition(transition.id));
-  
-    actions.append(annotationToggle, toggle, remove);
-    item.classList.toggle("muted", transition.enabled === false);
-    if (!from || !to) item.classList.add("invalid");
-    item.append(title, fields, range, actions);
-    return item;
-  }
-  
-  function createFilterAnnotationToggle(filter, onToggle) {
-    const visible = filter.showAnnotation !== false;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "filter-annotation-toggle";
-    button.classList.toggle("active", visible);
-    button.ariaLabel = `${visible ? "Hide" : "Show"} SPL visualization`;
-    button.setAttribute("aria-pressed", String(visible));
-    setTooltip(button, `${visible ? "Hide" : "Show"} this filter's SPL graph visualization.`);
-    button.append(createEyeIcon(visible));
-    button.addEventListener("click", onToggle);
-    return button;
-  }
-  
-  function signalFilterTargetField(filter, members) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Target";
-    const select = document.createElement("select");
-    select.dataset.signalFilterField = "target";
-    select.append(new Option("Group", SIGNAL_FILTER_TARGET_GROUP));
-    members.forEach((design) => select.append(new Option(`Config: ${design.name}`, `design:${design.id}`)));
-    const driverGroups = uniqueDriverGroupsForMembers(members);
-    driverGroups.forEach((group) => select.append(new Option(`Driver: ${group.name}`, `driverGroup:${group.id}`)));
-    select.value = [...select.options].some((option) => option.value === filter.target) ? filter.target : SIGNAL_FILTER_TARGET_GROUP;
-    setTooltip(select, "Choose whether this filter applies to the whole group, one config, or configs using a driver group.");
-    select.addEventListener("change", () => updateSignalFilterFields(filter.id, { target: select.value }, { animatePlots: true, renderControls: true }));
-    label.append(span, select);
-    return label;
-  }
-  
-  function signalFilterParameterFields(filter) {
-    if (filter.type === "linkwitz-transform") {
-      return [
-        signalFilterNumberField(filter, "sourceFrequencyHz", "Src Hz", "Current system resonance frequency.", { min: 1, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
-        signalFilterNumberField(filter, "sourceQ", "Src Q", "Current system Q.", { min: 0.1, max: 4, step: 0.01 }),
-        signalFilterNumberField(filter, "targetFrequencyHz", "Target Hz", "Target resonance frequency after Linkwitz Transform.", { min: 1, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
-        signalFilterNumberField(filter, "targetQ", "Target Q", "Target system Q after Linkwitz Transform.", { min: 0.1, max: 4, step: 0.01 }),
-      ];
-    }
-  
-    const fields = [
-      signalFilterNumberField(filter, "frequencyHz", "Freq", "Filter frequency.", { min: CROSSOVER_FREQUENCY_MIN_HZ, max: CROSSOVER_FREQUENCY_MAX_HZ, step: 1 }),
-    ];
-    if (filter.type === "parametric" || filter.type === "low-shelf" || filter.type === "high-shelf") {
-      fields.push(signalFilterNumberField(filter, "gainDb", "Gain", "Filter gain in dB.", { min: -24, max: 24, step: 0.1 }));
-    }
-    if (filter.type === "parametric") {
-      fields.push(signalFilterNumberField(filter, "q", "Q", "Filter Q / bandwidth.", { min: 0.1, max: 20, step: 0.01 }));
-    }
-    if (filter.type === "subsonic") {
-      fields.unshift(signalFilterSubsonicPresetField(filter));
-      fields.push(signalFilterFamilyField(filter), signalFilterOrderField(filter));
-    }
-    return fields;
-  }
-  
-  function signalFilterSubsonicPresetField(filter) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Preset";
-    const select = document.createElement("select");
-    select.dataset.signalFilterField = "preset";
-    Object.entries(SUBSONIC_PRESETS).forEach(([value, preset]) => {
-      select.append(new Option(preset.label, value));
-    });
-    select.value = Object.hasOwn(SUBSONIC_PRESETS, filter.preset) ? filter.preset : "custom";
-    setTooltip(select, "Choose a subsonic / rumble protection preset.");
-    select.addEventListener("change", () => {
-      const preset = SUBSONIC_PRESETS[select.value] || SUBSONIC_PRESETS.custom;
-      updateSignalFilterFields(filter.id, {
-        preset: select.value,
-        ...(Number.isFinite(preset.frequencyHz) ? { frequencyHz: preset.frequencyHz } : {}),
-        ...(preset.family ? { family: preset.family } : {}),
-        ...(Number.isFinite(preset.order) ? { order: preset.order } : {}),
-      }, { animatePlots: true, renderControls: true });
-    });
-    label.append(span, select);
-    return label;
-  }
-  
-  function signalFilterNumberField(filter, key, labelText, tooltip, options = {}) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = "number";
-    enableDecimalTextInput(input);
-    input.min = String(options.min ?? "");
-    input.max = String(options.max ?? "");
-    input.step = String(options.step ?? 1);
-    input.dataset.signalFilterField = key;
-    input.value = String(roundTo(Number(filter[key]) || 0, Number(options.step) < 1 ? 2 : 1));
-    setTooltip(input, tooltip);
-    input.addEventListener("input", () => {
-      const value = parseNumericInputValue(input);
-      if (!Number.isFinite(value)) return;
-      const range = input.closest(".signal-filter")?.querySelector(".signal-filter-range");
-      if (range && key === "frequencyHz") range.value = String(crossoverFrequencyToSliderValue(value));
-      const badge = input.closest(".signal-filter")?.querySelector(".filter-frequency-badge");
-      if (badge) badge.textContent = signalFilterFrequencyLabel({ ...filter, [key]: value });
-      updateSignalFilterFields(filter.id, { [key]: value, ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { live: true });
-    });
-    label.append(span, input);
-    return label;
-  }
-  
-  function signalFilterFamilyField(filter) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Family";
-    const select = document.createElement("select");
-    select.dataset.signalFilterField = "family";
-    select.append(new Option("Butterworth", "butterworth"), new Option("Linkwitz-Riley", "linkwitz-riley"));
-    select.value = CROSSOVER_FAMILIES.includes(filter.family) ? filter.family : "butterworth";
-    setTooltip(select, "Subsonic high-pass family.");
-    select.addEventListener("change", () => updateSignalFilterFields(filter.id, { family: select.value, ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { animatePlots: true, renderControls: true }));
-    label.append(span, select);
-    return label;
-  }
-  
-  function signalFilterOrderField(filter) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Order";
-    const select = document.createElement("select");
-    select.dataset.signalFilterField = "order";
-    select.append(new Option("2nd", "2"), new Option("4th", "4"));
-    select.value = String(CROSSOVER_ORDERS.includes(Number(filter.order)) ? Number(filter.order) : 4);
-    setTooltip(select, "Subsonic filter slope.");
-    select.addEventListener("change", () => updateSignalFilterFields(filter.id, { order: Number(select.value), ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { animatePlots: true, renderControls: true }));
-    label.append(span, select);
-    return label;
-  }
-  
-  function signalFilterRange(filter, item) {
-    if (!["parametric", "low-shelf", "high-shelf", "subsonic"].includes(filter.type)) return null;
-    const range = document.createElement("input");
-    range.className = "planner-range crossover-transition-range signal-filter-range";
-    range.type = "range";
-    range.min = "0";
-    range.max = String(CROSSOVER_SLIDER_STEPS);
-    range.step = "1";
-    range.value = String(crossoverFrequencyToSliderValue(filter.frequencyHz));
-    range.ariaLabel = "Signal filter frequency slider";
-    setTooltip(range, "Adjust this filter frequency live on a logarithmic scale.");
-    range.addEventListener("input", () => {
-      const value = crossoverSliderValueToFrequency(range.value);
-      const numberInput = item.querySelector('input[data-signal-filter-field="frequencyHz"]');
-      if (numberInput) numberInput.value = String(roundTo(value, value >= 1000 ? 0 : 1));
-      const badge = item.querySelector(".filter-frequency-badge");
-      if (badge) badge.textContent = signalFilterFrequencyLabel({ ...filter, frequencyHz: value });
-      updateSignalFilterFields(filter.id, { frequencyHz: value, ...(filter.type === "subsonic" ? { preset: "custom" } : {}) }, { live: true });
-    });
-    return range;
-  }
-  
   function signalFilterTypeLabel(type) {
     return {
       parametric: "Parametric EQ",
-      "low-shelf": "Low shelf",
-      "high-shelf": "High shelf",
+      gain: "Gain",
+      lowpass: "Lowpass",
+      highpass: "Highpass",
       "linkwitz-transform": "Linkwitz Transform",
       subsonic: "Subsonic / rumble",
     }[type] || "Signal filter";
@@ -593,6 +554,10 @@ export function createCrossoverController(deps) {
   function signalFilterFrequencyLabel(filter) {
     if (filter.type === "linkwitz-transform") {
       return `${frequencyLabel(filter.sourceFrequencyHz)} -> ${frequencyLabel(filter.targetFrequencyHz)}`;
+    }
+    if (filter.type === "gain") {
+      const gain = Number(filter.gainDb) || 0;
+      return `${gain >= 0 ? "+" : ""}${roundTo(gain, 1)} dB`;
     }
     return frequencyLabel(filter.frequencyHz);
   }
@@ -620,95 +585,6 @@ export function createCrossoverController(deps) {
     return groups;
   }
   
-  function crossoverTransitionSelectField(transition, members, key, labelText, tooltip) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = labelText;
-    const select = document.createElement("select");
-    select.dataset.crossoverField = key;
-    members.forEach((design) => {
-      select.append(new Option(design.name, design.id));
-    });
-    select.value = members.some((design) => design.id === transition[key]) ? transition[key] : members[0]?.id || "";
-    setTooltip(select, tooltip);
-    select.addEventListener("change", () => {
-      const patch = { [key]: select.value };
-      const otherKey = key === "fromDesignId" ? "toDesignId" : "fromDesignId";
-      if (patch[key] === transition[otherKey]) {
-        const replacement = members.find((design) => design.id !== patch[key]);
-        if (replacement) patch[otherKey] = replacement.id;
-      }
-      updateCrossoverTransitionFields(transition.id, patch, { animatePlots: true, renderControls: true });
-    });
-    label.append(span, select);
-    return label;
-  }
-  
-  function crossoverTransitionNumberField(transition, key, labelText, tooltip) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = "number";
-    enableDecimalTextInput(input);
-    input.min = String(CROSSOVER_FREQUENCY_MIN_HZ);
-    input.max = String(CROSSOVER_FREQUENCY_MAX_HZ);
-    input.step = "1";
-    input.dataset.crossoverField = key;
-    input.value = String(roundTo(clampCrossoverFrequency(transition[key]), 1));
-    setTooltip(input, tooltip);
-    input.addEventListener("input", () => {
-      const parsed = parseNumericInputValue(input);
-      if (!Number.isFinite(parsed)) return;
-      const value = clampCrossoverFrequency(parsed);
-      const range = input.closest(".crossover-transition")?.querySelector(".crossover-transition-range");
-      if (range) range.value = String(crossoverFrequencyToSliderValue(value));
-      updateCrossoverTransitionFields(transition.id, { [key]: value }, { live: true });
-    });
-    label.append(span, input);
-    return label;
-  }
-  
-  function crossoverTransitionFamilyField(transition, datasetKey = "crossoverField", onChange = null) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Family";
-    const select = document.createElement("select");
-    select.dataset[datasetKey] = "family";
-    select.append(new Option("Linkwitz-Riley", "linkwitz-riley"), new Option("Butterworth", "butterworth"));
-    select.value = CROSSOVER_FAMILIES.includes(transition.family) ? transition.family : "linkwitz-riley";
-    setTooltip(select, "Filter family.");
-    select.addEventListener("change", () => {
-      const patch = { family: select.value };
-      if (onChange) onChange(patch);
-      else updateCrossoverTransitionFields(transition.id, patch, { animatePlots: true, renderControls: true });
-    });
-    label.append(span, select);
-    return label;
-  }
-  
-  function crossoverTransitionOrderField(transition, datasetKey = "crossoverField", onChange = null) {
-    const label = document.createElement("label");
-    label.className = "crossover-transition-field";
-    const span = document.createElement("span");
-    span.textContent = "Order";
-    const select = document.createElement("select");
-    select.dataset[datasetKey] = "order";
-    select.append(new Option("2nd", "2"), new Option("4th", "4"));
-    select.value = String(CROSSOVER_ORDERS.includes(Number(transition.order)) ? Number(transition.order) : 4);
-    setTooltip(select, "Filter slope.");
-    select.addEventListener("change", () => {
-      const patch = { order: Number(select.value) };
-      if (onChange) onChange(patch);
-      else updateCrossoverTransitionFields(transition.id, patch, { animatePlots: true, renderControls: true });
-    });
-    label.append(span, select);
-    return label;
-  }
-
   function crossoverFamilyLabel(family) {
     return family === "butterworth" ? "BW" : "LR";
   }
