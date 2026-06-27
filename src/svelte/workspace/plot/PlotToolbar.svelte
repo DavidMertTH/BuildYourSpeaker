@@ -6,7 +6,7 @@
   export let panelId;
   export let placementClass = "plot-overlay-toolbar";
 
-  const graphPanelIds = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
+  const graphPanelIds = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview"];
   const axisKeys = [
     { key: "xMin", label: "X min", step: "1" },
     { key: "xMax", label: "X max", step: "1" },
@@ -14,7 +14,7 @@
     { key: "yMax", label: "Y max", step: "0.1" },
   ];
 
-  $: axisPlotId = PLOT_IDS.includes(panelId) ? panelId : panelId === "recordingPanel" ? "recordingPlot" : "";
+  $: axisPlotId = PLOT_IDS.includes(panelId) ? panelId : "";
   let toolbarElement;
   let resetButtonElement;
 

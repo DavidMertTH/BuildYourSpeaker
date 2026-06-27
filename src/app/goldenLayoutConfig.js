@@ -132,8 +132,8 @@ function isBoxTwoPanelLayout(panelIds) {
 }
 
 function isRecordingLayout(panelIds) {
-  const recordingPanelIds = ["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot"];
-  return panelIds.length === recordingPanelIds.length && recordingPanelIds.every((panelId) => panelIds.includes(panelId));
+  const measurementPanelIds = ["onAxisResponsePlot", "offAxisResponsePlot"];
+  return panelIds.length === measurementPanelIds.length && measurementPanelIds.every((panelId) => panelIds.includes(panelId));
 }
 
 function isCrossoverLayout(panelIds) {
@@ -235,17 +235,10 @@ function buildBoxTwoPanelGoldenLayoutConfig(panelIds) {
 function buildRecordingGoldenLayoutConfig() {
   return {
     root: {
-      type: "column",
+      type: "row",
       content: [
-        {
-          type: "row",
-          size: "42%",
-          content: [
-            componentStackConfig("onAxisResponsePlot", 50),
-            componentStackConfig("offAxisResponsePlot", 50),
-          ],
-        },
-        componentStackConfig("recordingPanel", 58),
+        componentStackConfig("onAxisResponsePlot", 50),
+        componentStackConfig("offAxisResponsePlot", 50),
       ],
     },
     settings: {

@@ -28,7 +28,6 @@ export function createRenderPipeline(deps) {
     formatMeasurementAngleCompact,
     frequencies,
     fullMeasurementName,
-    generatedRecordingPoints,
     getActiveDesign,
     getState,
     getThemeColors,
@@ -41,7 +40,6 @@ export function createRenderPipeline(deps) {
     maxExcursionRatio,
     modeButtons,
     nearestFrequencyValue,
-    normalizeFrequencyResponse,
     normalizeGroupCrossover,
     normalizeSignalFilter,
     normalizeSignalFilterTarget,
@@ -49,7 +47,6 @@ export function createRenderPipeline(deps) {
     projectJson,
     readableTextColor,
     recommendedLowFrequencyLimit,
-    recordingSettings,
     renderCrossoverSchematic,
     renderDriverSummaryPanel,
     renderDriverHealthPanel,
@@ -65,7 +62,6 @@ export function createRenderPipeline(deps) {
     simulatePassiveRadiator,
     simulateSealed,
     simulateVented,
-    getStagedRecordingResponse,
     UNGROUPED_CONFIG_GROUP_ID,
     updatePanelToggleState,
     updatePillIndicatorsSoon,
@@ -713,19 +709,6 @@ export function createRenderPipeline(deps) {
       series: horizontalPolarSeries,
     });
   
-    const recordingSeries = recordingPlotSeries(colors);
-    const recordingRange = autoRange(recordingSeries.flatMap((series) => series.values));
-    drawPlot(document.querySelector("#recordingPlot"), applyPlotView("recordingPlot", {
-      title: "Recording",
-      yLabel: "dB SPL",
-      xMin,
-      xMax,
-      yMin: recordingRange[0],
-      yMax: recordingRange[1],
-      emptyMessage: "No recording data yet.",
-      series: recordingSeries,
-    }), plotOptions);
-  
     updatePlotControlValues();
   
     const fbValue = activeSimulation.design.mode === "vented" ? nearestFrequencyValue(frequencies, activeSimulation.active.portVelocity, activeSimulation.box.fb) : null;
@@ -752,27 +735,6 @@ export function createRenderPipeline(deps) {
       return state.designs.some((design) => (design.groupId || UNGROUPED_CONFIG_GROUP_ID) === groupId && design.visible !== false);
     }
     return false;
-  }
-  
-  function recordingPlotSeries(colors) {
-    const stagedRecordingResponse = getStagedRecordingResponse();
-    if (stagedRecordingResponse?.points?.length >= 2) {
-      return [{
-        ...frequencyResponseSeries(stagedRecordingResponse, colors, 0),
-        width: 2.8,
-        opacity: 1,
-      }];
-    }
-    const settings = recordingSettings();
-    const preview = normalizeFrequencyResponse({
-      name: `${settings.signal === "noise" ? "Noise" : "Sweep"} preview`,
-      points: generatedRecordingPoints(settings, 0),
-    });
-    return [{
-      ...frequencyResponseSeries(preview, colors, 0),
-      color: colors.dim,
-      opacity: 0.72,
-    }];
   }
   
   function frequencyResponseSeries(response, colors, index = 0) {

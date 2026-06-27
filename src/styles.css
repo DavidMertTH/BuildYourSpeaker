@@ -992,6 +992,50 @@ textarea {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.48);
 }
 
+.driver-filter-results {
+  display: grid;
+  gap: var(--space-1);
+  max-height: min(280px, 52vh);
+  padding: var(--space-1);
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--field);
+}
+
+.driver-filter-result {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: var(--control-height-small);
+  padding: 0 var(--space-4);
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+
+.driver-filter-result:hover,
+.driver-filter-result.selected {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line-soft));
+  background: var(--accent-subtle);
+  color: var(--text);
+}
+
+.driver-filter-result span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-filter-empty {
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .library-filter-toggle {
   position: relative;
   display: grid;
@@ -1080,6 +1124,12 @@ select optgroup {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.driver-finder-section .search-status {
+  min-height: 0;
+  margin-bottom: 0;
+  line-height: 1.25;
 }
 
 .search-results {
@@ -1661,6 +1711,32 @@ input.planner-range:focus {
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   background: color-mix(in srgb, var(--surface) 82%, var(--text) 18%);
+}
+
+.beta-warning {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, #f4b740 48%, var(--line-soft));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, #f4b740 11%, var(--surface-faint));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.beta-warning strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.beta-warning span {
+  color: var(--muted);
+}
+
+.measurement-beta-warning {
+  margin-bottom: var(--space-4);
 }
 
 .measurement-staged-section {
@@ -2555,10 +2631,6 @@ textarea:focus {
   height: 100%;
 }
 
-.golden-layout-host .recording-workbench {
-  height: 100%;
-}
-
 .golden-layout-host .crossover-schematic-workbench {
   height: 100%;
 }
@@ -2974,99 +3046,6 @@ canvas {
 
 .plot-panel.plot-is-panning canvas {
   cursor: grabbing;
-}
-
-.recording-workbench {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(176px, 220px);
-  grid-template-rows: minmax(0, 1fr);
-  height: calc(100% - 30px);
-  min-height: 0;
-  background: var(--surface-soft);
-}
-
-.recording-controls {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-content: start;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 10px;
-  border-right: 1px solid var(--line-soft);
-  background: var(--chrome-2);
-  scrollbar-width: thin;
-}
-
-.recording-actions {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-
-.recording-frequency-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.recording-actions {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto;
-  gap: 6px;
-}
-
-.recording-action-row,
-.recording-run-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  min-width: 0;
-}
-
-.recording-action-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.recording-run-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-}
-
-.recording-run-field {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.recording-run-field input {
-  width: 100%;
-  min-width: 0;
-  min-height: 28px;
-  padding: 3px 6px;
-  font-size: 11px;
-}
-
-.recording-status {
-  grid-column: 1 / -1;
-  min-height: 20px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.recording-status:empty {
-  display: none;
 }
 
 .crossover-schematic-workbench {
@@ -4115,195 +4094,6 @@ canvas {
   white-space: nowrap;
 }
 
-.recording-controls label,
-.recording-section label,
-.recording-level {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.recording-controls select,
-.recording-controls input {
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.recording-section select,
-.recording-section input {
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.recording-level strong {
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1;
-}
-
-.recording-level {
-  align-content: start;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.recording-spectrogram {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-  border: 1px solid color-mix(in srgb, var(--line-soft) 86%, transparent);
-  border-radius: 4px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--text) 8%, transparent), transparent),
-    color-mix(in srgb, var(--surface-soft) 82%, #000);
-  image-rendering: auto;
-}
-
-.recording-spectrum-panel {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  padding: 10px;
-  border-left: 1px solid var(--line-soft);
-  background: var(--chrome-2);
-}
-
-.recording-live-controls {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  max-height: 188px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.recording-spectrum-title {
-  justify-self: start;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--chrome-2) 78%, transparent);
-}
-
-.recording-spectrum-panel span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.recording-meter {
-  height: 8px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line-soft) 70%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--text) 9%, transparent);
-}
-
-.recording-meter span {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--danger));
-  transition: width 80ms linear;
-}
-
-.recording-add-button {
-  min-width: 64px;
-  min-height: 32px;
-  padding: 0 10px;
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-text);
-  white-space: nowrap;
-}
-
-.recording-add-button:hover,
-.recording-add-button:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 78%, var(--text));
-  background: color-mix(in srgb, var(--accent) 82%, var(--text));
-  color: var(--accent-text);
-}
-
-.recording-secondary-button {
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 8px;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recording-run-row .recording-secondary-button {
-  width: 52px;
-  min-width: 52px;
-  min-height: 28px;
-  padding: 0 7px;
-}
-
-.recording-peak-readout {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-@media (max-width: 1180px) {
-  .recording-workbench {
-    grid-template-columns: minmax(0, 1fr) minmax(164px, 208px);
-  }
-
-  .recording-controls {
-    padding: 8px;
-  }
-
-  .recording-spectrum-panel {
-    padding: 8px;
-  }
-}
-
-@media (max-width: 760px) {
-  .recording-workbench {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(260px, 1fr) 180px;
-  }
-
-  .recording-controls {
-    max-height: 420px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line-soft);
-  }
-
-  .recording-spectrum-panel {
-    border-left: 0;
-    border-top: 1px solid var(--line-soft);
-  }
-}
-
-.recording-plot-stage {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-}
-
-.recording-plot-stage > canvas {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
 .plot-resize-handle {
   position: absolute;
   z-index: 8;
@@ -4960,7 +4750,6 @@ textarea,
 .config-group-chips,
 .config-chip-menu-panel,
 .config-chip-menu-panel > button,
-.recording-panel,
 .project-dialog,
 .driver-group-card,
 .measurement-group-card,
@@ -5016,7 +4805,6 @@ textarea,
 .crossover-symbol-button,
 .crossover-preset-button,
 .crossover-transition-actions button,
-.recording-add-button,
 .config-color-swatch {
   border-radius: 4px;
 }

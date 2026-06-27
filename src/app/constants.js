@@ -26,7 +26,7 @@ export const PLOT_IDS = [
   "groupDelayPlot",
 ];
 export const POLAR_PLOT_IDS = ["horizontalPolarPlot"];
-export const PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel", "crossoverSchematicPanel"];
+export const PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "crossoverSchematicPanel"];
 export const AXIS_KEYS = ["xMin", "xMax", "yMin", "yMax"];
 export const GOLDEN_COMPONENT_TYPE = "plotPanel";
 export const LOG_Y_PLOTS = new Set(["impedancePlot", "excursionPlot", "portPlot", "prExcursionPlot"]);

@@ -125,7 +125,6 @@ export const PANEL_TOOLTIPS = {
   groupDelayPlot: "Show or hide the group delay graph.",
   horizontalPolarPlot: "Show or hide the horizontal polar directivity graph.",
   boxPreview: "Show or hide the box preview.",
-  recordingPanel: "Show or hide the recording workbench.",
   crossoverSchematicPanel: "Show or hide the crossover schematic editor.",
 };
 export const THEME_TOOLTIPS = {
@@ -156,8 +155,6 @@ export const PLOT_PANEL_TOOLTIPS = {
     "Horizontal polar shows imported horizontal measurements by angle at selected frequencies.",
   boxPreview:
     "Box preview shows the estimated cabinet proportions for the active config. Use it as a quick buildability check, not as a final woodworking drawing.",
-  recordingPanel:
-    "Recording combines level, microphone and signal settings with a graph of captured or imported measurements.",
   crossoverSchematicPanel:
     "Crossover schematic lets you place R, C and L components and wire them between the selected group's source, ground and driver endpoints.",
 };
@@ -173,7 +170,6 @@ export const PANEL_LABELS = {
   groupDelayPlot: "Group delay",
   horizontalPolarPlot: "H polar",
   boxPreview: "Box",
-  recordingPanel: "Recording",
   crossoverSchematicPanel: "Crossover",
 };
 export const RANGE_TOOLTIPS = {

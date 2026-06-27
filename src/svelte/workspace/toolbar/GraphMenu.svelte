@@ -13,7 +13,6 @@
     { panelId: "groupDelayPlot", label: "Group delay" },
     { panelId: "horizontalPolarPlot", label: "H polar" },
     { panelId: "boxPreview", label: "Box" },
-    { panelId: "recordingPanel", label: "Recording" },
     { panelId: "crossoverSchematicPanel", label: "Crossover" },
   ];
 

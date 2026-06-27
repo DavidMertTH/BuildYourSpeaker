@@ -39,17 +39,12 @@ import { loadKnownDrivers, loadKnownPassiveRadiators, sampleProject } from "../s
 const driver = normalizeDriver(sampleProject.driver);
 const frequencies = logFrequencyVector(10, 200, 260);
 
-test("recording preset gives the recording panel the main workspace", () => {
+test("measurement layout excludes the recording workbench", () => {
   const config = buildGoldenLayoutConfig(["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot"]);
 
-  assert.equal(config.root.type, "column");
-  assert.equal(config.root.content[0].type, "row");
-  assert.equal(config.root.content[0].size, "42%");
-  assert.equal(config.root.content[1].size, "58%");
-  assert.equal(config.root.content[1].content[0].componentState.panelId, "recordingPanel");
-
-  const topPanelIds = config.root.content[0].content.map((stack) => stack.content[0].componentState.panelId);
-  assert.deepEqual(topPanelIds, ["onAxisResponsePlot", "offAxisResponsePlot"]);
+  assert.equal(config.root.type, "row");
+  const panelIds = config.root.content.map((stack) => stack.content[0].componentState.panelId);
+  assert.deepEqual(panelIds, ["onAxisResponsePlot", "offAxisResponsePlot"]);
 });
 
 test("recording stimulus generator respects signal type and frequency range", () => {

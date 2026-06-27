@@ -167,8 +167,8 @@ let recordingSpectrogramInitialized = false;
 const frequencies = logFrequencyVector(FREQUENCY_MIN_HZ, FREQUENCY_MAX_HZ, 640);
 const RECORDING_ANALYSIS_FREQUENCY_POINTS = 480;
 const RECORDING_PREVIEW_FREQUENCY_POINTS = 640;
-const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview", "recordingPanel"];
-const AXIS_TOOLBAR_PLOT_IDS = [...PLOT_IDS, "recordingPlot"];
+const GRAPH_PANEL_IDS = [...PLOT_IDS, ...POLAR_PLOT_IDS, "boxPreview"];
+const AXIS_TOOLBAR_PLOT_IDS = [...PLOT_IDS];
 const BOX_MODE_PRESETS = {
   sealed: "boxSealed",
   vented: "boxVented",
@@ -1011,7 +1011,6 @@ function applyPlotPanelSize(panel, size) {
 
 function axisPlotIdForPanel(panelId) {
   if (PLOT_IDS.includes(panelId)) return panelId;
-  if (panelId === "recordingPanel") return "recordingPlot";
   return "";
 }
 
@@ -1704,7 +1703,8 @@ async function handleLibraryAction(event) {
   }
   if (action === "select-driver") {
     await ensureDriverLibraryLoaded();
-    const selected = driverLibrary.find((driver) => driver.id === driverSelect.value);
+    const selectedId = event.detail?.id || driverSelect.value;
+    const selected = driverLibrary.find((driver) => driver.id === selectedId);
     if (selected) applyKnownDriver(selected);
     return;
   }
@@ -4063,7 +4063,6 @@ function applyMobilePanelVisibility() {
 
 function mobilePanelHeight(panelId) {
   if (panelId === "crossoverSchematicPanel") return "460px";
-  if (panelId === "recordingPanel") return "440px";
   if (panelId === "boxPreview") return "320px";
   return "300px";
 }
@@ -4089,7 +4088,6 @@ function updateMobilePanelMenuLabel() {
 }
 
 function plotCanvasForPanel(panelId) {
-  if (panelId === "recordingPanel") return document.querySelector("#recordingPlot");
   return document.querySelector(`[data-panel="${panelId}"] canvas`);
 }
 
