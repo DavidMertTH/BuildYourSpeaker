@@ -28,6 +28,7 @@ import { completeBox } from "../src/app/boxModel.js";
 import { completeDriverParameters } from "../src/app/driverParameters.js";
 import { simulateHfDriverResponse } from "../src/app/hfDriverSimulation.js";
 import { createSplReferenceAnnotations } from "../src/app/splReferenceAnnotations.js";
+import { createProjectHistory, historyActionFromKeyboardEvent } from "../src/app/projectHistory.js";
 import { crossoverCircuitComponentPortId, crossoverCircuitDesignNodeId, hasActiveCrossoverDesign, normalizeCrossoverCircuit, normalizeGroupCrossover } from "../src/app/crossoverModel.js";
 import { crossoverCircuitResponses } from "../src/app/crossoverCircuitSolver.js";
 import { orthogonalWireRoutePoints, snapWirePointToGrid, wirePathD } from "../src/app/crossoverWireRouting.js";
@@ -77,6 +78,35 @@ test("SPL reference annotations follow the highest plotted level", () => {
 
 test("SPL reference annotations are omitted without finite plot data", () => {
   assert.deepEqual(createSplReferenceAnnotations([{ values: [Number.NaN] }, { values: [] }]), []);
+});
+
+test("project history supports undo, redo, and divergent edits", () => {
+  const history = createProjectHistory({ value: 1 });
+  history.record({ value: 2 });
+  history.record({ value: 3 });
+
+  assert.deepEqual(history.undo(), { value: 2 });
+  assert.deepEqual(history.undo(), { value: 1 });
+  assert.deepEqual(history.redo(), { value: 2 });
+  history.record({ value: 4 });
+  assert.equal(history.canRedo(), false);
+  assert.deepEqual(history.undo(), { value: 2 });
+});
+
+test("project history coalesces replaceable continuous changes", () => {
+  const history = createProjectHistory({ value: 1 });
+  history.record({ value: 2 }, { replace: true });
+  history.record({ value: 3 }, { replace: true });
+
+  assert.deepEqual(history.undo(), { value: 1 });
+  assert.deepEqual(history.redo(), { value: 3 });
+});
+
+test("history shortcuts recognize common undo and redo combinations", () => {
+  assert.equal(historyActionFromKeyboardEvent({ ctrlKey: true, key: "z" }), "undo");
+  assert.equal(historyActionFromKeyboardEvent({ metaKey: true, shiftKey: true, key: "Z" }), "redo");
+  assert.equal(historyActionFromKeyboardEvent({ ctrlKey: true, key: "y" }), "redo");
+  assert.equal(historyActionFromKeyboardEvent({ ctrlKey: true, altKey: true, key: "z" }), "");
 });
 
 test("measurement layout excludes the recording workbench", () => {

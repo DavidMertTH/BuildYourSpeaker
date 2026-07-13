@@ -112,6 +112,7 @@ import {
 } from "./projectModel.js";
 import { createEyeIcon, createTrashIcon } from "../ui/icons.js";
 import { createPlotViewController, interpolatePlotSeriesValue, positiveMagnitudeRange } from "./plotViewController.js";
+import { createProjectHistory, historyActionFromKeyboardEvent } from "./projectHistory.js";
 import {
   formatSearchResultValue,
   renderDriverSearchResultsView,
@@ -147,7 +148,7 @@ let passiveRadiatorLibraryLoadPromise = null;
 let driverLibraryLoaded = false;
 let passiveRadiatorLibraryLoaded = false;
 let state = readSavedProjectState();
-let historyIndex = 0;
+let projectHistory = null;
 let draggedItem = null;
 let manualDrag = null;
 let activePreset = "driver";
@@ -1378,21 +1379,14 @@ function bindEvents() {
   window.addEventListener("cabio:recording-action", handleRecordingAction);
   navigator.mediaDevices?.addEventListener?.("devicechange", () => hydrateRecordingDeviceOptions());
 
-  window.addEventListener("popstate", (event) => {
-    const project = event.state?.project;
-    if (!project) return;
-    state = normalizeProjectState(project);
-    saveProjectState(state);
-    historyIndex = Number(event.state.index) || 0;
-    hydrateFields();
-    render();
-  });
+  window.addEventListener("cabio:history-action", (event) => applyHistoryAction(event.detail?.action));
+  window.addEventListener("cabio:history-request", updateHistoryControls);
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeConfigChipMenus();
-    if (!isUndoShortcut(event) || historyIndex <= 0) return;
+    const action = historyActionFromKeyboardEvent(event);
+    if (!action || !applyHistoryAction(action)) return;
     event.preventDefault();
-    history.back();
   });
 
   document.addEventListener("click", (event) => {
@@ -4290,25 +4284,45 @@ function updatePresetButtonState() {
 }
 
 function initializeHistory() {
-  history.replaceState({ index: historyIndex, project: cloneProject(state) }, "", location.href);
+  projectHistory = createProjectHistory(state);
+  updateHistoryControls();
 }
 
 function commitState(nextState, options = {}) {
   state = normalizeProjectState(nextState);
+  projectHistory?.record(state, { replace: options.replaceHistory });
   saveProjectState(state);
-  if (options.replaceHistory) {
-    history.replaceState({ index: historyIndex, project: cloneProject(state) }, "", location.href);
-  } else {
-    historyIndex += 1;
-    history.pushState({ index: historyIndex, project: cloneProject(state) }, "", location.href);
-  }
   if (options.renderControls !== false) renderDesignControls();
   if (options.hydrate) hydrateFields();
   render({ animatePlots: Boolean(options.animatePlots) });
+  updateHistoryControls();
 }
 
-function isUndoShortcut(event) {
-  return (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+function applyHistoryAction(action) {
+  const project = action === "undo"
+    ? projectHistory?.undo()
+    : action === "redo"
+      ? projectHistory?.redo()
+      : null;
+  if (!project) return false;
+
+  if (document.activeElement?.matches?.("input, select, textarea")) document.activeElement.blur();
+  state = normalizeProjectState(project);
+  saveProjectState(state);
+  renderDesignControls();
+  hydrateFields();
+  render({ animatePlots: true });
+  updateHistoryControls();
+  return true;
+}
+
+function updateHistoryControls() {
+  window.dispatchEvent(new CustomEvent("cabio:history-state", {
+    detail: {
+      canUndo: projectHistory?.canUndo() === true,
+      canRedo: projectHistory?.canRedo() === true,
+    },
+  }));
 }
 
 function hydrateFields() {
