@@ -2186,6 +2186,46 @@ textarea:focus {
   min-width: 0;
 }
 
+.history-toolbar {
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
+.history-button {
+  display: grid;
+  place-items: center;
+  width: var(--control-height-small);
+  height: var(--control-height-small);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+}
+
+.history-button:hover:not(:disabled),
+.history-button:focus-visible {
+  border-color: color-mix(in srgb, var(--line-soft) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.history-button:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.history-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .theme-toolbar {
   flex: 0 0 auto;
   margin-left: auto;
@@ -5097,7 +5137,7 @@ body:not([data-port-shape="rectangular"]) [data-sidebar-panel="planning"] input.
   .app-toolbar {
     position: absolute;
     top: var(--mobile-toolbar-top, 54px);
-    right: 8px;
+    right: min(200px, calc(100vw - 72px));
     z-index: 260;
     display: block;
     width: auto;
