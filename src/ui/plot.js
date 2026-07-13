@@ -526,6 +526,38 @@ function drawAnnotationLines(ctx, config, theme, metrics) {
   const { margin, width, height, rect, xScale, yScale } = metrics;
   const annotations = config.annotations || [];
   annotations.forEach((annotation, index) => {
+    const referenceValue = Number(annotation.referenceValue);
+    if (Number.isFinite(referenceValue)) {
+      const y = yScale(referenceValue);
+      if (y < margin.top || y > margin.top + height) return;
+
+      ctx.save();
+      ctx.strokeStyle = annotation.color || theme.muted;
+      ctx.globalAlpha = annotation.opacity ?? 0.65;
+      ctx.lineWidth = annotation.width ?? 1.2;
+      ctx.setLineDash(annotation.dash || [6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, y);
+      ctx.lineTo(margin.left + width, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      ctx.font = "10px system-ui";
+      const below = annotation.labelPosition === "below";
+      drawInlineLabel(
+        ctx,
+        annotation.label || formatValue(referenceValue),
+        rect.width - 6,
+        y + (below ? 3 : -3),
+        "right",
+        below ? "top" : "bottom",
+        theme,
+      );
+      ctx.restore();
+      return;
+    }
+
     const limitValue = Number(annotation.limitValue);
     if (Number.isFinite(limitValue)) {
       const y = yScale(limitValue);

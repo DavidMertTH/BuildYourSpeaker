@@ -27,6 +27,7 @@ import { PANEL_PRESETS } from "../src/app/presets.js";
 import { completeBox } from "../src/app/boxModel.js";
 import { completeDriverParameters } from "../src/app/driverParameters.js";
 import { simulateHfDriverResponse } from "../src/app/hfDriverSimulation.js";
+import { createSplReferenceAnnotations } from "../src/app/splReferenceAnnotations.js";
 import { crossoverCircuitComponentPortId, crossoverCircuitDesignNodeId, hasActiveCrossoverDesign, normalizeCrossoverCircuit, normalizeGroupCrossover } from "../src/app/crossoverModel.js";
 import { crossoverCircuitResponses } from "../src/app/crossoverCircuitSolver.js";
 import { orthogonalWireRoutePoints, snapWirePointToGrid, wirePathD } from "../src/app/crossoverWireRouting.js";
@@ -61,6 +62,22 @@ const referenceVentedBox = {
   portLengthCm: 21.156,
 };
 const frequencies = logFrequencyVector(10, 200, 260);
+
+test("SPL reference annotations follow the highest plotted level", () => {
+  const annotations = createSplReferenceAnnotations([
+    { values: [82, 88.5, Number.NaN] },
+    { values: [79, 91, 87] },
+  ]);
+
+  assert.deepEqual(annotations.map(({ referenceValue, label }) => ({ referenceValue, label })), [
+    { referenceValue: 88, label: "−3 dB" },
+    { referenceValue: 85, label: "−6 dB" },
+  ]);
+});
+
+test("SPL reference annotations are omitted without finite plot data", () => {
+  assert.deepEqual(createSplReferenceAnnotations([{ values: [Number.NaN] }, { values: [] }]), []);
+});
 
 test("measurement layout excludes the recording workbench", () => {
   const config = buildGoldenLayoutConfig(["recordingPanel", "onAxisResponsePlot", "offAxisResponsePlot"]);
