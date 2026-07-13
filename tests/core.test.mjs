@@ -22,7 +22,7 @@ import { filterChainResponse, gainResponse, highPassResponse, linkwitzTransformR
 import { inferAngleFromName, normalizeMeasurements, parseFrequencyResponseText } from "../src/core/measurements.js";
 import { averageFrequencyResponses, estimateFrequencyResponse, generateRecordingStimulus } from "../src/core/recordingAnalysis.js";
 import { buildGoldenLayoutConfig, panelIdsFromLayoutConfig } from "../src/app/goldenLayoutConfig.js";
-import { librarySearchScore } from "../src/app/libraryUtils.js";
+import { libraryBrand, librarySearchScore } from "../src/app/libraryUtils.js";
 import { PANEL_PRESETS } from "../src/app/presets.js";
 import { completeBox } from "../src/app/boxModel.js";
 import { completeDriverParameters } from "../src/app/driverParameters.js";
@@ -1182,6 +1182,28 @@ test("known driver library search matches compact substrings", async () => {
   assert.ok(librarySearchScore(de250, "cde25", "driver"));
   assert.ok(librarySearchScore(dayton, "rss315hf4", "driver"));
   assert.ok(librarySearchScore(dayton, "315hf", "driver"));
+});
+
+test("known driver library includes curated manufacturer models", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const expected = [
+    ["sb-acoustics-sb17nrx2c35-8", "SB Acoustics"],
+    ["seas-h1215-ca18rnx", "SEAS"],
+    ["scan-speak-18w-8531g00", "Scan-Speak"],
+    ["purifi-ptt6-5x04-naa-08", "PURIFI"],
+    ["monacor-sph-165kep", "Monacor"],
+    ["accuton-c173-6-191", "Accuton"],
+  ];
+
+  expected.forEach(([id, brand]) => {
+    const entry = knownDrivers.find((candidate) => candidate.id === id);
+    assert.ok(entry, `${id} should be part of the known driver library`);
+    assert.equal(libraryBrand(entry), brand);
+    assert.ok(/^https:\/\//.test(entry.source));
+  });
+
+  const purifi = knownDrivers.find((entry) => entry.id === "purifi-ptt6-5x04-naa-08");
+  assert.ok(librarySearchScore(purifi, "ptt65x04", "driver"));
 });
 
 test("known non-HF driver library entries are complete and internally consistent", async () => {

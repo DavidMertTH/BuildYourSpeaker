@@ -197,9 +197,10 @@ export async function loadKnownDrivers() {
   if (!knownDriversPromise) {
     knownDriversPromise = Promise.all([
       import("./data/partsExpressDrivers.js"),
+      import("./data/curatedDrivers.js"),
       loadDriverFrequencyResponses(),
-    ]).then(([{ partsExpressDrivers }, frequencyResponses]) => (
-      uniqueDriverEntries([...builtInDrivers, ...partsExpressDrivers]).map((entry) => ({
+    ]).then(([{ partsExpressDrivers }, { curatedDrivers }, frequencyResponses]) => (
+      uniqueDriverEntries([...builtInDrivers, ...curatedDrivers, ...partsExpressDrivers]).map((entry) => ({
         ...cloneEntry(entry),
         frequencyResponseMatches: frequencyResponses[entry.id] || entry.frequencyResponseMatches || [],
       }))
