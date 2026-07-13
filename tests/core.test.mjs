@@ -1206,6 +1206,31 @@ test("known driver library includes curated manufacturer models", async () => {
   assert.ok(librarySearchScore(purifi, "ptt65x04", "driver"));
 });
 
+test("known driver library includes the expanded manufacturer set", async () => {
+  const knownDrivers = await loadKnownDrivers();
+  const expected = [
+    ["eighteen-sound-18lw2400-8", "Eighteen Sound"],
+    ["rcf-lf18n401-8", "RCF"],
+    ["markaudio-alpair-7-ms", "Markaudio"],
+    ["sica-8-d-1-5-cs", "Sica"],
+    ["fane-sovereign-12-250tc", "Fane"],
+    ["precision-devices-pd-186-3-8", "Precision Devices"],
+    ["audio-technology-18-h-52-17-06-sd", "Audio Technology"],
+    ["eton-7-312-c8-32-hex", "ETON"],
+    ["fostex-ff165wk", "Fostex"],
+  ];
+
+  expected.forEach(([id, brand]) => {
+    const entry = knownDrivers.find((candidate) => candidate.id === id);
+    assert.ok(entry, `${id} should be part of the known driver library`);
+    assert.equal(libraryBrand(entry), brand);
+  });
+
+  const eton = knownDrivers.find((entry) => entry.id === "eton-7-312-c8-32-hex");
+  assert.ok(librarySearchScore(eton, "7312c832", "driver"));
+  assert.equal(libraryBrand(knownDrivers.find((entry) => entry.id === "parts-express-294470")), "JBL");
+});
+
 test("known non-HF driver library entries are complete and internally consistent", async () => {
   const knownDrivers = await loadKnownDrivers();
   const required = ["re", "fs", "qms", "qes", "vasL", "sdCm2", "xmaxMm", "mmsG", "bl"];
