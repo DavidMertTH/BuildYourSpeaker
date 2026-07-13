@@ -1,5 +1,6 @@
 import { UNGROUPED_CROSSOVER_GROUP_ID } from "./constants.js";
 import { isHfDriver, simulateHfDriverResponse } from "./hfDriverSimulation.js";
+import { createSplReferenceAnnotations } from "./splReferenceAnnotations.js";
 
 export function createRenderPipeline(deps) {
   const {
@@ -550,6 +551,8 @@ export function createRenderPipeline(deps) {
     const phaseRange = autoRange(phaseSeries.flatMap((series) => series.values));
     const groupDelayRange = autoRange(groupDelaySeries.flatMap((series) => series.values).filter((value) => Number.isFinite(value)));
     const splCrossoverAnnotations = crossoverAnnotationsForPlot(physicalSimulations, "spl");
+    const splReferenceAnnotations = createSplReferenceAnnotations(splSeries)
+      .map((annotation) => ({ ...annotation, color: colors.text }));
     const phaseCrossoverAnnotations = crossoverAnnotationsForPlot(physicalSimulations, "phase");
   
     const plotOptions = { animate: Boolean(options.animate) };
@@ -562,7 +565,7 @@ export function createRenderPipeline(deps) {
       yMin: 0,
       yMax: Math.max(splRange[1], 1),
       forceYMinZero: true,
-      annotations: splCrossoverAnnotations,
+      annotations: [...splCrossoverAnnotations, ...splReferenceAnnotations],
       onAnnotationDrag: handleFilterAnnotationDrag,
       series: splSeries,
     }), plotOptions);
