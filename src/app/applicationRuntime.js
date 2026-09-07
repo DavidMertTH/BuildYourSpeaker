@@ -3462,10 +3462,11 @@ async function searchKnownDriverResults(query) {
       if (!searchMatch) return null;
       return {
         title: entry.name,
-        url: "Known driver library",
+        url: entry.source || "Known driver library",
         driver: entry.driver,
         matched: ["known driver", `${searchMatch.matched.length}/${searchMatch.tokenCount} query parts`],
         libraryEntryId: entry.id,
+        frequencyResponseMatches: entry.frequencyResponseMatches || [],
         score: searchMatch.score,
       };
     })
@@ -3623,16 +3624,19 @@ function applyKnownPassiveRadiator(passiveRadiatorEntry) {
 function renderDriverSelect() {
   const selectedEntry = matchingDriverEntry();
   const controls = getLibraryControls("driver");
-  const options = [
-    { value: "", label: "Custom current driver" },
-    ...libraryEntriesWithSelection(filteredSortedLibraryEntries(driverLibrary, {
+  const entries = filteredSortedLibraryEntries(driverLibrary, {
     kind: "driver",
-    filter: controls.filter?.value,
     filtersEnabled: isLibraryFilterSwitchEnabled(controls.filterEnabled),
     brand: controls.brand?.value,
     diameter: controls.diameter?.value,
     sort: controls.sort?.value,
-  }), selectedEntry).map((entry) => ({ value: entry.id, label: entry.name })),
+  });
+  const availableIds = new Set(entries.map((entry) => entry.id));
+  const options = [
+    { value: "", label: "Custom current driver" },
+    ...libraryEntriesWithSelection(entries, selectedEntry).map((entry) => ({
+      value: entry.id, label: entry.name, available: availableIds.has(entry.id),
+    })),
   ];
   syncLibrarySelect("driver", options, selectedEntry?.id || "");
 }
@@ -4375,14 +4379,14 @@ function renderDriverSummaryPanel() {
   const driverName = match?.name || "Custom driver";
   const driverSource = driverSummarySourceLabel(match);
   const completedDriver = completeDriverParameters(sampleProject.driver, state.driver);
-  const qts = positiveDriverValue(analysis.derived.qts) || positiveDriverValue(completedDriver.qts);
+  const qts = analysis.derived.qts || completedDriver.qts;
   const specs = [
-    { label: "Re", value: positiveDriverValue(state.driver.re), unit: "ohm", decimals: 2 },
-    { label: "Fs", value: positiveDriverValue(state.driver.fs), unit: "Hz", decimals: 1 },
+    { label: "Re", value: state.driver.re, unit: "ohm", decimals: 2 },
+    { label: "Fs", value: state.driver.fs, unit: "Hz", decimals: 1 },
     { label: "Qts", value: qts, unit: "", decimals: 3 },
-    { label: "Vas", value: positiveDriverValue(state.driver.vasL), unit: "L", decimals: 1 },
-    { label: "Sd", value: positiveDriverValue(state.driver.sdCm2), unit: "cm2", decimals: 1 },
-    { label: "Xmax", value: positiveDriverValue(state.driver.xmaxMm), unit: "mm", decimals: 1 },
+    { label: "Vas", value: state.driver.vasL, unit: "L", decimals: 1 },
+    { label: "Sd", value: state.driver.sdCm2, unit: "cm2", decimals: 1 },
+    { label: "Xmax", value: state.driver.xmaxMm, unit: "mm", decimals: 1 },
   ];
 
   window.dispatchEvent(new CustomEvent("cabio:driver-summary-sync", {
@@ -4418,8 +4422,8 @@ function driverSummarySourceLabel(match) {
 function driverUsageText() {
   const count = Math.max(1, Math.min(16, Math.round(Number(state.box?.driverCount) || 1)));
   const wiring = state.box?.driverWiring === "series" ? "series" : "parallel";
-  const re = positiveDriverValue(state.driver?.re);
-  if (!re) return `${count}x ${wiring}`;
+  const re = Number(state.driver?.re);
+  if (!positiveDriverValue(re)) return `${count}x ${wiring}`;
   const effective = wiring === "series" ? re * count : re / count;
   return `${count}x ${wiring} / ${formatDriverSummaryValue(effective, "ohm", 2)}`;
 }

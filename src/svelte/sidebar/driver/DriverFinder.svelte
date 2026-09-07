@@ -1,5 +1,6 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
+  import { libraryTextMatches } from "../../../app/libraryUtils.js";
   import StatusText from "../../common/StatusText.svelte";
   import DriverSearchResults from "./DriverSearchResults.svelte";
   import LibraryFilterSwitch from "../library/LibraryFilterSwitch.svelte";
@@ -12,9 +13,11 @@
   let driverFilterOpen = false;
   let driverFilterDirty = false;
   let activeDriverFilterIndex = -1;
+  let driverInput;
 
-  $: driverFilterResults = filterDriverOptions(driverOptions, driverFilterValue);
-  $: selectedDriverLabel = labelForDriverId(selectedDriverId);
+  $: driverFilterResults = filterDriverOptions(driverOptions, driverFilterDirty ? driverFilterValue : "");
+  $: selectedDriverLabel = driverOptions.find((option) => option.value === selectedDriverId)?.label || "";
+  $: if (activeDriverFilterIndex >= driverFilterResults.length) activeDriverFilterIndex = driverFilterResults.length - 1;
 
   function dispatchLibraryAction(action, detail = {}) {
     window.dispatchEvent(new CustomEvent("cabio:library-action", { detail: { action, ...detail } }));
@@ -31,7 +34,9 @@
     if (Object.hasOwn(event.detail, "options")) {
       driverOptions = event.detail.options || [{ value: "", label: "Custom current driver" }];
     }
-    selectedDriverId = event.detail.selectedId || "";
+    const nextId = event.detail.selectedId || "";
+    if (nextId !== selectedDriverId) resetDriverFilter();
+    selectedDriverId = nextId;
     if (!driverFilterDirty) driverFilterValue = labelForDriverId(selectedDriverId);
   }
 
@@ -42,12 +47,7 @@
   }
 
   function filterDriverOptions(options, filterValue) {
-    const tokens = String(filterValue || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const filtered = options.filter((option) => {
-      const label = String(option.label || "").toLowerCase();
-      return tokens.every((token) => label.includes(token));
-    });
-    return filtered.slice(0, 80);
+    return options.filter((option) => option.value && option.available !== false && libraryTextMatches(option.label, filterValue));
   }
 
   function labelForDriverId(id) {
@@ -58,40 +58,67 @@
     dispatchLibraryAction("ensure-driver-library");
     driverFilterOpen = true;
     activeDriverFilterIndex = Math.max(0, driverFilterResults.findIndex((option) => option.value === selectedDriverId));
+    driverInput?.select();
+    scrollActiveDriverIntoView();
+  }
+
+  async function scrollActiveDriverIntoView() {
+    await tick();
+    if (driverFilterOpen) document.getElementById(`driver-filter-option-${activeDriverFilterIndex}`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  function resetDriverFilter() {
+    driverFilterOpen = false;
+    driverFilterDirty = false;
+    driverFilterValue = labelForDriverId(selectedDriverId);
+    activeDriverFilterIndex = -1;
+  }
+
+  function toggleDriverFilter() {
+    const wasOpen = driverFilterOpen;
+    driverInput?.focus({ preventScroll: true });
+    if (wasOpen) resetDriverFilter();
+    else handleDriverFilterFocus();
   }
 
   function handleDriverFilterInput(event) {
     driverFilterValue = event.currentTarget.value;
     driverFilterDirty = true;
     driverFilterOpen = true;
-    activeDriverFilterIndex = driverFilterResults.length ? 0 : -1;
-    dispatchLibraryAction("driver-filter-input");
+    activeDriverFilterIndex = 0;
+    scrollActiveDriverIntoView();
   }
 
   function handleDriverFilterKeydown(event) {
+    if (event.isComposing) return;
+    if (event.key === "Tab") {
+      resetDriverFilter();
+      return;
+    }
     if (event.key === "Escape") {
-      driverFilterOpen = false;
-      driverFilterDirty = false;
-      driverFilterValue = selectedDriverLabel;
+      event.preventDefault();
+      resetDriverFilter();
+      driverInput?.select();
       event.stopPropagation();
       return;
     }
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      const wasOpen = driverFilterOpen;
       driverFilterOpen = true;
-      activeDriverFilterIndex = driverFilterResults.length
-        ? Math.min(activeDriverFilterIndex + 1, driverFilterResults.length - 1)
-        : -1;
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      if (!wasOpen) {
+        activeDriverFilterIndex = driverFilterResults.findIndex((option) => option.value === selectedDriverId);
+      }
+      if (driverFilterResults.length) {
+        activeDriverFilterIndex = activeDriverFilterIndex < 0
+          ? (direction === 1 ? 0 : driverFilterResults.length - 1)
+          : Math.max(0, Math.min(activeDriverFilterIndex + (wasOpen ? direction : 0), driverFilterResults.length - 1));
+      }
+      scrollActiveDriverIntoView();
       return;
     }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      activeDriverFilterIndex = driverFilterResults.length
-        ? Math.max(activeDriverFilterIndex - 1, 0)
-        : -1;
-      return;
-    }
-    if (event.key === "Enter" && driverFilterResults.length) {
+    if (event.key === "Enter" && driverFilterOpen) {
       event.preventDefault();
       const option = driverFilterResults[Math.max(activeDriverFilterIndex, 0)];
       if (option) selectFilteredDriver(option.value);
@@ -104,15 +131,14 @@
     driverFilterValue = labelForDriverId(id);
     driverFilterOpen = false;
     activeDriverFilterIndex = -1;
+    driverInput?.focus({ preventScroll: true });
+    driverInput?.select();
     dispatchLibraryAction("select-driver", { id });
   }
 
   function closeDriverFilterDropdown(event) {
     if (event.target?.closest?.(".driver-combobox, .driver-library-filter-panel")) return;
-    driverFilterOpen = false;
-    driverFilterDirty = false;
-    driverFilterValue = selectedDriverLabel;
-    activeDriverFilterIndex = -1;
+    resetDriverFilter();
   }
 
   onMount(() => {
@@ -131,35 +157,39 @@
   <div class="driver-section-header">
     <span id="driverFinderTitle">Find driver</span>
   </div>
-  <div class="driver-search">
-    <input id="driverSearchInput" type="search" placeholder="Search driver or paste datasheet URL" onkeydown={searchOnEnter} />
-    <button id="driverSearchButton" type="button" onclick={() => dispatchLibraryAction("driver-search")}>Search</button>
-  </div>
   <label class="driver-library-label" for="driverSelect">Known driver</label>
   <div class="driver-library-row">
     <div class="driver-combobox">
       <input
         id="driverSelect"
+        bind:this={driverInput}
         class="driver-known-search"
-        type="search"
-        placeholder="Type to filter known drivers"
+        type="text"
+        placeholder="Choose or type a driver model"
+        spellcheck="false"
         role="combobox"
         autocomplete="off"
         aria-autocomplete="list"
         aria-controls="driverFilterResults"
         aria-expanded={driverFilterOpen}
+        aria-activedescendant={driverFilterOpen && driverFilterResults[activeDriverFilterIndex] ? `driver-filter-option-${activeDriverFilterIndex}` : undefined}
         value={driverFilterValue}
         onfocus={handleDriverFilterFocus}
+        onclick={() => { if (!driverFilterOpen) handleDriverFilterFocus(); }}
+        onblur={resetDriverFilter}
         oninput={handleDriverFilterInput}
         onkeydown={handleDriverFilterKeydown}
       />
-      <input id="driverLibraryFilter" type="hidden" value={driverFilterValue} />
+      <button class="driver-combobox-toggle" type="button" tabindex="-1" aria-label="Show known drivers" aria-expanded={driverFilterOpen} aria-controls="driverFilterResults" onmousedown={(event) => event.preventDefault()} onclick={toggleDriverFilter}>▾</button>
+      <input id="driverLibraryFilter" type="hidden" value={driverFilterDirty ? driverFilterValue : ""} />
       {#if driverFilterOpen}
         <div id="driverFilterResults" class="driver-filter-results" role="listbox" aria-label="Filtered known drivers">
           {#if driverFilterResults.length}
             {#each driverFilterResults as option, index}
               <button
+                id={`driver-filter-option-${index}`}
                 type="button"
+                tabindex="-1"
                 class:selected={option.value === selectedDriverId}
                 class:active={index === activeDriverFilterIndex}
                 class="driver-filter-result"
@@ -174,7 +204,7 @@
               </button>
             {/each}
           {:else}
-            <div class="driver-filter-empty">No matches</div>
+            <div class="driver-filter-empty" role="status">No matching drivers. Try another model or check the filters.</div>
           {/if}
         </div>
       {/if}
@@ -221,6 +251,13 @@
       </div>
     </details>
   </div>
-  <StatusText id="driverSearchStatus" className="search-status" />
-  <DriverSearchResults />
+  <details class="driver-web-search">
+    <summary>Search web or import datasheet</summary>
+    <div class="driver-search">
+      <input id="driverSearchInput" type="search" aria-label="Search web or datasheet URL" placeholder="Driver model or datasheet URL" onkeydown={searchOnEnter} />
+      <button id="driverSearchButton" type="button" onclick={() => dispatchLibraryAction("driver-search")}>Search</button>
+    </div>
+    <StatusText id="driverSearchStatus" className="search-status" />
+    <DriverSearchResults />
+  </details>
 </section>

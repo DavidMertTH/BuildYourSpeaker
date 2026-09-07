@@ -121,6 +121,25 @@ const builtInDrivers = [
   },
 ];
 
+builtInDrivers.push({
+  id: "sb-acoustics-sb23nrxs45-8",
+  name: "SB Acoustics SB23NRXS45-8 8 inch Norex Woofer 8 Ohm",
+  source: "https://sbacoustics.com/wp-content/uploads/2020/02/8in-SB23NRXS45-8.pdf",
+  driver: {
+    re: 5.6,
+    leMh: 0.6,
+    fs: 27,
+    qms: 5.4,
+    qes: 0.41,
+    vasL: 94,
+    sdCm2: 216,
+    // The datasheet specifies 13 mm peak-to-peak linear coil travel.
+    xmaxMm: 6.5,
+    mmsG: 24.5,
+    bl: 7.5,
+  },
+});
+
 let knownDriversPromise = null;
 let knownPassiveRadiatorsPromise = null;
 let driverFrequencyResponsesPromise = null;

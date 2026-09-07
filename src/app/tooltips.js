@@ -54,7 +54,7 @@ export const FIELD_TOOLTIPS = {
   "box.passiveRadiator.xmaxMm": "Linear one-way excursion limit of the passive radiator.",
 };
 export const CONTROL_TOOLTIPS = {
-  driverSelect: "Type to filter known drivers, then select one from the dropdown.",
+  driverSelect: "Type a model or manufacturer to filter drivers. Select with the mouse or arrow keys and Enter; Escape cancels.",
   driverLibraryFilter: "Hidden field that keeps the known-driver dropdown filter in sync.",
   driverLibrarySort: "Sort the driver preset list.",
   driverLibraryFilterEnabled: "Turn brand and diameter filtering on or off.",

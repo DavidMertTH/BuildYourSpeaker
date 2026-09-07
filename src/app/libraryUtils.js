@@ -8,13 +8,10 @@ export function libraryEntriesWithSelection(entries, selectedEntry) {
 
 export function filteredSortedLibraryEntries(entries, options = {}) {
   const { kind, filter = "", filtersEnabled = false, brand = "", diameter = "", sort = "name-asc" } = options;
-  const filterTokens = String(filter || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filtered = entries.filter((entry) => {
     if (filtersEnabled && brand && libraryBrand(entry, kind) !== brand) return false;
     if (filtersEnabled && diameter && !libraryEntryMatchesDiameter(entry, kind, diameter)) return false;
-    if (!filterTokens.length) return true;
-    const text = searchableLibraryText(entry, kind);
-    return filterTokens.every((token) => text.includes(token));
+    return libraryTextMatches(searchableLibraryText(entry, kind), filter);
   });
   return filtered
     .map((entry, index) => ({ entry, index }))
@@ -22,11 +19,17 @@ export function filteredSortedLibraryEntries(entries, options = {}) {
     .map((item) => item.entry);
 }
 
+export function libraryTextMatches(text, query) {
+  const haystack = compactSearchText(text);
+  return String(query || "").trim().split(/\s+/).every((token) => haystack.includes(compactSearchText(token)));
+}
+
 export function librarySearchScore(entry, query, kind = "driver") {
   const normalizedQuery = String(query || "").trim().toLowerCase();
   if (!normalizedQuery) return null;
 
   const readableHaystack = searchableLibraryText(entry, kind);
+  if (!libraryTextMatches(readableHaystack, normalizedQuery)) return null;
   const compactHaystack = compactSearchText(readableHaystack);
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
   const compactQuery = compactSearchText(normalizedQuery);
@@ -90,7 +93,7 @@ export function slugify(value) {
 }
 
 function compactSearchText(value) {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return String(value || "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 function searchableLibraryText(entry, kind) {
