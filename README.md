@@ -97,11 +97,15 @@ Use a Node Web Service, not a Static Site, because the app also exposes search A
 Recommended settings:
 
 ```text
-Build Command: npm ci && npm run build
+Build Command: npm ci --include=dev && npm run build
 Start Command: npm start
 ```
 
 The included `render.yaml` defines these settings and sets `NODE_ENV=production`, so the server serves the Vite/Svelte build from `dist`.
+
+For an existing service configured manually, update **Settings > Build & Deploy** in the Render dashboard. The repository's `render.yaml` does not replace that service's saved commands automatically. Replace a legacy `yarn` build command and `yarn start` start command with the commands above, keep `NODE_ENV=production`, then choose **Manual Deploy > Clear build cache & deploy**. Use npm with the committed `package-lock.json` so deployment uses the tested dependency versions.
+
+The frontend must be compiled during the [build phase](https://render.com/docs/deploys#build-command). Render runs that phase on [separate build resources](https://render.com/docs/build-pipeline), while the start command runs within the web service's memory limit. `npm start` checks that `dist/index.html` exists and reports the required settings if it is missing; it never attempts to compile the frontend in the running service.
 
 ## Features
 

@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -13,23 +12,13 @@ try {
   await access(indexPath);
   process.exit(0);
 } catch {
-  console.log("Production build output is missing; running npm run build before start.");
+  console.error([
+    "Production build output is missing: dist/index.html.",
+    "Build the application during deployment, before starting the server.",
+    "Render Build Command: npm ci --include=dev && npm run build",
+    "Render Start Command: npm start",
+    "Set these commands in the Render service settings, then redeploy.",
+    "The start command does not run a build because it shares the service's memory limit.",
+  ].join("\n"));
+  process.exitCode = 1;
 }
-
-await new Promise((resolve, reject) => {
-  const command = process.platform === "win32" ? "cmd.exe" : "npm";
-  const args = process.platform === "win32" ? ["/d", "/s", "/c", "npm run build"] : ["run", "build"];
-  const child = spawn(command, args, {
-    cwd: root,
-    stdio: "inherit",
-  });
-
-  child.on("error", reject);
-  child.on("exit", (code) => {
-    if (code === 0) {
-      resolve();
-      return;
-    }
-    reject(new Error(`Production build failed with exit code ${code}.`));
-  });
-});
